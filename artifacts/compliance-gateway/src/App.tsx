@@ -6,6 +6,7 @@ import ComplianceGateway from "@/pages/ComplianceGateway";
 import AccessGranted from "@/pages/AccessGranted";
 import AdminPanel from "@/pages/AdminPanel";
 import StrategicBrain from "@/pages/StrategicBrain";
+import IntelligenceCrew from "@/pages/IntelligenceCrew";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -16,6 +17,7 @@ function Router() {
       <Route path="/" component={ComplianceGateway} />
       <Route path="/access" component={AccessGranted} />
       <Route path="/tool" component={StrategicBrain} />
+      <Route path="/tier2" component={IntelligenceCrew} />
       <Route path="/admin" component={AdminPanel} />
       <Route component={NotFound} />
     </Switch>
