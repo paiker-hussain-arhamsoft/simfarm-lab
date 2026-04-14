@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Users,
-  GitBranch,
-  LayoutGrid,
-  Globe,
+  Cpu,
+  Radio,
+  ScanLine,
+  Layers,
   SendHorizonal,
   Loader2,
   RotateCcw,
@@ -13,19 +13,19 @@ import {
   Clapperboard,
   MonitorPlay,
   Terminal,
+  Network,
   StopCircle,
   Copy,
   Check,
   ChevronRight,
   Zap,
   ArrowRight,
-  Network,
-  Radio,
+  Server,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
-type AgentId = "persona_architect" | "orchestration_engineer" | "social_media_strategist" | "automation_director";
+type AgentId = "hardware_architect" | "smsgate_engineer" | "sim_farm_strategist" | "operations_director";
 
 type AgentMeta = {
   id: AgentId;
@@ -40,93 +40,94 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "persona_architect",
-    role: "Persona Architect",
-    tool: "ElizaOS",
-    color: "#10b981",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/30",
-    desc: "7-layer character architecture, persona fleet design, memory config, character JSON",
-    icon: Users,
+    id: "hardware_architect",
+    role: "Hardware Architect",
+    tool: "GSM Modems · USB Hubs · Raspberry Pi",
+    color: "#0ea5e9",
+    bg: "bg-sky-500/10",
+    border: "border-sky-500/30",
+    desc: "BOM, physical topology, AT commands, udev rules, power cycling, signal optimization",
+    icon: Cpu,
   },
   {
-    id: "orchestration_engineer",
-    role: "Orchestration Engineer",
-    tool: "Botpress · LangGraph",
-    color: "#6366f1",
-    bg: "bg-indigo-500/10",
-    border: "border-indigo-500/30",
-    desc: "Graph topology, state schema, memory graph, perspective engine, goal stacks",
-    icon: GitBranch,
+    id: "smsgate_engineer",
+    role: "SMSgate Engineer",
+    tool: "SMSgate · gammu · Python",
+    color: "#8b5cf6",
+    bg: "bg-violet-500/10",
+    border: "border-violet-500/30",
+    desc: "SMSgate config, gammu setup, REST API, routing logic, systemd service, webhook",
+    icon: Radio,
   },
   {
-    id: "social_media_strategist",
-    role: "Social Media Strategist",
-    tool: "Socioboard · Multi-account",
+    id: "sim_farm_strategist",
+    role: "SIM Farm Strategist",
+    tool: "SIM Provisioning · Carrier Diversity",
     color: "#f59e0b",
     bg: "bg-amber-500/10",
     border: "border-amber-500/30",
-    desc: "Account architecture, content calendar, engagement protocol, analytics dashboard",
-    icon: LayoutGrid,
+    desc: "SIM procurement, pool architecture, OTP extraction, rotation automation, cost model",
+    icon: ScanLine,
   },
   {
-    id: "automation_director",
-    role: "Automation Director",
-    tool: "Playwright · Puppeteer · Selenium",
-    color: "#ec4899",
-    bg: "bg-pink-500/10",
-    border: "border-pink-500/30",
-    desc: "Stealth config, fingerprint evasion, proxy rotation, session orchestration, full brief",
-    icon: Globe,
+    id: "operations_director",
+    role: "Operations Director",
+    tool: "Deployment Synthesis",
+    color: "#10b981",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/30",
+    desc: "Deployment sequence, verification pipeline, monitoring, runbook, scaling roadmap",
+    icon: Layers,
   },
 ];
 
-const PERSONA_COUNTS = [
-  "10 personas", "50 personas", "100 personas", "500 personas",
-  "1,000 personas", "10,000 personas", "30,000+ personas",
+const MODEM_COUNTS = [
+  "1 modem (prototype)", "4 modems", "8 modems", "16 modems",
+  "32 modems", "64 modems", "128+ modems",
 ];
 
-const PLATFORMS = [
-  "Twitter/X", "Facebook", "Instagram", "LinkedIn",
-  "Telegram", "Reddit", "YouTube", "Multi-platform",
+const CARRIER_OPTIONS = [
+  "Single carrier", "Dual carrier", "Multi-carrier (3-5)",
+  "MVNO pool", "Mixed MNO + MVNO", "Country-specific MNOs",
 ];
 
-const ORCHESTRATION_ENGINES = [
-  { id: "langgraph", label: "LangGraph", note: "Graph-based, stateful, cyclic agent loops" },
-  { id: "botpress", label: "Botpress", note: "Enterprise NLU, flow-based, human-in-the-loop" },
-  { id: "both", label: "LangGraph + Botpress", note: "LangGraph backend, Botpress for escalation" },
+const GEOGRAPHIES = [
+  "Single city", "Single country", "Multi-country (same region)",
+  "Multi-regional", "Global", "Pakistan / South Asia", "Middle East",
 ];
 
-const AUTOMATION_TOOLS = [
-  { id: "playwright", label: "Playwright", badge: "Apache-2", note: "Built-in stealth, multi-browser, auto-wait" },
-  { id: "puppeteer", label: "Puppeteer", badge: "Apache-2", note: "Chrome CDP, puppeteer-extra-stealth plugin" },
-  { id: "selenium", label: "Selenium Grid", badge: "Apache-2", note: "Distributed, language-agnostic, enterprise scale" },
+const VERIFICATION_TARGETS = [
+  "Generic OTP platforms", "Social media accounts",
+  "Financial / banking apps", "Messaging apps",
+  "Email providers", "Custom research target",
 ];
 
-const MEMORY_DEPTHS = [
-  "Minimal (conversation only)",
-  "Standard (short + long-term)",
-  "Full (episodic + semantic)",
-  "Deep (cross-persona shared memory)",
+const THROUGHPUTS = [
+  "10 verifications/day", "50 verifications/day",
+  "100 verifications/day", "500 verifications/day",
+  "1,000 verifications/day", "10,000+ verifications/day",
 ];
 
-const GEOGRAPHIC_SPREADS = [
-  "Single city", "Single country", "Multi-regional",
-  "Multi-national", "Global (6 continents)",
+const HOST_PLATFORMS = [
+  { id: "rpi4", label: "Raspberry Pi 4B", note: "4GB RAM, up to 8 modems, low cost, ARM" },
+  { id: "n100", label: "Intel N100 Mini PC", note: "16GB RAM, up to 32 modems, x86" },
+  { id: "nuc", label: "Intel NUC / NUC Pro", note: "32GB RAM, enterprise grade, NVMe" },
+  { id: "server", label: "1U Rack Server", note: "64GB+ RAM, 100+ modems, data center" },
+  { id: "vm", label: "Linux VM / VPS", note: "USB passthrough, remote modem pool" },
 ];
 
 const PIPELINE_STEPS = [
-  { label: "Persona Design", icon: Users, color: "#10b981" },
-  { label: "Orchestration", icon: GitBranch, color: "#6366f1" },
-  { label: "Social Media", icon: LayoutGrid, color: "#f59e0b" },
-  { label: "Automation", icon: Globe, color: "#ec4899" },
+  { label: "Hardware", icon: Cpu, color: "#0ea5e9" },
+  { label: "SMSgate", icon: Radio, color: "#8b5cf6" },
+  { label: "SIM Strategy", icon: ScanLine, color: "#f59e0b" },
+  { label: "Operations", icon: Layers, color: "#10b981" },
 ];
 
-const EXAMPLE_OBJECTIVES = [
-  "Research: map narrative diffusion patterns across 100 synthetic personas for academic study",
-  "Red team: test platform moderation resilience against coordinated inauthentic behavior",
-  "Simulation: model how regional linguistic personas shape political discourse online",
-  "Education: demonstrate social engineering attack surface for cybersecurity curriculum",
+const EXAMPLE_CASES = [
+  "Research lab: automated phone number verification pipeline for account provisioning study",
+  "Telecom security audit: test OTP delivery resilience across MVNO carrier pool",
+  "Red team exercise: SIM-swap attack surface analysis for financial services client",
+  "Academic study: carrier throttling patterns for bulk SMS verification requests",
 ];
 
 type AgentTurn = {
@@ -175,7 +176,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? Users;
+  const Icon = agent?.icon ?? Server;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -227,13 +228,7 @@ function AgentMessage({ turn }: { turn: AgentTurn }) {
   );
 }
 
-function PipelineFlow({
-  doneAgents,
-  activeAgent,
-}: {
-  doneAgents: Set<AgentId>;
-  activeAgent: AgentId | null;
-}) {
+function PipelineFlow({ doneAgents, activeAgent }: { doneAgents: Set<AgentId>; activeAgent: AgentId | null }) {
   return (
     <div className="rounded-xl border border-border bg-card/50 p-4">
       <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">Pipeline</p>
@@ -273,17 +268,17 @@ function PipelineFlow({
   );
 }
 
-export default function PersonaOrchestration() {
+export default function SimFarm() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
-  const [objective, setObjective] = useState("");
-  const [personaCount, setPersonaCount] = useState(PERSONA_COUNTS[2]);
-  const [platform, setPlatform] = useState(PLATFORMS[0]);
-  const [orchestrationEngine, setOrchestrationEngine] = useState(ORCHESTRATION_ENGINES[0]);
-  const [automationTool, setAutomationTool] = useState(AUTOMATION_TOOLS[0]);
-  const [memoryDepth, setMemoryDepth] = useState(MEMORY_DEPTHS[2]);
-  const [geographicSpread, setGeographicSpread] = useState(GEOGRAPHIC_SPREADS[2]);
+  const [useCase, setUseCase] = useState("");
+  const [modemCount, setModemCount] = useState(MODEM_COUNTS[2]);
+  const [carriers, setCarriers] = useState(CARRIER_OPTIONS[2]);
+  const [geography, setGeography] = useState(GEOGRAPHIES[1]);
+  const [verificationTarget, setVerificationTarget] = useState(VERIFICATION_TARGETS[0]);
+  const [throughput, setThroughput] = useState(THROUGHPUTS[2]);
+  const [hostPlatform, setHostPlatform] = useState(HOST_PLATFORMS[0]);
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [turns, setTurns] = useState<AgentTurn[]>([]);
@@ -303,7 +298,7 @@ export default function PersonaOrchestration() {
   }, [turns]);
 
   const runPipeline = useCallback(async () => {
-    if (!objective.trim() || runState === "running") return;
+    if (!useCase.trim() || runState === "running") return;
 
     setRunState("running");
     setTurns([]);
@@ -315,17 +310,17 @@ export default function PersonaOrchestration() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/persona/orchestrate", {
+      const res = await fetch("/api/sim/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          objective: objective.trim(),
-          personaCount,
-          platform,
-          orchestrationEngine: orchestrationEngine.label,
-          automationTool: automationTool.label,
-          memoryDepth,
-          geographicSpread,
+          useCase: useCase.trim(),
+          modemCount,
+          carriers,
+          geography,
+          verificationTarget,
+          throughput,
+          hostPlatform: hostPlatform.label,
           session_id: sessionId,
         }),
         signal: controller.signal,
@@ -395,7 +390,7 @@ export default function PersonaOrchestration() {
         setRunState("idle");
       }
     }
-  }, [objective, personaCount, platform, orchestrationEngine, automationTool, memoryDepth, geographicSpread, runState, sessionId]);
+  }, [useCase, modemCount, carriers, geography, verificationTarget, throughput, hostPlatform, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -410,16 +405,16 @@ export default function PersonaOrchestration() {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
-              <Network className="w-4 h-4 text-emerald-400" />
+            <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
+              <Radio className="w-4 h-4 text-sky-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">Persona Orchestration</span>
-              <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 3</span>
+              <span className="text-sm font-bold text-foreground">SIM Farm</span>
+              <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 4</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
-              <Zap className="w-3 h-3 text-emerald-400" />
-              <span className="text-xs text-muted-foreground">ElizaOS · LangGraph · Socioboard · Playwright</span>
+              <Zap className="w-3 h-3 text-sky-400" />
+              <span className="text-xs text-muted-foreground">SMSgate · GSM Modems · gammu · Python</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -454,11 +449,10 @@ export default function PersonaOrchestration() {
               <Terminal className="w-3.5 h-3.5" />Cyber Crew
             </button>
             <button
-              onClick={() => setLocation("/sim-farm")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-sky-500/30 bg-sky-500/5 px-2.5 py-1.5 rounded-lg hover:bg-sky-500/10 transition-colors text-sky-400/80"
+              onClick={() => setLocation("/persona-orchestration")}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
             >
-              <Radio className="w-3.5 h-3.5" />
-              TIER 4
+              <Network className="w-3.5 h-3.5" />TIER 3
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -474,17 +468,13 @@ export default function PersonaOrchestration() {
           {/* Agent stack */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Network className="w-3.5 h-3.5 text-muted-foreground" />
+              <Radio className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
               {AGENTS.map((agent, i) => (
                 <div key={agent.id} className="flex flex-col">
-                  <AgentCard
-                    agent={agent}
-                    active={activeAgent === agent.id}
-                    done={doneAgents.has(agent.id)}
-                  />
+                  <AgentCard agent={agent} active={activeAgent === agent.id} done={doneAgents.has(agent.id)} />
                   {i < AGENTS.length - 1 && (
                     <div className="flex justify-center my-0.5">
                       <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/40 rotate-90" />
@@ -497,111 +487,95 @@ export default function PersonaOrchestration() {
 
           {/* Config */}
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fleet Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Farm Config</p>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Persona Count</label>
+              <label className="block text-xs text-muted-foreground mb-1">Modem Count</label>
               <select
-                value={personaCount}
-                onChange={(e) => setPersonaCount(e.target.value)}
+                value={modemCount}
+                onChange={(e) => setModemCount(e.target.value)}
                 disabled={runState === "running"}
                 className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
               >
-                {PERSONA_COUNTS.map((p) => <option key={p}>{p}</option>)}
+                {MODEM_COUNTS.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Target Platform</label>
+              <label className="block text-xs text-muted-foreground mb-1">Carrier Strategy</label>
               <select
-                value={platform}
-                onChange={(e) => setPlatform(e.target.value)}
+                value={carriers}
+                onChange={(e) => setCarriers(e.target.value)}
                 disabled={runState === "running"}
                 className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
               >
-                {PLATFORMS.map((p) => <option key={p}>{p}</option>)}
+                {CARRIER_OPTIONS.map((c) => <option key={c}>{c}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Geography</label>
+              <select
+                value={geography}
+                onChange={(e) => setGeography(e.target.value)}
+                disabled={runState === "running"}
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
+              >
+                {GEOGRAPHIES.map((g) => <option key={g}>{g}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Verification Target</label>
+              <select
+                value={verificationTarget}
+                onChange={(e) => setVerificationTarget(e.target.value)}
+                disabled={runState === "running"}
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
+              >
+                {VERIFICATION_TARGETS.map((v) => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Daily Throughput</label>
+              <select
+                value={throughput}
+                onChange={(e) => setThroughput(e.target.value)}
+                disabled={runState === "running"}
+                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
+              >
+                {THROUGHPUTS.map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <GitBranch className="w-3 h-3" />Orchestration Engine
+                <Server className="w-3 h-3" />Host Platform
               </label>
               <div className="flex flex-col gap-1">
-                {ORCHESTRATION_ENGINES.map((e) => (
+                {HOST_PLATFORMS.map((p) => (
                   <button
-                    key={e.id}
-                    onClick={() => setOrchestrationEngine(e)}
+                    key={p.id}
+                    onClick={() => setHostPlatform(p)}
                     disabled={runState === "running"}
                     className={`flex flex-col gap-0.5 p-2.5 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 ${
-                      orchestrationEngine.id === e.id
-                        ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-400"
+                      hostPlatform.id === p.id
+                        ? "border-sky-500/50 bg-sky-500/10 text-sky-400"
                         : "border-border/50 text-muted-foreground hover:bg-muted/30"
                     }`}
                   >
-                    <span className="font-semibold">{e.label}</span>
-                    <span className="text-muted-foreground text-[11px]">{e.note}</span>
+                    <span className="font-semibold">{p.label}</span>
+                    <span className="text-muted-foreground text-[11px]">{p.note}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Globe className="w-3 h-3" />Automation Tool
-              </label>
-              <div className="flex flex-col gap-1">
-                {AUTOMATION_TOOLS.map((t) => (
-                  <button
-                    key={t.id}
-                    onClick={() => setAutomationTool(t)}
-                    disabled={runState === "running"}
-                    className={`flex items-start gap-2 p-2.5 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 ${
-                      automationTool.id === t.id
-                        ? "border-pink-500/50 bg-pink-500/10 text-pink-400"
-                        : "border-border/50 text-muted-foreground hover:bg-muted/30"
-                    }`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="font-semibold">{t.label}</span>
-                        <span className="px-1 rounded text-[10px] bg-muted/60 text-muted-foreground border border-border font-mono">{t.badge}</span>
-                      </div>
-                      <p className="text-muted-foreground text-[11px]">{t.note}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Memory Depth</label>
-              <select
-                value={memoryDepth}
-                onChange={(e) => setMemoryDepth(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {MEMORY_DEPTHS.map((m) => <option key={m}>{m}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Geographic Spread</label>
-              <select
-                value={geographicSpread}
-                onChange={(e) => setGeographicSpread(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {GEOGRAPHIC_SPREADS.map((g) => <option key={g}>{g}</option>)}
-              </select>
-            </div>
-
-            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-emerald-400 mb-1">ElizaOS Scale</p>
+            <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3 mt-1">
+              <p className="text-xs font-semibold text-sky-400 mb-1">SMSgate</p>
               <p className="text-xs text-muted-foreground">
-                ElizaOS supports 30,000+ simultaneous agents with 7-layer character architectures and plugin-based platform adapters.
+                Python-based open-source SMS gateway. Manages multiple GSM modems via AT commands. REST API for send/receive with webhook support.
               </p>
             </div>
           </div>
@@ -609,18 +583,18 @@ export default function PersonaOrchestration() {
 
         {/* Main */}
         <main className="flex-1 flex flex-col gap-4 min-w-0">
-          {/* Objective input */}
+          {/* Use case input */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Research Objective
+              Research Use Case
             </label>
             <textarea
-              value={objective}
-              onChange={(e) => setObjective(e.target.value)}
-              placeholder="Describe the educational or research objective for this persona orchestration exercise..."
+              value={useCase}
+              onChange={(e) => setUseCase(e.target.value)}
+              placeholder="Describe the authorized research or lab use case for this GSM modem farm and SMS gateway infrastructure..."
               rows={3}
               disabled={runState === "running"}
-              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50"
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/40 disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runPipeline();
               }}
@@ -628,12 +602,12 @@ export default function PersonaOrchestration() {
 
             {runState === "idle" && !turns.length && (
               <div className="mt-3">
-                <p className="text-xs text-muted-foreground mb-2">Example objectives:</p>
+                <p className="text-xs text-muted-foreground mb-2">Example use cases:</p>
                 <div className="flex flex-wrap gap-2">
-                  {EXAMPLE_OBJECTIVES.map((q) => (
+                  {EXAMPLE_CASES.map((q) => (
                     <button
                       key={q}
-                      onClick={() => setObjective(q)}
+                      onClick={() => setUseCase(q)}
                       className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left"
                     >
                       {q.length > 70 ? q.slice(0, 70) + "…" : q}
@@ -645,13 +619,11 @@ export default function PersonaOrchestration() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{personaCount}</span>
+                <span className="font-medium text-foreground">{modemCount}</span>
                 <span>·</span>
-                <span>{platform}</span>
+                <span>{carriers}</span>
                 <span>·</span>
-                <span className="text-emerald-400">{orchestrationEngine.label}</span>
-                <span>+</span>
-                <span className="text-pink-400">{automationTool.label}</span>
+                <span className="text-sky-400">{hostPlatform.label}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
@@ -659,7 +631,7 @@ export default function PersonaOrchestration() {
                     onClick={reset}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />New Session
+                    <RotateCcw className="w-3.5 h-3.5" />New Plan
                   </button>
                 )}
                 {runState === "running" ? (
@@ -675,16 +647,16 @@ export default function PersonaOrchestration() {
                   </button>
                 ) : (
                   <button
-                    disabled={!objective.trim() || runState === "done"}
+                    disabled={!useCase.trim() || runState === "done"}
                     onClick={runPipeline}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{
-                      background: "linear-gradient(135deg, #10b981, #6366f1, #ec4899)",
+                      background: "linear-gradient(135deg, #0ea5e9, #8b5cf6)",
                       color: "white",
                     }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Orchestrate
+                    Plan Farm
                   </button>
                 )}
               </div>
@@ -712,7 +684,7 @@ export default function PersonaOrchestration() {
               ))}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  TIER 3 brief complete — persona fleet, orchestration graph, social media strategy, and automation pipeline ready
+                  TIER 4 deployment brief complete — hardware BOM, SMSgate config, SIM strategy, and operations runbook ready
                 </div>
               )}
             </div>
@@ -724,25 +696,25 @@ export default function PersonaOrchestration() {
               <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center"
                 style={{
-                  background: "linear-gradient(135deg, #10b98120, #6366f120, #ec489920)",
-                  border: "1px solid #10b98130",
+                  background: "linear-gradient(135deg, #0ea5e920, #8b5cf620)",
+                  border: "1px solid #0ea5e930",
                 }}
               >
-                <Network className="w-8 h-8" style={{ color: "#10b98160" }} />
+                <Radio className="w-8 h-8" style={{ color: "#0ea5e960" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">TIER 3 Persona Orchestration ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">TIER 4 SIM Farm ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Define your research objective and fleet configuration. The pipeline produces a complete 7-layer persona architecture, LangGraph orchestration design, Socioboard multi-account strategy, and Playwright automation layer.
+                  Describe your authorized research use case and configure the GSM modem farm parameters. The pipeline produces a hardware BOM, complete SMSgate deployment, SIM provisioning strategy, and full operations runbook.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "ElizaOS", color: "#10b981" },
-                  { label: "LangGraph", color: "#6366f1" },
-                  { label: "Botpress", color: "#6366f1" },
-                  { label: "Socioboard", color: "#f59e0b" },
-                  { label: "Playwright", color: "#ec4899" },
+                  { label: "SMSgate", color: "#8b5cf6" },
+                  { label: "GSM Modems", color: "#0ea5e9" },
+                  { label: "gammu-smsd", color: "#0ea5e9" },
+                  { label: "SIM Pool", color: "#f59e0b" },
+                  { label: "Python REST API", color: "#10b981" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />

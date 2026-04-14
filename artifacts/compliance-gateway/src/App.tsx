@@ -11,6 +11,7 @@ import MediaCrew from "@/pages/MediaCrew";
 import VideoStack from "@/pages/VideoStack";
 import CyberCrew from "@/pages/CyberCrew";
 import PersonaOrchestration from "@/pages/PersonaOrchestration";
+import SimFarm from "@/pages/SimFarm";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ function Router() {
       <Route path="/video-stack" component={VideoStack} />
       <Route path="/cyber-crew" component={CyberCrew} />
       <Route path="/persona-orchestration" component={PersonaOrchestration} />
+      <Route path="/sim-farm" component={SimFarm} />
       <Route path="/admin" component={AdminPanel} />
       <Route component={NotFound} />
     </Switch>
