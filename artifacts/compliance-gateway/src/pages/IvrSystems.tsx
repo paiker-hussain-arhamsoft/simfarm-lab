@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Globe,
-  GitMerge,
-  Link,
+  PhoneCall,
+  Cpu,
+  Layers,
+  MapPin,
   BarChart2,
   SendHorizonal,
   Loader2,
@@ -15,22 +16,22 @@ import {
   Terminal,
   Network,
   Radio,
+  Globe,
   StopCircle,
   Copy,
   Check,
   ChevronRight,
   Zap,
   ArrowRight,
-  Cloud,
-  PhoneCall,
+  Mic,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
 type AgentId =
-  | "infrastructure_architect"
-  | "pool_engineer"
-  | "integration_strategist"
+  | "hardware_architect"
+  | "callflow_engineer"
+  | "rural_strategist"
   | "operations_director";
 
 type AgentMeta = {
@@ -46,34 +47,34 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "infrastructure_architect",
-    role: "Infrastructure Architect",
-    tool: "Scrapoxy · AWS · Azure · GCP",
+    id: "hardware_architect",
+    role: "IVR Hardware Architect",
+    tool: "RASP-IVR · Raspberry Pi · GSM Modem",
     color: "#f97316",
     bg: "bg-orange-500/10",
     border: "border-orange-500/30",
-    desc: "Cloud setup, Docker deploy, connector config, VPC design, auto-scaling",
-    icon: Cloud,
+    desc: "BOM, wiring, RASP-IVR install, AT commands, solar power, multi-modem setup, enclosure, remote management",
+    icon: Cpu,
   },
   {
-    id: "pool_engineer",
-    role: "Proxy Pool Engineer",
-    tool: "Scrapoxy Connectors · Rotation Logic",
+    id: "callflow_engineer",
+    role: "Call Flow Engineer",
+    tool: "Verboice · TTS · ASR · VBVoice",
     color: "#8b5cf6",
     bg: "bg-violet-500/10",
     border: "border-violet-500/30",
-    desc: "Pool composition, rotation strategy, sticky sessions, IP quality pipeline, geo-routing",
-    icon: GitMerge,
+    desc: "Call flow diagram, Verboice Docker setup, flow JSON, TTS/ASR config, multi-language design, data collection schema",
+    icon: Layers,
   },
   {
-    id: "integration_strategist",
-    role: "Integration Strategist",
-    tool: "Playwright · CAI · SMSgate · Personas",
+    id: "rural_strategist",
+    role: "Rural Penetration Strategist",
+    tool: "Field Deployment · Localization · Community",
     color: "#10b981",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/30",
-    desc: "OEADS toolchain wiring, persona-proxy binding, fingerprint consistency matrix",
-    icon: Link,
+    desc: "Region analysis, number strategy, language rollout, audio content guide, community distribution, metrics framework",
+    icon: MapPin,
   },
   {
     id: "operations_director",
@@ -82,64 +83,76 @@ const AGENTS: AgentMeta[] = [
     color: "#f43f5e",
     bg: "bg-rose-500/10",
     border: "border-rose-500/30",
-    desc: "Docker Compose, cost model, monitoring, runbook, scaling playbook",
+    desc: "Platform decision matrix, Docker Compose, call flow scripts, timeline, cost model, OEADS integration",
     icon: BarChart2,
   },
 ];
 
-const CLOUD_PROVIDERS = [
-  { id: "aws", label: "AWS", note: "EC2 connector · t3.micro · wide region coverage" },
-  { id: "gcp", label: "GCP", note: "Compute Engine connector · e2-micro · global" },
-  { id: "azure", label: "Azure", note: "Azure VM connector · B1s · enterprise-friendly" },
-  { id: "multi", label: "Multi-cloud", note: "AWS + GCP + Azure for maximum diversity" },
-  { id: "hetzner", label: "Hetzner + OVH", note: "Cheapest datacenter IPs in Europe" },
+type PlatformOption = { id: string; label: string; note: string };
+
+const PLATFORMS: PlatformOption[] = [
+  { id: "rasp_verboice", label: "RASP-IVR + Verboice", note: "Field hardware + open-source IVR — recommended for rural" },
+  { id: "rasp_only", label: "RASP-IVR standalone", note: "Minimal Python-based stack, offline-first" },
+  { id: "verboice", label: "Verboice (server-based)", note: "Red Cross / ILO standard, Visual Call Flow Designer" },
+  { id: "vbvoice", label: "VBVoice by Pronexus", note: "Windows/.NET free toolkit, enterprise environments" },
+  { id: "full", label: "Full stack (all three)", note: "Compare all platforms for research benchmarking" },
 ];
 
-const PROXY_TYPES = [
-  { id: "dc", label: "Datacenter only", note: "Lowest cost, highest speed, lowest anonymity" },
-  { id: "dc_res", label: "Datacenter + Residential", note: "Balanced cost/anonymity — recommended" },
-  { id: "res", label: "Residential only", note: "BrightData/Oxylabs — highest anonymity" },
-  { id: "mobile", label: "Mobile (4G/LTE)", note: "Highest trust score, expensive" },
-  { id: "full", label: "DC + Residential + Mobile", note: "Full diversity stack" },
+const LANGUAGES = [
+  "English only",
+  "English + Urdu",
+  "English + Bengali",
+  "English + Swahili",
+  "English + Kinyarwanda",
+  "English + Hausa",
+  "English + Sinhala + Tamil",
+  "Multi-dialect (custom)",
 ];
 
-const POOL_SIZES = [
-  "5 nodes (prototype)", "10 nodes", "25 nodes", "50 nodes",
-  "100 nodes", "250 nodes", "500+ nodes",
+const DEPLOYMENT_REGIONS = [
+  "South Asia (Pakistan / Bangladesh / India)",
+  "East Africa (Rwanda / Tanzania / Kenya)",
+  "West Africa (Nigeria / Ghana)",
+  "South Asia + East Africa (multi-site)",
+  "Southeast Asia (Cambodia / Myanmar)",
+  "Sri Lanka",
+  "Custom / undisclosed",
 ];
 
-const ROTATION_STRATEGIES = [
-  { id: "per_request", label: "Per-request", note: "New IP every request — max anonymity" },
-  { id: "per_session", label: "Per-session sticky", note: "Same IP per session — stateful flows" },
-  { id: "time_based", label: "Time-based (N min)", note: "Rotate on schedule regardless of load" },
-  { id: "fingerprint", label: "Fingerprint-driven", note: "Rotate on CAPTCHA / 403 / rate limit" },
+const CONNECTIVITY_LEVELS = [
+  { id: "gsm_only", label: "2G GSM voice only", note: "No data, no internet — IVR on voice channel" },
+  { id: "gsm_gprs", label: "2G GSM + GPRS", note: "Voice + occasional data sync for logs" },
+  { id: "3g", label: "3G / HSPA", note: "Voice + reliable data for Verboice server sync" },
+  { id: "mixed", label: "Mixed (urban 3G, rural GSM)", note: "Hybrid: server in city, RASP-IVR in field" },
 ];
 
-const TARGET_REGIONS = [
-  "Single region", "US + EU", "South Asia (PK/IN/BD)",
-  "Middle East", "Multi-regional", "Global (all continents)",
+const CALL_VOLUMES = [
+  "< 50 calls/day (pilot)",
+  "100–500 calls/day",
+  "500–2,000 calls/day",
+  "2,000–10,000 calls/day",
+  "10,000+ calls/day (national)",
 ];
 
 const INTEGRATION_TARGETS = [
-  "Playwright + Python requests",
-  "Playwright + ElizaOS agents",
-  "CAI / OWASP ZAP + Nuclei",
-  "SMSgate API calls",
-  "Full OEADS stack",
-];
-
-const PIPELINE_STEPS = [
-  { label: "Infrastructure", icon: Cloud, color: "#f97316" },
-  { label: "Pool Design", icon: GitMerge, color: "#8b5cf6" },
-  { label: "Integration", icon: Link, color: "#10b981" },
-  { label: "Operations", icon: BarChart2, color: "#f43f5e" },
+  "Standalone IVR",
+  "IVR + SIM Farm (TIER 4)",
+  "IVR + Persona orchestration (TIER 3)",
+  "IVR + Full OEADS pipeline",
 ];
 
 const EXAMPLE_CASES = [
-  "Research lab: rotating proxy pool for web scraping and data collection study",
-  "Red team: test WAF and bot-detection evasion across multiple IP reputation tiers",
-  "Academic study: geographic IP diversity impact on content delivery and censorship",
-  "Security audit: validate residential proxy detection gaps in rate-limiting systems",
+  "Community health survey: IVR collects maternal health data from rural village women via missed-call callback",
+  "Agricultural extension: RASP-IVR deploys crop disease alerts to 10,000 farmers in Pakistan's Punjab province",
+  "Red Cross emergency: Verboice delivers displacement reporting IVR to conflict-affected population in East Africa",
+  "Academic study: Compare IVR completion rates across literacy levels and languages in Bangladesh",
+];
+
+const PIPELINE_STEPS = [
+  { label: "Hardware", icon: Cpu, color: "#f97316" },
+  { label: "Call Flow", icon: Layers, color: "#8b5cf6" },
+  { label: "Rural Strategy", icon: MapPin, color: "#10b981" },
+  { label: "Operations", icon: BarChart2, color: "#f43f5e" },
 ];
 
 type AgentTurn = {
@@ -188,7 +201,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? Globe;
+  const Icon = agent?.icon ?? PhoneCall;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -317,16 +330,16 @@ function OptionSelector<T extends { id: string; label: string; note: string }>({
   );
 }
 
-export default function ProxyRotation() {
+export default function IvrSystems() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
   const [useCase, setUseCase] = useState("");
-  const [cloudProvider, setCloudProvider] = useState(CLOUD_PROVIDERS[0]);
-  const [proxyType, setProxyType] = useState(PROXY_TYPES[1]);
-  const [poolSize, setPoolSize] = useState(POOL_SIZES[3]);
-  const [rotationStrategy, setRotationStrategy] = useState(ROTATION_STRATEGIES[1]);
-  const [targetRegions, setTargetRegions] = useState(TARGET_REGIONS[4]);
+  const [platform, setPlatform] = useState(PLATFORMS[0]);
+  const [targetLanguages, setTargetLanguages] = useState(LANGUAGES[0]);
+  const [deploymentRegion, setDeploymentRegion] = useState(DEPLOYMENT_REGIONS[0]);
+  const [connectivityLevel, setConnectivityLevel] = useState(CONNECTIVITY_LEVELS[0]);
+  const [callVolume, setCallVolume] = useState(CALL_VOLUMES[1]);
   const [integrationTargets, setIntegrationTargets] = useState(INTEGRATION_TARGETS[0]);
 
   const [runState, setRunState] = useState<RunState>("idle");
@@ -359,16 +372,16 @@ export default function ProxyRotation() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/proxy/plan", {
+      const res = await fetch("/api/ivr/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           useCase: useCase.trim(),
-          cloudProvider: cloudProvider.label,
-          proxyTypes: proxyType.label,
-          poolSize,
-          rotationStrategy: rotationStrategy.label,
-          targetRegions,
+          platform: platform.label,
+          targetLanguages,
+          deploymentRegion,
+          connectivityLevel: connectivityLevel.label,
+          callVolume,
           integrationTargets,
           session_id: sessionId,
         }),
@@ -439,7 +452,7 @@ export default function ProxyRotation() {
         setRunState("idle");
       }
     }
-  }, [useCase, cloudProvider, proxyType, poolSize, rotationStrategy, targetRegions, integrationTargets, runState, sessionId]);
+  }, [useCase, platform, targetLanguages, deploymentRegion, connectivityLevel, callVolume, integrationTargets, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -455,15 +468,15 @@ export default function ProxyRotation() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
-              <Globe className="w-4 h-4 text-orange-400" />
+              <PhoneCall className="w-4 h-4 text-orange-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">Proxy Rotation</span>
+              <span className="text-sm font-bold text-foreground">IVR Systems</span>
               <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 4</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
               <Zap className="w-3 h-3 text-orange-400" />
-              <span className="text-xs text-muted-foreground">Scrapoxy · AGPLv3 · AWS · Azure · GCP</span>
+              <span className="text-xs text-muted-foreground">RASP-IVR · Verboice · VBVoice · Rural Penetration</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -488,8 +501,8 @@ export default function ProxyRotation() {
             <button onClick={() => setLocation("/sim-farm")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Radio className="w-3.5 h-3.5" />SIM Farm
             </button>
-            <button onClick={() => setLocation("/ivr-systems")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-orange-500/30 bg-orange-500/5 px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors text-orange-400/80">
-              <PhoneCall className="w-3.5 h-3.5" />IVR
+            <button onClick={() => setLocation("/proxy-rotation")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
+              <Globe className="w-3.5 h-3.5" />Proxies
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -504,7 +517,7 @@ export default function ProxyRotation() {
         <aside className="lg:w-80 shrink-0 flex flex-col gap-4">
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Globe className="w-3.5 h-3.5 text-muted-foreground" />
+              <PhoneCall className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -522,54 +535,54 @@ export default function ProxyRotation() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proxy Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">IVR Config</p>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Cloud className="w-3 h-3" />Cloud Provider
+                <Mic className="w-3 h-3" />Platform
               </label>
-              <OptionSelector options={CLOUD_PROVIDERS} selected={cloudProvider} onSelect={setCloudProvider} disabled={runState === "running"} accentColor="#f97316" />
+              <OptionSelector options={PLATFORMS} selected={platform} onSelect={setPlatform} disabled={runState === "running"} accentColor="#f97316" />
             </div>
 
             <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Globe className="w-3 h-3" />Proxy Types
-              </label>
-              <OptionSelector options={PROXY_TYPES} selected={proxyType} onSelect={setProxyType} disabled={runState === "running"} accentColor="#8b5cf6" />
+              <label className="block text-xs text-muted-foreground mb-1">Languages</label>
+              <select value={targetLanguages} onChange={(e) => setTargetLanguages(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
+              </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Pool Size</label>
-              <select value={poolSize} onChange={(e) => setPoolSize(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {POOL_SIZES.map((p) => <option key={p}>{p}</option>)}
+              <label className="block text-xs text-muted-foreground mb-1">Deployment Region</label>
+              <select value={deploymentRegion} onChange={(e) => setDeploymentRegion(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {DEPLOYMENT_REGIONS.map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <GitMerge className="w-3 h-3" />Rotation Strategy
+                <Radio className="w-3 h-3" />Connectivity
               </label>
-              <OptionSelector options={ROTATION_STRATEGIES} selected={rotationStrategy} onSelect={setRotationStrategy} disabled={runState === "running"} accentColor="#10b981" />
+              <OptionSelector options={CONNECTIVITY_LEVELS} selected={connectivityLevel} onSelect={setConnectivityLevel} disabled={runState === "running"} accentColor="#10b981" />
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Target Regions</label>
-              <select value={targetRegions} onChange={(e) => setTargetRegions(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {TARGET_REGIONS.map((r) => <option key={r}>{r}</option>)}
+              <label className="block text-xs text-muted-foreground mb-1">Call Volume</label>
+              <select value={callVolume} onChange={(e) => setCallVolume(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {CALL_VOLUMES.map((v) => <option key={v}>{v}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Integration Targets</label>
+              <label className="block text-xs text-muted-foreground mb-1">OEADS Integration</label>
               <select value={integrationTargets} onChange={(e) => setIntegrationTargets(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
                 {INTEGRATION_TARGETS.map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
 
             <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-orange-400 mb-1">Scrapoxy · AGPLv3</p>
+              <p className="text-xs font-semibold text-orange-400 mb-1">RASP-IVR · Verboice · VBVoice</p>
               <p className="text-xs text-muted-foreground">
-                Open-source proxy orchestrator. Manages IP rotation across datacenter, residential, and mobile sources. Self-hosted on AWS, Azure, or GCP.
+                Open-source IVR stack for low-connectivity populations. RASP-IVR is field-tested in Rwanda. Verboice is deployed by Red Cross and ILO. VBVoice is free for Windows/.NET.
               </p>
             </div>
           </div>
@@ -579,12 +592,12 @@ export default function ProxyRotation() {
         <main className="flex-1 flex flex-col gap-4 min-w-0">
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Research Use Case
+              Research / Deployment Use Case
             </label>
             <textarea
               value={useCase}
               onChange={(e) => setUseCase(e.target.value)}
-              placeholder="Describe the authorized research or lab use case for this rotating proxy infrastructure..."
+              placeholder="Describe the authorized research or humanitarian deployment use case for this IVR system..."
               rows={3}
               disabled={runState === "running"}
               className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-50"
@@ -597,7 +610,7 @@ export default function ProxyRotation() {
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLE_CASES.map((q) => (
                     <button key={q} onClick={() => setUseCase(q)} className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left">
-                      {q.length > 70 ? q.slice(0, 70) + "…" : q}
+                      {q.length > 72 ? q.slice(0, 72) + "…" : q}
                     </button>
                   ))}
                 </div>
@@ -606,11 +619,11 @@ export default function ProxyRotation() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{cloudProvider.label}</span>
+                <span className="font-medium text-foreground">{platform.label}</span>
                 <span>·</span>
-                <span className="text-violet-400">{proxyType.label}</span>
+                <span className="text-violet-400">{targetLanguages}</span>
                 <span>·</span>
-                <span>{poolSize}</span>
+                <span>{deploymentRegion.split(" (")[0]}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
@@ -630,7 +643,7 @@ export default function ProxyRotation() {
                     style={{ background: "linear-gradient(135deg, #f97316, #8b5cf6)", color: "white" }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Plan Proxies
+                    Plan IVR
                   </button>
                 )}
               </div>
@@ -647,7 +660,7 @@ export default function ProxyRotation() {
               {turns.map((turn, i) => <AgentMessage key={`${turn.agentId}-${i}`} turn={turn} />)}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  Proxy rotation deployment brief complete — infrastructure, pool design, OEADS integration, and operations runbook ready
+                  IVR deployment brief complete — hardware BOM, call flow, rural strategy, and operations runbook ready
                 </div>
               )}
             </div>
@@ -656,21 +669,21 @@ export default function ProxyRotation() {
           {!turns.length && !error && (
             <div className="flex-1 rounded-2xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center p-12 text-center gap-4">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #f9731620, #8b5cf620)", border: "1px solid #f9731630" }}>
-                <Globe className="w-8 h-8" style={{ color: "#f9731660" }} />
+                <PhoneCall className="w-8 h-8" style={{ color: "#f9731660" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">Proxy Rotation ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">IVR Systems ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Describe your authorized research use case and configure the Scrapoxy proxy pool. The pipeline produces a cloud infrastructure design, rotation strategy, OEADS integration wiring, and full deployment brief with Docker Compose.
+                  Describe your authorized research or humanitarian deployment use case. The pipeline produces a hardware BOM and wiring guide, call flow design with Verboice/VBVoice config, rural penetration strategy, and a complete deployment brief with Docker Compose and cost model.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "Scrapoxy", color: "#f97316" },
-                  { label: "AWS EC2", color: "#f97316" },
-                  { label: "Residential IPs", color: "#8b5cf6" },
-                  { label: "Mobile 4G", color: "#8b5cf6" },
-                  { label: "OEADS Integration", color: "#10b981" },
+                  { label: "RASP-IVR", color: "#f97316" },
+                  { label: "Verboice", color: "#f97316" },
+                  { label: "VBVoice", color: "#8b5cf6" },
+                  { label: "Rural Deployment", color: "#10b981" },
+                  { label: "Multi-language", color: "#10b981" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />

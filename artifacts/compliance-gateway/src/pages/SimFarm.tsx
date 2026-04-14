@@ -22,6 +22,7 @@ import {
   ArrowRight,
   Server,
   Globe,
+  PhoneCall,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
@@ -457,10 +458,15 @@ export default function SimFarm() {
             </button>
             <button
               onClick={() => setLocation("/proxy-rotation")}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
+            >
+              <Globe className="w-3.5 h-3.5" />Proxies
+            </button>
+            <button
+              onClick={() => setLocation("/ivr-systems")}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-orange-500/30 bg-orange-500/5 px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors text-orange-400/80"
             >
-              <Globe className="w-3.5 h-3.5" />
-              Proxies
+              <PhoneCall className="w-3.5 h-3.5" />IVR
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
