@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Compliance Gateway"
+version = "1.0.0"
+id = "artifacts/compliance-gateway"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24277
+
+[services.development]
+run = "pnpm --filter @workspace/compliance-gateway run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/compliance-gateway", "run", "build" ]
+publicDir = "artifacts/compliance-gateway/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24277"
+BASE_PATH = "/"
