@@ -432,6 +432,13 @@ export default function IntelligenceCrew() {
               <Brain className="w-3.5 h-3.5" />
               TIER 1
             </button>
+            <button
+              onClick={() => setLocation("/media-crew")}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
+            >
+              <Zap className="w-3.5 h-3.5" />
+              Media Crew
+            </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
               <span className="hidden sm:inline">Compliance verified</span>

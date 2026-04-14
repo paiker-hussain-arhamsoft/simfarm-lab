@@ -4,6 +4,7 @@ import activityRouter from "./activity";
 import adminRouter from "./admin";
 import agentsRouter from "./agents";
 import intelligenceRouter from "./intelligence";
+import mediaRouter from "./media";
 
 const router: IRouter = Router();
 
@@ -12,5 +13,6 @@ router.use(activityRouter);
 router.use(adminRouter);
 router.use(agentsRouter);
 router.use(intelligenceRouter);
+router.use(mediaRouter);
 
 export default router;
