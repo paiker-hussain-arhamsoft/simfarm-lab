@@ -13,6 +13,7 @@ import proxyRouter from "./proxy";
 import ivrRouter from "./ivr";
 import contentRouter from "./content";
 import stealthRouter from "./stealth";
+import memoryRouter from "./memory";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(proxyRouter);
 router.use(ivrRouter);
 router.use(contentRouter);
 router.use(stealthRouter);
+router.use(memoryRouter);
 
 export default router;

@@ -1,15 +1,13 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  EyeOff,
-  Ghost,
-  Shield,
-  Globe2,
+  Database,
+  Brain,
+  Server,
   BarChart2,
   SendHorizonal,
   Loader2,
   RotateCcw,
   ShieldCheck,
-  Brain,
   Telescope,
   Clapperboard,
   MonitorPlay,
@@ -19,6 +17,7 @@ import {
   Globe,
   PhoneCall,
   Rss,
+  EyeOff,
   StopCircle,
   Copy,
   Check,
@@ -26,16 +25,19 @@ import {
   Zap,
   ArrowRight,
   Layers,
-  Server,
-  Database,
+  HardDrive,
+  Cpu,
+  GitBranch,
+  Clock,
+  Search,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
 type AgentId =
-  | "stealth_architect"
-  | "flaresolverr_engineer"
-  | "browser_infra_strategist"
+  | "mem0_architect"
+  | "zeta_engineer"
+  | "kafka_cassandra_architect"
   | "operations_director";
 
 type AgentMeta = {
@@ -51,34 +53,34 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "stealth_architect",
-    role: "Stealth Browser Architect",
-    tool: "Playwright Stealth · playwright-extra · Fingerprint Evasion",
-    color: "#f97316",
-    bg: "bg-orange-500/10",
-    border: "border-orange-500/30",
-    desc: "navigator.webdriver patch, canvas/audio/WebRTC spoofing, human behavior simulation, timezone-proxy consistency, fingerprint matrix",
-    icon: Ghost,
+    id: "mem0_architect",
+    role: "Mem0 Memory Architect",
+    tool: "Mem0 · Open-source AI Agent Memory",
+    color: "#6366f1",
+    bg: "bg-indigo-500/10",
+    border: "border-indigo-500/30",
+    desc: "Qdrant vector store, Neo4j graph, fact extraction pipeline, persona memory isolation, multi-agent sharing, async write queue",
+    icon: Brain,
   },
   {
-    id: "flaresolverr_engineer",
-    role: "Cloudflare Bypass Engineer",
-    tool: "FlareSolverr · Puppeteer Stealth · DDoS-GUARD",
-    color: "#8b5cf6",
-    bg: "bg-violet-500/10",
-    border: "border-violet-500/30",
-    desc: "FlareSolverr Docker deploy, challenge types, session management, proxy chain, horizontal scaling, Node.js + Python integration",
-    icon: Shield,
+    id: "zeta_engineer",
+    role: "Zeta Memory Engineer",
+    tool: "Zeta · Structured Distributed Memory",
+    color: "#0ea5e9",
+    bg: "bg-sky-500/10",
+    border: "border-sky-500/30",
+    desc: "PostgreSQL+pgvector schema, hot/warm/cold tiers, Redis cache, event sourcing, version vectors, conflict resolution",
+    icon: GitBranch,
   },
   {
-    id: "browser_infra_strategist",
-    role: "Browser Infrastructure Strategist",
-    tool: "Browserbase · Scrapoxy + Playwright · Session Isolation",
-    color: "#10b981",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/30",
-    desc: "Browserbase vs self-hosted comparison, fingerprint pool, session pool design, ban detection, IP warm-up, distributed browser farm",
-    icon: Globe2,
+    id: "kafka_cassandra_architect",
+    role: "Data Lake Architect",
+    tool: "Apache Kafka · Cassandra · 120M+ Records",
+    color: "#f59e0b",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/30",
+    desc: "120M+ voter records, Kafka topic design, Cassandra data model, Spark bulk load, Trino analytics, data governance + PII encryption",
+    icon: HardDrive,
   },
   {
     id: "operations_director",
@@ -87,72 +89,71 @@ const AGENTS: AgentMeta[] = [
     color: "#f43f5e",
     bg: "bg-rose-500/10",
     border: "border-rose-500/30",
-    desc: "Master Docker Compose, evasion matrix, stealth test checklist, cost model, runbook, OEADS integration guide",
+    desc: "Master Docker Compose, memory routing tree, full OEADS integration flow, storage estimates, cost model, failure modes",
     icon: BarChart2,
   },
 ];
 
 type SelectorOption = { id: string; label: string; note: string };
 
-const TARGET_PLATFORMS: SelectorOption[] = [
-  { id: "cloudflare", label: "Cloudflare-protected sites", note: "JS challenge + Managed Challenge + Turnstile" },
-  { id: "ddosguard", label: "DDoS-GUARD protected", note: "Cookie challenge + behavioral analysis" },
-  { id: "custom_waf", label: "Custom WAF / Bot protection", note: "Akamai, PerimeterX, DataDome, Kasada" },
-  { id: "social", label: "Social media platforms", note: "Twitter, LinkedIn, Instagram — advanced fingerprinting" },
-  { id: "ecommerce", label: "E-commerce / Retail", note: "Shopify, Magento — rate limit + behavior analysis" },
-  { id: "general", label: "General web research", note: "Mixed protection levels, variety of WAFs" },
+const PERSONA_COUNTS: SelectorOption[] = [
+  { id: "small", label: "100–1K personas", note: "Dev/test scale — single-node deployments" },
+  { id: "medium", label: "10K–100K personas", note: "Campaign scale — clustered deployments" },
+  { id: "large", label: "1M+ personas", note: "National scale — full distributed stack" },
+  { id: "voter", label: "120M+ voter records", note: "Full US voter file — Cassandra optimized" },
 ];
 
-const DETECTION_LEVELS: SelectorOption[] = [
-  { id: "basic", label: "Basic (navigator.webdriver only)", note: "Trivial — patched by any stealth plugin" },
-  { id: "moderate", label: "Moderate (JS fingerprint + IP)", note: "Cloudflare JS challenge tier" },
-  { id: "high", label: "High (JA3 + behavioral + canvas)", note: "Cloudflare Pro + behavioral analysis" },
-  { id: "extreme", label: "Extreme (ML-based + multi-signal)", note: "DataDome, PerimeterX, Kasada — full stack required" },
+const DATA_VOLUMES: SelectorOption[] = [
+  { id: "light", label: "< 1GB structured data", note: "Single PostgreSQL instance sufficient" },
+  { id: "medium", label: "1–100GB", note: "PostgreSQL + Redis + Qdrant stack" },
+  { id: "heavy", label: "100GB–10TB", note: "Cassandra cluster + Kafka pipeline" },
+  { id: "massive", label: "10TB+ (120M+ records)", note: "Full Kafka + Cassandra + Spark lake" },
 ];
 
-const BROWSER_ENGINES = [
-  "Chromium (Playwright)",
-  "Chrome (Puppeteer)",
-  "Firefox (Playwright)",
-  "Multi-engine (Chrome + Firefox)",
+const MEMORY_SCOPES: SelectorOption[] = [
+  { id: "session", label: "Session only", note: "Per-run context, no long-term persistence" },
+  { id: "user", label: "Per-persona long-term", note: "Persistent across all sessions per persona" },
+  { id: "agent", label: "Shared agent knowledge", note: "Collective knowledge per agent type" },
+  { id: "full", label: "Full hierarchical", note: "Session + persona + agent + campaign levels" },
 ];
 
-const PROXY_STRATEGIES = [
-  "Residential via Scrapoxy",
-  "Datacenter + Residential mix",
-  "Mobile (4G/LTE) via Scrapoxy",
-  "Browserbase built-in residential",
-  "Full diversity (DC + Res + Mobile)",
+const RETENTION_POLICIES = [
+  "7 days (ephemeral campaign)",
+  "90 days (short cycle)",
+  "2 years (engagement history)",
+  "Indefinite (voter records)",
+  "Custom TTL by memory type",
 ];
 
-const SCALE_OPTIONS = [
-  "1–5 sessions (research/dev)",
-  "10–50 concurrent sessions",
-  "50–200 concurrent sessions",
-  "200–1000 sessions (farm)",
-  "1000+ sessions (enterprise scale)",
+const QUERY_PATTERNS = [
+  "Semantic search (Mem0/Qdrant)",
+  "Structured lookup (Zeta/PostgreSQL)",
+  "Time-series (Cassandra engagement_history)",
+  "Hybrid: semantic + structured filters",
+  "Bulk analytics (Spark + Trino)",
+  "All patterns (full stack)",
 ];
 
-const INTEGRATION_OPTIONS = [
-  "Standalone stealth",
-  "Stealth + Proxy Rotation (TIER 4)",
-  "Stealth + Persona stack (TIER 3)",
-  "Stealth + SIM Farm + Personas",
+const INTEGRATION_TARGETS = [
+  "Standalone memory service",
+  "Memory + Persona stack (TIER 3)",
+  "Memory + SIM Farm (TIER 4)",
+  "Memory + Stealth layer (TIER 4)",
   "Full OEADS integration",
 ];
 
 const PIPELINE_STEPS = [
-  { label: "Playwright Stealth", icon: Ghost, color: "#f97316" },
-  { label: "FlareSolverr", icon: Shield, color: "#8b5cf6" },
-  { label: "Browser Infra", icon: Globe2, color: "#10b981" },
+  { label: "Mem0", icon: Brain, color: "#6366f1" },
+  { label: "Zeta", icon: GitBranch, color: "#0ea5e9" },
+  { label: "Kafka + Cassandra", icon: HardDrive, color: "#f59e0b" },
   { label: "Operations", icon: BarChart2, color: "#f43f5e" },
 ];
 
 const EXAMPLE_CASES = [
-  "Security audit: test bot detection effectiveness of WAF implementation against Playwright stealth + residential proxies",
-  "Academic research: study Cloudflare detection signal diversity across protected research paper repositories",
-  "Red team: validate FlareSolverr + Scrapoxy pipeline for authorized penetration testing engagement",
-  "Infrastructure research: benchmark Browserbase vs self-hosted Scrapoxy+Playwright for fingerprint consistency",
+  "Design memory layer for 50K synthetic civic research personas with per-persona long-term memory and shared agent knowledge base",
+  "Build Apache Kafka + Cassandra data lake for authorized analysis of 120M US voter registration records with PII encryption",
+  "Compare Mem0 vs Zeta memory architectures for 1M persona AI agent fleet requiring sub-10ms memory retrieval at scale",
+  "Design full OEADS memory stack: Mem0 semantic memory + Zeta structured memory + Cassandra data lake + Kafka event pipeline",
 ];
 
 type AgentTurn = {
@@ -201,7 +202,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? EyeOff;
+  const Icon = agent?.icon ?? Database;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -330,17 +331,17 @@ function OptionSelector<T extends { id: string; label: string; note: string }>({
   );
 }
 
-export default function StealthDetection() {
+export default function MemoryPersistence() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
   const [useCase, setUseCase] = useState("");
-  const [targetPlatform, setTargetPlatform] = useState(TARGET_PLATFORMS[0]);
-  const [detectionLevel, setDetectionLevel] = useState(DETECTION_LEVELS[2]);
-  const [browserEngine, setBrowserEngine] = useState(BROWSER_ENGINES[0]);
-  const [proxyStrategy, setProxyStrategy] = useState(PROXY_STRATEGIES[0]);
-  const [scale, setScale] = useState(SCALE_OPTIONS[1]);
-  const [integrationTargets, setIntegrationTargets] = useState(INTEGRATION_OPTIONS[0]);
+  const [agentPersonaCount, setAgentPersonaCount] = useState(PERSONA_COUNTS[1]);
+  const [dataVolume, setDataVolume] = useState(DATA_VOLUMES[3]);
+  const [memoryScope, setMemoryScope] = useState(MEMORY_SCOPES[3]);
+  const [retentionPolicy, setRetentionPolicy] = useState(RETENTION_POLICIES[2]);
+  const [queryPattern, setQueryPattern] = useState(QUERY_PATTERNS[3]);
+  const [integrationTarget, setIntegrationTarget] = useState(INTEGRATION_TARGETS[4]);
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [turns, setTurns] = useState<AgentTurn[]>([]);
@@ -372,17 +373,17 @@ export default function StealthDetection() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/stealth/plan", {
+      const res = await fetch("/api/memory/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           useCase: useCase.trim(),
-          targetPlatform: targetPlatform.label,
-          detectionLevel: detectionLevel.label,
-          browserEngine,
-          proxyStrategy,
-          scale,
-          integrationTargets,
+          agentPersonaCount: agentPersonaCount.label,
+          dataVolume: dataVolume.label,
+          memoryScope: memoryScope.label,
+          retentionPolicy,
+          queryPattern,
+          integrationTarget,
           session_id: sessionId,
         }),
         signal: controller.signal,
@@ -452,7 +453,7 @@ export default function StealthDetection() {
         setRunState("idle");
       }
     }
-  }, [useCase, targetPlatform, detectionLevel, browserEngine, proxyStrategy, scale, integrationTargets, runState, sessionId]);
+  }, [useCase, agentPersonaCount, dataVolume, memoryScope, retentionPolicy, queryPattern, integrationTarget, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -467,16 +468,16 @@ export default function StealthDetection() {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
-              <EyeOff className="w-4 h-4 text-orange-400" />
+            <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center">
+              <Database className="w-4 h-4 text-indigo-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">Stealth & Anti-Detection</span>
+              <span className="text-sm font-bold text-foreground">Memory & Persistence</span>
               <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 4</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
-              <Zap className="w-3 h-3 text-orange-400" />
-              <span className="text-xs text-muted-foreground">Playwright Stealth · FlareSolverr · Browserbase · Scrapoxy</span>
+              <Zap className="w-3 h-3 text-indigo-400" />
+              <span className="text-xs text-muted-foreground">Mem0 · Zeta · Kafka · Cassandra · 120M+ Records</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -510,8 +511,8 @@ export default function StealthDetection() {
             <button onClick={() => setLocation("/content-distribution")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Rss className="w-3.5 h-3.5" />Content
             </button>
-            <button onClick={() => setLocation("/memory-persistence")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-indigo-500/30 bg-indigo-500/5 px-2.5 py-1.5 rounded-lg hover:bg-indigo-500/10 transition-colors text-indigo-400/80">
-              <Database className="w-3.5 h-3.5" />Memory
+            <button onClick={() => setLocation("/stealth-detection")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
+              <EyeOff className="w-3.5 h-3.5" />Stealth
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -526,7 +527,7 @@ export default function StealthDetection() {
         <aside className="lg:w-80 shrink-0 flex flex-col gap-4">
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
+              <Database className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -544,60 +545,60 @@ export default function StealthDetection() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Stealth Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Memory Config</p>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Terminal className="w-3 h-3" />Target Platform
+                <Network className="w-3 h-3" />Persona / Record Volume
               </label>
-              <OptionSelector options={TARGET_PLATFORMS} selected={targetPlatform} onSelect={setTargetPlatform} disabled={runState === "running"} accentColor="#f97316" />
+              <OptionSelector options={PERSONA_COUNTS} selected={agentPersonaCount} onSelect={setAgentPersonaCount} disabled={runState === "running"} accentColor="#6366f1" />
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Shield className="w-3 h-3" />Detection Level
+                <HardDrive className="w-3 h-3" />Data Volume
               </label>
-              <OptionSelector options={DETECTION_LEVELS} selected={detectionLevel} onSelect={setDetectionLevel} disabled={runState === "running"} accentColor="#8b5cf6" />
+              <OptionSelector options={DATA_VOLUMES} selected={dataVolume} onSelect={setDataVolume} disabled={runState === "running"} accentColor="#f59e0b" />
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Browser Engine</label>
-              <select value={browserEngine} onChange={(e) => setBrowserEngine(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {BROWSER_ENGINES.map((b) => <option key={b}>{b}</option>)}
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Layers className="w-3 h-3" />Memory Scope
+              </label>
+              <OptionSelector options={MEMORY_SCOPES} selected={memoryScope} onSelect={setMemoryScope} disabled={runState === "running"} accentColor="#0ea5e9" />
+            </div>
+
+            <div>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Clock className="w-3 h-3" />Retention Policy
+              </label>
+              <select value={retentionPolicy} onChange={(e) => setRetentionPolicy(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {RETENTION_POLICIES.map((r) => <option key={r}>{r}</option>)}
               </select>
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Globe className="w-3 h-3" />Proxy Strategy
+                <Search className="w-3 h-3" />Query Pattern
               </label>
-              <select value={proxyStrategy} onChange={(e) => setProxyStrategy(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {PROXY_STRATEGIES.map((p) => <option key={p}>{p}</option>)}
+              <select value={queryPattern} onChange={(e) => setQueryPattern(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {QUERY_PATTERNS.map((q) => <option key={q}>{q}</option>)}
               </select>
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Server className="w-3 h-3" />Scale
+                <Cpu className="w-3 h-3" />OEADS Integration
               </label>
-              <select value={scale} onChange={(e) => setScale(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {SCALE_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+              <select value={integrationTarget} onChange={(e) => setIntegrationTarget(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {INTEGRATION_TARGETS.map((t) => <option key={t}>{t}</option>)}
               </select>
             </div>
 
-            <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Layers className="w-3 h-3" />OEADS Integration
-              </label>
-              <select value={integrationTargets} onChange={(e) => setIntegrationTargets(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {INTEGRATION_OPTIONS.map((i) => <option key={i}>{i}</option>)}
-              </select>
-            </div>
-
-            <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-orange-400 mb-1">playwright-extra · FlareSolverr · Browserbase</p>
+            <div className="rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3 mt-1">
+              <p className="text-xs font-semibold text-indigo-400 mb-1">Mem0 (Apache 2.0) · Kafka (Apache 2.0) · Cassandra (Apache 2.0)</p>
               <p className="text-xs text-muted-foreground">
-                playwright-extra (MIT), FlareSolverr (MIT), and fingerprint-generator (Apache 2.0) are open-source. Browserbase is a managed cloud alternative. All for authorized research use only.
+                All open-source. Mem0, Kafka, and Cassandra are self-hostable with full source access. For civic data research with proper authorization and data governance controls.
               </p>
             </div>
           </div>
@@ -607,15 +608,15 @@ export default function StealthDetection() {
         <main className="flex-1 flex flex-col gap-4 min-w-0">
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Authorized Research Use Case
+              Research Use Case
             </label>
             <textarea
               value={useCase}
               onChange={(e) => setUseCase(e.target.value)}
-              placeholder="Describe the authorized security research or red team use case for this stealth browser infrastructure..."
+              placeholder="Describe the authorized research use case for this memory and persistence infrastructure..."
               rows={3}
               disabled={runState === "running"}
-              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-50"
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:opacity-50"
               onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runPipeline(); }}
             />
 
@@ -625,7 +626,7 @@ export default function StealthDetection() {
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLE_CASES.map((q) => (
                     <button key={q} onClick={() => setUseCase(q)} className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left">
-                      {q.length > 72 ? q.slice(0, 72) + "…" : q}
+                      {q.length > 80 ? q.slice(0, 80) + "…" : q}
                     </button>
                   ))}
                 </div>
@@ -634,11 +635,11 @@ export default function StealthDetection() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{targetPlatform.label.split(" (")[0]}</span>
+                <span className="font-medium text-foreground">{agentPersonaCount.label}</span>
                 <span>·</span>
-                <span className="text-violet-400">{detectionLevel.label.split(" (")[0]}</span>
+                <span className="text-amber-400">{dataVolume.label}</span>
                 <span>·</span>
-                <span>{scale}</span>
+                <span>{memoryScope.label}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
@@ -655,10 +656,10 @@ export default function StealthDetection() {
                     disabled={!useCase.trim() || runState === "done"}
                     onClick={runPipeline}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{ background: "linear-gradient(135deg, #f97316, #8b5cf6)", color: "white" }}
+                    style={{ background: "linear-gradient(135deg, #6366f1, #f59e0b)", color: "white" }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Plan Stealth Stack
+                    Plan Memory Stack
                   </button>
                 )}
               </div>
@@ -675,7 +676,7 @@ export default function StealthDetection() {
               {turns.map((turn, i) => <AgentMessage key={`${turn.agentId}-${i}`} turn={turn} />)}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  Stealth deployment brief complete — fingerprint evasion, Cloudflare bypass, browser infrastructure, and operations runbook ready
+                  Memory & persistence brief complete — Mem0, Zeta, Kafka + Cassandra data lake, and full OEADS integration guide ready
                 </div>
               )}
             </div>
@@ -683,22 +684,22 @@ export default function StealthDetection() {
 
           {!turns.length && !error && (
             <div className="flex-1 rounded-2xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center p-12 text-center gap-4">
-              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #f9731620, #8b5cf620)", border: "1px solid #f9731630" }}>
-                <EyeOff className="w-8 h-8" style={{ color: "#f9731660" }} />
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #6366f120, #f59e0b20)", border: "1px solid #6366f130" }}>
+                <Database className="w-8 h-8" style={{ color: "#6366f160" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">Stealth & Anti-Detection ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">Memory & Persistence ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Describe your authorized security research use case and configure the target environment. The pipeline produces a Playwright stealth fingerprint config, FlareSolverr deployment for Cloudflare bypass, managed browser infrastructure design, and a complete evasion matrix with Docker Compose.
+                  Describe your authorized research use case. The pipeline produces a Mem0 semantic memory architecture, Zeta structured memory with hot/warm/cold tiers, an Apache Kafka + Cassandra data lake for 120M+ records, and a master deployment brief with Docker Compose, cost model, and full OEADS integration.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "Playwright Stealth", color: "#f97316" },
-                  { label: "FlareSolverr", color: "#8b5cf6" },
-                  { label: "Fingerprint Evasion", color: "#f97316" },
-                  { label: "Browserbase / Scrapoxy", color: "#10b981" },
-                  { label: "Session Isolation", color: "#10b981" },
+                  { label: "Mem0 + Qdrant", color: "#6366f1" },
+                  { label: "Zeta + pgvector", color: "#0ea5e9" },
+                  { label: "Apache Kafka", color: "#f59e0b" },
+                  { label: "Cassandra 120M+", color: "#f59e0b" },
+                  { label: "Spark + Trino", color: "#f43f5e" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />
