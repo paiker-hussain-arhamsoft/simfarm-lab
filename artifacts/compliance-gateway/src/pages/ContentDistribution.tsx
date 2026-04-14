@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  PhoneCall,
-  Cpu,
-  Layers,
-  MapPin,
+  Rss,
+  Mail,
+  Database,
+  Share2,
   BarChart2,
   SendHorizonal,
   Loader2,
@@ -17,22 +17,23 @@ import {
   Network,
   Radio,
   Globe,
+  PhoneCall,
   StopCircle,
   Copy,
   Check,
   ChevronRight,
   Zap,
   ArrowRight,
-  Mic,
-  Rss,
+  Layers,
+  Calendar,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
 type AgentId =
-  | "hardware_architect"
-  | "callflow_engineer"
-  | "rural_strategist"
+  | "mautic_architect"
+  | "strapi_engineer"
+  | "postiz_manager"
   | "operations_director";
 
 type AgentMeta = {
@@ -48,34 +49,34 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "hardware_architect",
-    role: "IVR Hardware Architect",
-    tool: "RASP-IVR · Raspberry Pi · GSM Modem",
+    id: "mautic_architect",
+    role: "Marketing Automation Architect",
+    tool: "Mautic · Drip Campaigns · Lead Scoring",
     color: "#f97316",
     bg: "bg-orange-500/10",
     border: "border-orange-500/30",
-    desc: "BOM, wiring, RASP-IVR install, AT commands, solar power, multi-modem setup, enclosure, remote management",
-    icon: Cpu,
+    desc: "Docker deploy, email infra, drip sequence design, lead scoring, segment architecture, landing pages, tracking, API integration",
+    icon: Mail,
   },
   {
-    id: "callflow_engineer",
-    role: "Call Flow Engineer",
-    tool: "Verboice · TTS · ASR · VBVoice",
+    id: "strapi_engineer",
+    role: "CMS Engineer",
+    tool: "Strapi · AI Plugins · Auto-publishing",
     color: "#8b5cf6",
     bg: "bg-violet-500/10",
     border: "border-violet-500/30",
-    desc: "Call flow diagram, Verboice Docker setup, flow JSON, TTS/ASR config, multi-language design, data collection schema",
-    icon: Layers,
+    desc: "Content type schema, AI plugin config, lifecycle hooks, satellite site pipeline, webhook chain, media handling, scheduling",
+    icon: Database,
   },
   {
-    id: "rural_strategist",
-    role: "Rural Penetration Strategist",
-    tool: "Field Deployment · Localization · Community",
+    id: "postiz_manager",
+    role: "Social Media Manager",
+    tool: "Postiz · AI Generation · Scheduling",
     color: "#10b981",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/30",
-    desc: "Region analysis, number strategy, language rollout, audio content guide, community distribution, metrics framework",
-    icon: MapPin,
+    desc: "Platform setup, AI caption generation, content calendar, Strapi→Postiz automation, repurposing matrix, hashtag strategy, analytics",
+    icon: Share2,
   },
   {
     id: "operations_director",
@@ -84,75 +85,75 @@ const AGENTS: AgentMeta[] = [
     color: "#f43f5e",
     bg: "bg-rose-500/10",
     border: "border-rose-500/30",
-    desc: "Platform decision matrix, Docker Compose, call flow scripts, timeline, cost model, OEADS integration",
+    desc: "Master Docker Compose, full pipeline diagram, DNS setup, cost model, 4-week content calendar, monitoring, scaling playbook",
     icon: BarChart2,
   },
 ];
 
 type PlatformOption = { id: string; label: string; note: string };
 
-const PLATFORMS: PlatformOption[] = [
-  { id: "rasp_verboice", label: "RASP-IVR + Verboice", note: "Field hardware + open-source IVR — recommended for rural" },
-  { id: "rasp_only", label: "RASP-IVR standalone", note: "Minimal Python-based stack, offline-first" },
-  { id: "verboice", label: "Verboice (server-based)", note: "Red Cross / ILO standard, Visual Call Flow Designer" },
-  { id: "vbvoice", label: "VBVoice by Pronexus", note: "Windows/.NET free toolkit, enterprise environments" },
-  { id: "full", label: "Full stack (all three)", note: "Compare all platforms for research benchmarking" },
+const NICHES: PlatformOption[] = [
+  { id: "research", label: "Research / Education", note: "Academic, how-to, technical explainers" },
+  { id: "finance", label: "Finance / Economics", note: "Markets, policy, personal finance" },
+  { id: "tech", label: "Technology", note: "Software, AI, hardware, cybersecurity" },
+  { id: "health", label: "Health / Wellness", note: "Medical research, nutrition, mental health" },
+  { id: "politics", label: "Policy / Politics", note: "Analysis, opinion, public affairs" },
+  { id: "custom", label: "Custom / Multi-niche", note: "Define in use case description" },
 ];
 
-const LANGUAGES = [
-  "English only",
-  "English + Urdu",
-  "English + Bengali",
-  "English + Swahili",
-  "English + Kinyarwanda",
-  "English + Hausa",
-  "English + Sinhala + Tamil",
-  "Multi-dialect (custom)",
+const CADENCES: PlatformOption[] = [
+  { id: "daily", label: "Daily", note: "1 article/day + 3–5 social posts" },
+  { id: "3x", label: "3× per week", note: "Balanced quality/volume" },
+  { id: "weekly", label: "Weekly", note: "High-quality long-form focus" },
+  { id: "aggressive", label: "Multiple per day", note: "High-volume content machine" },
 ];
 
-const DEPLOYMENT_REGIONS = [
-  "South Asia (Pakistan / Bangladesh / India)",
-  "East Africa (Rwanda / Tanzania / Kenya)",
-  "West Africa (Nigeria / Ghana)",
-  "South Asia + East Africa (multi-site)",
-  "Southeast Asia (Cambodia / Myanmar)",
-  "Sri Lanka",
-  "Custom / undisclosed",
+const PLATFORMS_OPTIONS = [
+  "Twitter / X",
+  "Twitter + LinkedIn",
+  "Twitter + LinkedIn + Facebook",
+  "Instagram + TikTok",
+  "Full stack (all major platforms)",
+  "LinkedIn only (B2B)",
+  "Reddit + Discord (community)",
 ];
 
-const CONNECTIVITY_LEVELS = [
-  { id: "gsm_only", label: "2G GSM voice only", note: "No data, no internet — IVR on voice channel" },
-  { id: "gsm_gprs", label: "2G GSM + GPRS", note: "Voice + occasional data sync for logs" },
-  { id: "3g", label: "3G / HSPA", note: "Voice + reliable data for Verboice server sync" },
-  { id: "mixed", label: "Mixed (urban 3G, rural GSM)", note: "Hybrid: server in city, RASP-IVR in field" },
+const CONTENT_TYPES_OPTIONS = [
+  "Articles + Social posts",
+  "Long-form + Newsletters",
+  "Short-form + Threads",
+  "Video scripts + Social",
+  "Full mix (articles, video, email, social)",
 ];
 
-const CALL_VOLUMES = [
-  "< 50 calls/day (pilot)",
-  "100–500 calls/day",
-  "500–2,000 calls/day",
-  "2,000–10,000 calls/day",
-  "10,000+ calls/day (national)",
+const SATELLITE_SITES_OPTIONS = [
+  "1 primary site only",
+  "2–5 sites",
+  "5–20 sites",
+  "20–100 sites",
+  "100+ satellite network",
 ];
 
-const INTEGRATION_TARGETS = [
-  "Standalone IVR",
-  "IVR + SIM Farm (TIER 4)",
-  "IVR + Persona orchestration (TIER 3)",
-  "IVR + Full OEADS pipeline",
+const AUDIENCE_OPTIONS = [
+  "Researchers and practitioners",
+  "General public",
+  "Professionals / B2B",
+  "Young adults (18–35)",
+  "Decision makers / executives",
+  "Global multilingual audience",
 ];
 
 const EXAMPLE_CASES = [
-  "Community health survey: IVR collects maternal health data from rural village women via missed-call callback",
-  "Agricultural extension: RASP-IVR deploys crop disease alerts to 10,000 farmers in Pakistan's Punjab province",
-  "Red Cross emergency: Verboice delivers displacement reporting IVR to conflict-affected population in East Africa",
-  "Academic study: Compare IVR completion rates across literacy levels and languages in Bangladesh",
+  "Academic research: automated distribution of open-access papers to niche educational blogs and academic social accounts",
+  "Policy think tank: daily briefings auto-published across 20 satellite sites with Mautic email digest for subscribers",
+  "Tech media: AI-assisted article generation in Strapi, auto-scheduled to Twitter/LinkedIn via Postiz, drip for newsletter growth",
+  "Health education NGO: multilingual content machine — Strapi i18n → 15 country sites → Postiz scheduling per timezone",
 ];
 
 const PIPELINE_STEPS = [
-  { label: "Hardware", icon: Cpu, color: "#f97316" },
-  { label: "Call Flow", icon: Layers, color: "#8b5cf6" },
-  { label: "Rural Strategy", icon: MapPin, color: "#10b981" },
+  { label: "Mautic", icon: Mail, color: "#f97316" },
+  { label: "Strapi", icon: Database, color: "#8b5cf6" },
+  { label: "Postiz", icon: Share2, color: "#10b981" },
   { label: "Operations", icon: BarChart2, color: "#f43f5e" },
 ];
 
@@ -202,7 +203,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? PhoneCall;
+  const Icon = agent?.icon ?? Rss;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -331,17 +332,17 @@ function OptionSelector<T extends { id: string; label: string; note: string }>({
   );
 }
 
-export default function IvrSystems() {
+export default function ContentDistribution() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
   const [useCase, setUseCase] = useState("");
-  const [platform, setPlatform] = useState(PLATFORMS[0]);
-  const [targetLanguages, setTargetLanguages] = useState(LANGUAGES[0]);
-  const [deploymentRegion, setDeploymentRegion] = useState(DEPLOYMENT_REGIONS[0]);
-  const [connectivityLevel, setConnectivityLevel] = useState(CONNECTIVITY_LEVELS[0]);
-  const [callVolume, setCallVolume] = useState(CALL_VOLUMES[1]);
-  const [integrationTargets, setIntegrationTargets] = useState(INTEGRATION_TARGETS[0]);
+  const [niche, setNiche] = useState(NICHES[0]);
+  const [cadence, setCadence] = useState(CADENCES[0]);
+  const [platforms, setPlatforms] = useState(PLATFORMS_OPTIONS[2]);
+  const [contentTypes, setContentTypes] = useState(CONTENT_TYPES_OPTIONS[0]);
+  const [satelliteSites, setSatelliteSites] = useState(SATELLITE_SITES_OPTIONS[1]);
+  const [targetAudience, setTargetAudience] = useState(AUDIENCE_OPTIONS[0]);
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [turns, setTurns] = useState<AgentTurn[]>([]);
@@ -373,17 +374,17 @@ export default function IvrSystems() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/ivr/plan", {
+      const res = await fetch("/api/content/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           useCase: useCase.trim(),
-          platform: platform.label,
-          targetLanguages,
-          deploymentRegion,
-          connectivityLevel: connectivityLevel.label,
-          callVolume,
-          integrationTargets,
+          niche: niche.label,
+          targetAudience,
+          publishingCadence: cadence.label,
+          platforms,
+          contentTypes,
+          satelliteSites,
           session_id: sessionId,
         }),
         signal: controller.signal,
@@ -453,7 +454,7 @@ export default function IvrSystems() {
         setRunState("idle");
       }
     }
-  }, [useCase, platform, targetLanguages, deploymentRegion, connectivityLevel, callVolume, integrationTargets, runState, sessionId]);
+  }, [useCase, niche, cadence, platforms, contentTypes, satelliteSites, targetAudience, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -469,15 +470,15 @@ export default function IvrSystems() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
-              <PhoneCall className="w-4 h-4 text-orange-400" />
+              <Rss className="w-4 h-4 text-orange-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">IVR Systems</span>
+              <span className="text-sm font-bold text-foreground">Content Distribution</span>
               <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 4</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
               <Zap className="w-3 h-3 text-orange-400" />
-              <span className="text-xs text-muted-foreground">RASP-IVR · Verboice · VBVoice · Rural Penetration</span>
+              <span className="text-xs text-muted-foreground">Mautic · Strapi · Postiz · Blogger Machine</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -505,8 +506,8 @@ export default function IvrSystems() {
             <button onClick={() => setLocation("/proxy-rotation")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Globe className="w-3.5 h-3.5" />Proxies
             </button>
-            <button onClick={() => setLocation("/content-distribution")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-orange-500/30 bg-orange-500/5 px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors text-orange-400/80">
-              <Rss className="w-3.5 h-3.5" />Content
+            <button onClick={() => setLocation("/ivr-systems")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
+              <PhoneCall className="w-3.5 h-3.5" />IVR
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -521,7 +522,7 @@ export default function IvrSystems() {
         <aside className="lg:w-80 shrink-0 flex flex-col gap-4">
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <PhoneCall className="w-3.5 h-3.5 text-muted-foreground" />
+              <Rss className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -539,54 +540,54 @@ export default function IvrSystems() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">IVR Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Content Config</p>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Mic className="w-3 h-3" />Platform
+                <Layers className="w-3 h-3" />Niche
               </label>
-              <OptionSelector options={PLATFORMS} selected={platform} onSelect={setPlatform} disabled={runState === "running"} accentColor="#f97316" />
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Languages</label>
-              <select value={targetLanguages} onChange={(e) => setTargetLanguages(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {LANGUAGES.map((l) => <option key={l}>{l}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Deployment Region</label>
-              <select value={deploymentRegion} onChange={(e) => setDeploymentRegion(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {DEPLOYMENT_REGIONS.map((r) => <option key={r}>{r}</option>)}
-              </select>
+              <OptionSelector options={NICHES} selected={niche} onSelect={setNiche} disabled={runState === "running"} accentColor="#f97316" />
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Radio className="w-3 h-3" />Connectivity
+                <Calendar className="w-3 h-3" />Publishing Cadence
               </label>
-              <OptionSelector options={CONNECTIVITY_LEVELS} selected={connectivityLevel} onSelect={setConnectivityLevel} disabled={runState === "running"} accentColor="#10b981" />
+              <OptionSelector options={CADENCES} selected={cadence} onSelect={setCadence} disabled={runState === "running"} accentColor="#8b5cf6" />
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Call Volume</label>
-              <select value={callVolume} onChange={(e) => setCallVolume(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {CALL_VOLUMES.map((v) => <option key={v}>{v}</option>)}
+              <label className="block text-xs text-muted-foreground mb-1">Platforms</label>
+              <select value={platforms} onChange={(e) => setPlatforms(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {PLATFORMS_OPTIONS.map((p) => <option key={p}>{p}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">OEADS Integration</label>
-              <select value={integrationTargets} onChange={(e) => setIntegrationTargets(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {INTEGRATION_TARGETS.map((t) => <option key={t}>{t}</option>)}
+              <label className="block text-xs text-muted-foreground mb-1">Content Types</label>
+              <select value={contentTypes} onChange={(e) => setContentTypes(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {CONTENT_TYPES_OPTIONS.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Satellite Sites</label>
+              <select value={satelliteSites} onChange={(e) => setSatelliteSites(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {SATELLITE_SITES_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Target Audience</label>
+              <select value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {AUDIENCE_OPTIONS.map((a) => <option key={a}>{a}</option>)}
               </select>
             </div>
 
             <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-orange-400 mb-1">RASP-IVR · Verboice · VBVoice</p>
+              <p className="text-xs font-semibold text-orange-400 mb-1">Mautic · Strapi · Postiz</p>
               <p className="text-xs text-muted-foreground">
-                Open-source IVR stack for low-connectivity populations. RASP-IVR is field-tested in Rwanda. Verboice is deployed by Red Cross and ILO. VBVoice is free for Windows/.NET.
+                All three platforms are open-source and self-hostable. Mautic (AGPLv3) for email automation, Strapi (MIT) for headless CMS with AI plugins, Postiz (AGPLv3) for social scheduling.
               </p>
             </div>
           </div>
@@ -596,12 +597,12 @@ export default function IvrSystems() {
         <main className="flex-1 flex flex-col gap-4 min-w-0">
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Research / Deployment Use Case
+              Research / Distribution Use Case
             </label>
             <textarea
               value={useCase}
               onChange={(e) => setUseCase(e.target.value)}
-              placeholder="Describe the authorized research or humanitarian deployment use case for this IVR system..."
+              placeholder="Describe the authorized research, educational, or NGO content distribution use case for this pipeline..."
               rows={3}
               disabled={runState === "running"}
               className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-50"
@@ -623,11 +624,11 @@ export default function IvrSystems() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{platform.label}</span>
+                <span className="font-medium text-foreground">{niche.label}</span>
                 <span>·</span>
-                <span className="text-violet-400">{targetLanguages}</span>
+                <span className="text-violet-400">{cadence.label}</span>
                 <span>·</span>
-                <span>{deploymentRegion.split(" (")[0]}</span>
+                <span>{satelliteSites}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
@@ -647,7 +648,7 @@ export default function IvrSystems() {
                     style={{ background: "linear-gradient(135deg, #f97316, #8b5cf6)", color: "white" }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Plan IVR
+                    Plan Pipeline
                   </button>
                 )}
               </div>
@@ -664,7 +665,7 @@ export default function IvrSystems() {
               {turns.map((turn, i) => <AgentMessage key={`${turn.agentId}-${i}`} turn={turn} />)}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  IVR deployment brief complete — hardware BOM, call flow, rural strategy, and operations runbook ready
+                  Blogger Machine deployment brief complete — Mautic automation, Strapi CMS pipeline, Postiz social scheduling, and full operations runbook ready
                 </div>
               )}
             </div>
@@ -673,21 +674,21 @@ export default function IvrSystems() {
           {!turns.length && !error && (
             <div className="flex-1 rounded-2xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center p-12 text-center gap-4">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #f9731620, #8b5cf620)", border: "1px solid #f9731630" }}>
-                <PhoneCall className="w-8 h-8" style={{ color: "#f9731660" }} />
+                <Rss className="w-8 h-8" style={{ color: "#f9731660" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">IVR Systems ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">Blogger Machine ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Describe your authorized research or humanitarian deployment use case. The pipeline produces a hardware BOM and wiring guide, call flow design with Verboice/VBVoice config, rural penetration strategy, and a complete deployment brief with Docker Compose and cost model.
+                  Describe your authorized content distribution use case and configure the pipeline. The system produces a Mautic drip campaign design, Strapi CMS with AI auto-publishing, Postiz social scheduling across all platforms, and a master Docker Compose with full cost model.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "RASP-IVR", color: "#f97316" },
-                  { label: "Verboice", color: "#f97316" },
-                  { label: "VBVoice", color: "#8b5cf6" },
-                  { label: "Rural Deployment", color: "#10b981" },
-                  { label: "Multi-language", color: "#10b981" },
+                  { label: "Mautic Drip Campaigns", color: "#f97316" },
+                  { label: "Strapi AI Publishing", color: "#8b5cf6" },
+                  { label: "Postiz Scheduling", color: "#10b981" },
+                  { label: "Satellite Sites", color: "#8b5cf6" },
+                  { label: "Lead Scoring", color: "#f97316" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />

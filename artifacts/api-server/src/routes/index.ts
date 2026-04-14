@@ -11,6 +11,7 @@ import personaRouter from "./persona";
 import simRouter from "./sim";
 import proxyRouter from "./proxy";
 import ivrRouter from "./ivr";
+import contentRouter from "./content";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use(personaRouter);
 router.use(simRouter);
 router.use(proxyRouter);
 router.use(ivrRouter);
+router.use(contentRouter);
 
 export default router;
