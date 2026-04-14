@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Rss,
-  Mail,
-  Database,
-  Share2,
+  EyeOff,
+  Ghost,
+  Shield,
+  Globe2,
   BarChart2,
   SendHorizonal,
   Loader2,
@@ -18,6 +18,7 @@ import {
   Radio,
   Globe,
   PhoneCall,
+  Rss,
   StopCircle,
   Copy,
   Check,
@@ -25,16 +26,15 @@ import {
   Zap,
   ArrowRight,
   Layers,
-  Calendar,
-  EyeOff,
+  Server,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
 type AgentId =
-  | "mautic_architect"
-  | "strapi_engineer"
-  | "postiz_manager"
+  | "stealth_architect"
+  | "flaresolverr_engineer"
+  | "browser_infra_strategist"
   | "operations_director";
 
 type AgentMeta = {
@@ -50,34 +50,34 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "mautic_architect",
-    role: "Marketing Automation Architect",
-    tool: "Mautic · Drip Campaigns · Lead Scoring",
+    id: "stealth_architect",
+    role: "Stealth Browser Architect",
+    tool: "Playwright Stealth · playwright-extra · Fingerprint Evasion",
     color: "#f97316",
     bg: "bg-orange-500/10",
     border: "border-orange-500/30",
-    desc: "Docker deploy, email infra, drip sequence design, lead scoring, segment architecture, landing pages, tracking, API integration",
-    icon: Mail,
+    desc: "navigator.webdriver patch, canvas/audio/WebRTC spoofing, human behavior simulation, timezone-proxy consistency, fingerprint matrix",
+    icon: Ghost,
   },
   {
-    id: "strapi_engineer",
-    role: "CMS Engineer",
-    tool: "Strapi · AI Plugins · Auto-publishing",
+    id: "flaresolverr_engineer",
+    role: "Cloudflare Bypass Engineer",
+    tool: "FlareSolverr · Puppeteer Stealth · DDoS-GUARD",
     color: "#8b5cf6",
     bg: "bg-violet-500/10",
     border: "border-violet-500/30",
-    desc: "Content type schema, AI plugin config, lifecycle hooks, satellite site pipeline, webhook chain, media handling, scheduling",
-    icon: Database,
+    desc: "FlareSolverr Docker deploy, challenge types, session management, proxy chain, horizontal scaling, Node.js + Python integration",
+    icon: Shield,
   },
   {
-    id: "postiz_manager",
-    role: "Social Media Manager",
-    tool: "Postiz · AI Generation · Scheduling",
+    id: "browser_infra_strategist",
+    role: "Browser Infrastructure Strategist",
+    tool: "Browserbase · Scrapoxy + Playwright · Session Isolation",
     color: "#10b981",
     bg: "bg-emerald-500/10",
     border: "border-emerald-500/30",
-    desc: "Platform setup, AI caption generation, content calendar, Strapi→Postiz automation, repurposing matrix, hashtag strategy, analytics",
-    icon: Share2,
+    desc: "Browserbase vs self-hosted comparison, fingerprint pool, session pool design, ban detection, IP warm-up, distributed browser farm",
+    icon: Globe2,
   },
   {
     id: "operations_director",
@@ -86,76 +86,72 @@ const AGENTS: AgentMeta[] = [
     color: "#f43f5e",
     bg: "bg-rose-500/10",
     border: "border-rose-500/30",
-    desc: "Master Docker Compose, full pipeline diagram, DNS setup, cost model, 4-week content calendar, monitoring, scaling playbook",
+    desc: "Master Docker Compose, evasion matrix, stealth test checklist, cost model, runbook, OEADS integration guide",
     icon: BarChart2,
   },
 ];
 
-type PlatformOption = { id: string; label: string; note: string };
+type SelectorOption = { id: string; label: string; note: string };
 
-const NICHES: PlatformOption[] = [
-  { id: "research", label: "Research / Education", note: "Academic, how-to, technical explainers" },
-  { id: "finance", label: "Finance / Economics", note: "Markets, policy, personal finance" },
-  { id: "tech", label: "Technology", note: "Software, AI, hardware, cybersecurity" },
-  { id: "health", label: "Health / Wellness", note: "Medical research, nutrition, mental health" },
-  { id: "politics", label: "Policy / Politics", note: "Analysis, opinion, public affairs" },
-  { id: "custom", label: "Custom / Multi-niche", note: "Define in use case description" },
+const TARGET_PLATFORMS: SelectorOption[] = [
+  { id: "cloudflare", label: "Cloudflare-protected sites", note: "JS challenge + Managed Challenge + Turnstile" },
+  { id: "ddosguard", label: "DDoS-GUARD protected", note: "Cookie challenge + behavioral analysis" },
+  { id: "custom_waf", label: "Custom WAF / Bot protection", note: "Akamai, PerimeterX, DataDome, Kasada" },
+  { id: "social", label: "Social media platforms", note: "Twitter, LinkedIn, Instagram — advanced fingerprinting" },
+  { id: "ecommerce", label: "E-commerce / Retail", note: "Shopify, Magento — rate limit + behavior analysis" },
+  { id: "general", label: "General web research", note: "Mixed protection levels, variety of WAFs" },
 ];
 
-const CADENCES: PlatformOption[] = [
-  { id: "daily", label: "Daily", note: "1 article/day + 3–5 social posts" },
-  { id: "3x", label: "3× per week", note: "Balanced quality/volume" },
-  { id: "weekly", label: "Weekly", note: "High-quality long-form focus" },
-  { id: "aggressive", label: "Multiple per day", note: "High-volume content machine" },
+const DETECTION_LEVELS: SelectorOption[] = [
+  { id: "basic", label: "Basic (navigator.webdriver only)", note: "Trivial — patched by any stealth plugin" },
+  { id: "moderate", label: "Moderate (JS fingerprint + IP)", note: "Cloudflare JS challenge tier" },
+  { id: "high", label: "High (JA3 + behavioral + canvas)", note: "Cloudflare Pro + behavioral analysis" },
+  { id: "extreme", label: "Extreme (ML-based + multi-signal)", note: "DataDome, PerimeterX, Kasada — full stack required" },
 ];
 
-const PLATFORMS_OPTIONS = [
-  "Twitter / X",
-  "Twitter + LinkedIn",
-  "Twitter + LinkedIn + Facebook",
-  "Instagram + TikTok",
-  "Full stack (all major platforms)",
-  "LinkedIn only (B2B)",
-  "Reddit + Discord (community)",
+const BROWSER_ENGINES = [
+  "Chromium (Playwright)",
+  "Chrome (Puppeteer)",
+  "Firefox (Playwright)",
+  "Multi-engine (Chrome + Firefox)",
 ];
 
-const CONTENT_TYPES_OPTIONS = [
-  "Articles + Social posts",
-  "Long-form + Newsletters",
-  "Short-form + Threads",
-  "Video scripts + Social",
-  "Full mix (articles, video, email, social)",
+const PROXY_STRATEGIES = [
+  "Residential via Scrapoxy",
+  "Datacenter + Residential mix",
+  "Mobile (4G/LTE) via Scrapoxy",
+  "Browserbase built-in residential",
+  "Full diversity (DC + Res + Mobile)",
 ];
 
-const SATELLITE_SITES_OPTIONS = [
-  "1 primary site only",
-  "2–5 sites",
-  "5–20 sites",
-  "20–100 sites",
-  "100+ satellite network",
+const SCALE_OPTIONS = [
+  "1–5 sessions (research/dev)",
+  "10–50 concurrent sessions",
+  "50–200 concurrent sessions",
+  "200–1000 sessions (farm)",
+  "1000+ sessions (enterprise scale)",
 ];
 
-const AUDIENCE_OPTIONS = [
-  "Researchers and practitioners",
-  "General public",
-  "Professionals / B2B",
-  "Young adults (18–35)",
-  "Decision makers / executives",
-  "Global multilingual audience",
-];
-
-const EXAMPLE_CASES = [
-  "Academic research: automated distribution of open-access papers to niche educational blogs and academic social accounts",
-  "Policy think tank: daily briefings auto-published across 20 satellite sites with Mautic email digest for subscribers",
-  "Tech media: AI-assisted article generation in Strapi, auto-scheduled to Twitter/LinkedIn via Postiz, drip for newsletter growth",
-  "Health education NGO: multilingual content machine — Strapi i18n → 15 country sites → Postiz scheduling per timezone",
+const INTEGRATION_OPTIONS = [
+  "Standalone stealth",
+  "Stealth + Proxy Rotation (TIER 4)",
+  "Stealth + Persona stack (TIER 3)",
+  "Stealth + SIM Farm + Personas",
+  "Full OEADS integration",
 ];
 
 const PIPELINE_STEPS = [
-  { label: "Mautic", icon: Mail, color: "#f97316" },
-  { label: "Strapi", icon: Database, color: "#8b5cf6" },
-  { label: "Postiz", icon: Share2, color: "#10b981" },
+  { label: "Playwright Stealth", icon: Ghost, color: "#f97316" },
+  { label: "FlareSolverr", icon: Shield, color: "#8b5cf6" },
+  { label: "Browser Infra", icon: Globe2, color: "#10b981" },
   { label: "Operations", icon: BarChart2, color: "#f43f5e" },
+];
+
+const EXAMPLE_CASES = [
+  "Security audit: test bot detection effectiveness of WAF implementation against Playwright stealth + residential proxies",
+  "Academic research: study Cloudflare detection signal diversity across protected research paper repositories",
+  "Red team: validate FlareSolverr + Scrapoxy pipeline for authorized penetration testing engagement",
+  "Infrastructure research: benchmark Browserbase vs self-hosted Scrapoxy+Playwright for fingerprint consistency",
 ];
 
 type AgentTurn = {
@@ -204,7 +200,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? Rss;
+  const Icon = agent?.icon ?? EyeOff;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -333,17 +329,17 @@ function OptionSelector<T extends { id: string; label: string; note: string }>({
   );
 }
 
-export default function ContentDistribution() {
+export default function StealthDetection() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
   const [useCase, setUseCase] = useState("");
-  const [niche, setNiche] = useState(NICHES[0]);
-  const [cadence, setCadence] = useState(CADENCES[0]);
-  const [platforms, setPlatforms] = useState(PLATFORMS_OPTIONS[2]);
-  const [contentTypes, setContentTypes] = useState(CONTENT_TYPES_OPTIONS[0]);
-  const [satelliteSites, setSatelliteSites] = useState(SATELLITE_SITES_OPTIONS[1]);
-  const [targetAudience, setTargetAudience] = useState(AUDIENCE_OPTIONS[0]);
+  const [targetPlatform, setTargetPlatform] = useState(TARGET_PLATFORMS[0]);
+  const [detectionLevel, setDetectionLevel] = useState(DETECTION_LEVELS[2]);
+  const [browserEngine, setBrowserEngine] = useState(BROWSER_ENGINES[0]);
+  const [proxyStrategy, setProxyStrategy] = useState(PROXY_STRATEGIES[0]);
+  const [scale, setScale] = useState(SCALE_OPTIONS[1]);
+  const [integrationTargets, setIntegrationTargets] = useState(INTEGRATION_OPTIONS[0]);
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [turns, setTurns] = useState<AgentTurn[]>([]);
@@ -375,17 +371,17 @@ export default function ContentDistribution() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/content/plan", {
+      const res = await fetch("/api/stealth/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           useCase: useCase.trim(),
-          niche: niche.label,
-          targetAudience,
-          publishingCadence: cadence.label,
-          platforms,
-          contentTypes,
-          satelliteSites,
+          targetPlatform: targetPlatform.label,
+          detectionLevel: detectionLevel.label,
+          browserEngine,
+          proxyStrategy,
+          scale,
+          integrationTargets,
           session_id: sessionId,
         }),
         signal: controller.signal,
@@ -455,7 +451,7 @@ export default function ContentDistribution() {
         setRunState("idle");
       }
     }
-  }, [useCase, niche, cadence, platforms, contentTypes, satelliteSites, targetAudience, runState, sessionId]);
+  }, [useCase, targetPlatform, detectionLevel, browserEngine, proxyStrategy, scale, integrationTargets, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -471,15 +467,15 @@ export default function ContentDistribution() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
-              <Rss className="w-4 h-4 text-orange-400" />
+              <EyeOff className="w-4 h-4 text-orange-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">Content Distribution</span>
+              <span className="text-sm font-bold text-foreground">Stealth & Anti-Detection</span>
               <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 4</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
               <Zap className="w-3 h-3 text-orange-400" />
-              <span className="text-xs text-muted-foreground">Mautic · Strapi · Postiz · Blogger Machine</span>
+              <span className="text-xs text-muted-foreground">Playwright Stealth · FlareSolverr · Browserbase · Scrapoxy</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
@@ -510,8 +506,8 @@ export default function ContentDistribution() {
             <button onClick={() => setLocation("/ivr-systems")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <PhoneCall className="w-3.5 h-3.5" />IVR
             </button>
-            <button onClick={() => setLocation("/stealth-detection")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-orange-500/30 bg-orange-500/5 px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors text-orange-400/80">
-              <EyeOff className="w-3.5 h-3.5" />Stealth
+            <button onClick={() => setLocation("/content-distribution")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
+              <Rss className="w-3.5 h-3.5" />Content
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -526,7 +522,7 @@ export default function ContentDistribution() {
         <aside className="lg:w-80 shrink-0 flex flex-col gap-4">
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Rss className="w-3.5 h-3.5 text-muted-foreground" />
+              <EyeOff className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -544,54 +540,60 @@ export default function ContentDistribution() {
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Content Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Stealth Config</p>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Layers className="w-3 h-3" />Niche
+                <Terminal className="w-3 h-3" />Target Platform
               </label>
-              <OptionSelector options={NICHES} selected={niche} onSelect={setNiche} disabled={runState === "running"} accentColor="#f97316" />
+              <OptionSelector options={TARGET_PLATFORMS} selected={targetPlatform} onSelect={setTargetPlatform} disabled={runState === "running"} accentColor="#f97316" />
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Calendar className="w-3 h-3" />Publishing Cadence
+                <Shield className="w-3 h-3" />Detection Level
               </label>
-              <OptionSelector options={CADENCES} selected={cadence} onSelect={setCadence} disabled={runState === "running"} accentColor="#8b5cf6" />
+              <OptionSelector options={DETECTION_LEVELS} selected={detectionLevel} onSelect={setDetectionLevel} disabled={runState === "running"} accentColor="#8b5cf6" />
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Platforms</label>
-              <select value={platforms} onChange={(e) => setPlatforms(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {PLATFORMS_OPTIONS.map((p) => <option key={p}>{p}</option>)}
+              <label className="block text-xs text-muted-foreground mb-1">Browser Engine</label>
+              <select value={browserEngine} onChange={(e) => setBrowserEngine(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {BROWSER_ENGINES.map((b) => <option key={b}>{b}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Content Types</label>
-              <select value={contentTypes} onChange={(e) => setContentTypes(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {CONTENT_TYPES_OPTIONS.map((t) => <option key={t}>{t}</option>)}
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Globe className="w-3 h-3" />Proxy Strategy
+              </label>
+              <select value={proxyStrategy} onChange={(e) => setProxyStrategy(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {PROXY_STRATEGIES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Satellite Sites</label>
-              <select value={satelliteSites} onChange={(e) => setSatelliteSites(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {SATELLITE_SITES_OPTIONS.map((s) => <option key={s}>{s}</option>)}
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Server className="w-3 h-3" />Scale
+              </label>
+              <select value={scale} onChange={(e) => setScale(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {SCALE_OPTIONS.map((s) => <option key={s}>{s}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Target Audience</label>
-              <select value={targetAudience} onChange={(e) => setTargetAudience(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
-                {AUDIENCE_OPTIONS.map((a) => <option key={a}>{a}</option>)}
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                <Layers className="w-3 h-3" />OEADS Integration
+              </label>
+              <select value={integrationTargets} onChange={(e) => setIntegrationTargets(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {INTEGRATION_OPTIONS.map((i) => <option key={i}>{i}</option>)}
               </select>
             </div>
 
             <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-orange-400 mb-1">Mautic · Strapi · Postiz</p>
+              <p className="text-xs font-semibold text-orange-400 mb-1">playwright-extra · FlareSolverr · Browserbase</p>
               <p className="text-xs text-muted-foreground">
-                All three platforms are open-source and self-hostable. Mautic (AGPLv3) for email automation, Strapi (MIT) for headless CMS with AI plugins, Postiz (AGPLv3) for social scheduling.
+                playwright-extra (MIT), FlareSolverr (MIT), and fingerprint-generator (Apache 2.0) are open-source. Browserbase is a managed cloud alternative. All for authorized research use only.
               </p>
             </div>
           </div>
@@ -601,12 +603,12 @@ export default function ContentDistribution() {
         <main className="flex-1 flex flex-col gap-4 min-w-0">
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Research / Distribution Use Case
+              Authorized Research Use Case
             </label>
             <textarea
               value={useCase}
               onChange={(e) => setUseCase(e.target.value)}
-              placeholder="Describe the authorized research, educational, or NGO content distribution use case for this pipeline..."
+              placeholder="Describe the authorized security research or red team use case for this stealth browser infrastructure..."
               rows={3}
               disabled={runState === "running"}
               className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-50"
@@ -628,11 +630,11 @@ export default function ContentDistribution() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{niche.label}</span>
+                <span className="font-medium text-foreground">{targetPlatform.label.split(" (")[0]}</span>
                 <span>·</span>
-                <span className="text-violet-400">{cadence.label}</span>
+                <span className="text-violet-400">{detectionLevel.label.split(" (")[0]}</span>
                 <span>·</span>
-                <span>{satelliteSites}</span>
+                <span>{scale}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
@@ -652,7 +654,7 @@ export default function ContentDistribution() {
                     style={{ background: "linear-gradient(135deg, #f97316, #8b5cf6)", color: "white" }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Plan Pipeline
+                    Plan Stealth Stack
                   </button>
                 )}
               </div>
@@ -669,7 +671,7 @@ export default function ContentDistribution() {
               {turns.map((turn, i) => <AgentMessage key={`${turn.agentId}-${i}`} turn={turn} />)}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  Blogger Machine deployment brief complete — Mautic automation, Strapi CMS pipeline, Postiz social scheduling, and full operations runbook ready
+                  Stealth deployment brief complete — fingerprint evasion, Cloudflare bypass, browser infrastructure, and operations runbook ready
                 </div>
               )}
             </div>
@@ -678,21 +680,21 @@ export default function ContentDistribution() {
           {!turns.length && !error && (
             <div className="flex-1 rounded-2xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center p-12 text-center gap-4">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #f9731620, #8b5cf620)", border: "1px solid #f9731630" }}>
-                <Rss className="w-8 h-8" style={{ color: "#f9731660" }} />
+                <EyeOff className="w-8 h-8" style={{ color: "#f9731660" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">Blogger Machine ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">Stealth & Anti-Detection ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Describe your authorized content distribution use case and configure the pipeline. The system produces a Mautic drip campaign design, Strapi CMS with AI auto-publishing, Postiz social scheduling across all platforms, and a master Docker Compose with full cost model.
+                  Describe your authorized security research use case and configure the target environment. The pipeline produces a Playwright stealth fingerprint config, FlareSolverr deployment for Cloudflare bypass, managed browser infrastructure design, and a complete evasion matrix with Docker Compose.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "Mautic Drip Campaigns", color: "#f97316" },
-                  { label: "Strapi AI Publishing", color: "#8b5cf6" },
-                  { label: "Postiz Scheduling", color: "#10b981" },
-                  { label: "Satellite Sites", color: "#8b5cf6" },
-                  { label: "Lead Scoring", color: "#f97316" },
+                  { label: "Playwright Stealth", color: "#f97316" },
+                  { label: "FlareSolverr", color: "#8b5cf6" },
+                  { label: "Fingerprint Evasion", color: "#f97316" },
+                  { label: "Browserbase / Scrapoxy", color: "#10b981" },
+                  { label: "Session Isolation", color: "#10b981" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />

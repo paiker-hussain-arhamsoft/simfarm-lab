@@ -15,6 +15,7 @@ import SimFarm from "@/pages/SimFarm";
 import ProxyRotation from "@/pages/ProxyRotation";
 import IvrSystems from "@/pages/IvrSystems";
 import ContentDistribution from "@/pages/ContentDistribution";
+import StealthDetection from "@/pages/StealthDetection";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/proxy-rotation" component={ProxyRotation} />
       <Route path="/ivr-systems" component={IvrSystems} />
       <Route path="/content-distribution" component={ContentDistribution} />
+      <Route path="/stealth-detection" component={StealthDetection} />
       <Route path="/admin" component={AdminPanel} />
       <Route component={NotFound} />
     </Switch>

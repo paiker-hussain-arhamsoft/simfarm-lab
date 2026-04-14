@@ -12,6 +12,7 @@ import simRouter from "./sim";
 import proxyRouter from "./proxy";
 import ivrRouter from "./ivr";
 import contentRouter from "./content";
+import stealthRouter from "./stealth";
 
 const router: IRouter = Router();
 
@@ -28,5 +29,6 @@ router.use(simRouter);
 router.use(proxyRouter);
 router.use(ivrRouter);
 router.use(contentRouter);
+router.use(stealthRouter);
 
 export default router;
