@@ -1,8 +1,15 @@
+import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { ShieldCheck, CheckCircle2, ArrowLeft } from "lucide-react";
 
 export default function AccessGranted() {
   const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (sessionStorage.getItem("compliance_acknowledged") !== "true") {
+      setLocation("/");
+    }
+  }, [setLocation]);
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-8">
@@ -54,7 +61,10 @@ export default function AccessGranted() {
         </div>
 
         <button
-          onClick={() => setLocation("/")}
+          onClick={() => {
+            sessionStorage.removeItem("compliance_acknowledged");
+            setLocation("/");
+          }}
           className="mt-6 flex items-center gap-2 mx-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />

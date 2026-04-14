@@ -87,6 +87,7 @@ export default function ComplianceGateway() {
 
   const handleProceed = () => {
     if (allChecked) {
+      sessionStorage.setItem("compliance_acknowledged", "true");
       setLocation("/access");
     }
   };
