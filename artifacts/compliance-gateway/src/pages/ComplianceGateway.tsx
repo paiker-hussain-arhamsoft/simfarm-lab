@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import {
   ShieldCheck,
@@ -8,10 +8,17 @@ import {
   Fingerprint,
   Lock,
   ClipboardList,
-  CheckCircle2,
   ArrowRight,
   AlertTriangle,
+  Loader2,
 } from "lucide-react";
+import {
+  useRecordConsent,
+  useLogActivity,
+  useGetSessionStatus,
+} from "@workspace/api-client-react";
+import { useSessionId } from "@/hooks/useSessionId";
+import RestrictedAccess from "./RestrictedAccess";
 
 interface ComplianceItem {
   id: string;
@@ -74,9 +81,28 @@ const COMPLIANCE_ITEMS: ComplianceItem[] = [
 
 export default function ComplianceGateway() {
   const [, setLocation] = useLocation();
+  const sessionId = useSessionId();
+
   const [checked, setChecked] = useState<Record<string, boolean>>(
     Object.fromEntries(COMPLIANCE_ITEMS.map((item) => [item.id, false]))
   );
+
+  const recordConsent = useRecordConsent();
+  const logActivity = useLogActivity();
+
+  const { data: sessionStatus } = useGetSessionStatus(sessionId, {
+    query: { retry: false },
+  });
+
+  useEffect(() => {
+    logActivity.mutate({
+      data: {
+        session_id: sessionId,
+        action_type: "page_view",
+        metadata: { page: "compliance_gate" },
+      },
+    });
+  }, [sessionId]);
 
   const allChecked = Object.values(checked).every(Boolean);
   const checkedCount = Object.values(checked).filter(Boolean).length;
@@ -86,11 +112,30 @@ export default function ComplianceGateway() {
   };
 
   const handleProceed = () => {
-    if (allChecked) {
-      sessionStorage.setItem("compliance_acknowledged", "true");
-      setLocation("/access");
-    }
+    if (!allChecked) return;
+
+    const consentedItems = COMPLIANCE_ITEMS.map((i) => i.label);
+
+    recordConsent.mutate(
+      {
+        data: {
+          session_id: sessionId,
+          user_agent: navigator.userAgent,
+          consented_items: consentedItems,
+        },
+      },
+      {
+        onSuccess: () => {
+          sessionStorage.setItem("compliance_acknowledged", "true");
+          setLocation("/access");
+        },
+      }
+    );
   };
+
+  if (sessionStatus?.flagged) {
+    return <RestrictedAccess reason={sessionStatus.flag_reason} />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-8">
@@ -134,7 +179,7 @@ export default function ComplianceGateway() {
 
           {/* Checklist items */}
           <div className="divide-y divide-border">
-            {COMPLIANCE_ITEMS.map((item, idx) => {
+            {COMPLIANCE_ITEMS.map((item) => {
               const Icon = item.icon;
               const isChecked = checked[item.id];
               return (
@@ -142,13 +187,9 @@ export default function ComplianceGateway() {
                   key={item.id}
                   htmlFor={item.id}
                   className={`flex items-start gap-4 px-6 py-4 cursor-pointer transition-colors duration-150 ${
-                    isChecked
-                      ? "bg-primary/5"
-                      : "hover:bg-muted/30"
+                    isChecked ? "bg-primary/5" : "hover:bg-muted/30"
                   }`}
-                  style={{ animationDelay: `${idx * 60}ms` }}
                 >
-                  {/* Icon */}
                   <div
                     className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
                       isChecked
@@ -163,7 +204,6 @@ export default function ComplianceGateway() {
                     />
                   </div>
 
-                  {/* Text */}
                   <div className="flex-1 min-w-0">
                     <p
                       className={`text-sm font-semibold transition-colors ${
@@ -177,7 +217,6 @@ export default function ComplianceGateway() {
                     </p>
                   </div>
 
-                  {/* Custom checkbox */}
                   <div className="shrink-0 mt-1">
                     <input
                       id={item.id}
@@ -203,7 +242,10 @@ export default function ComplianceGateway() {
                           strokeLinecap="round"
                           strokeLinejoin="round"
                         >
-                          <polyline points="1 4.5 4.5 8 11 1" className="text-primary-foreground" />
+                          <polyline
+                            points="1 4.5 4.5 8 11 1"
+                            className="text-primary-foreground"
+                          />
                         </svg>
                       )}
                     </div>
@@ -216,7 +258,6 @@ export default function ComplianceGateway() {
           {/* Footer */}
           <div className="px-6 py-5 border-t border-border bg-muted/20">
             <div className="flex flex-col sm:flex-row items-center gap-4">
-              {/* Progress indicator */}
               <div className="flex-1 w-full">
                 <div className="flex items-center justify-between mb-1.5">
                   <span className="text-xs text-muted-foreground">
@@ -236,18 +277,26 @@ export default function ComplianceGateway() {
                 </div>
               </div>
 
-              {/* Proceed button */}
               <button
                 onClick={handleProceed}
-                disabled={!allChecked}
+                disabled={!allChecked || recordConsent.isPending}
                 className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 shrink-0 ${
-                  allChecked
+                  allChecked && !recordConsent.isPending
                     ? "bg-primary text-primary-foreground hover:opacity-90 active:scale-[0.98] shadow-lg shadow-primary/20"
                     : "bg-muted text-muted-foreground cursor-not-allowed opacity-60"
                 }`}
               >
-                Proceed
-                <ArrowRight className="w-4 h-4" />
+                {recordConsent.isPending ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Recording...
+                  </>
+                ) : (
+                  <>
+                    Proceed
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -257,7 +306,16 @@ export default function ComplianceGateway() {
         <p className="text-center text-xs text-muted-foreground mt-4 leading-relaxed">
           By proceeding, you legally acknowledge and agree to the above terms.
           <br />
-          Misuse may result in legal liability under applicable laws.
+          All activity is recorded for compliance and audit purposes.
+        </p>
+
+        <p className="text-center mt-3">
+          <a
+            href="/admin"
+            className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+          >
+            Admin
+          </a>
         </p>
       </div>
     </div>

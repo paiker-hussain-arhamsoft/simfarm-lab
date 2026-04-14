@@ -5,18 +5,31 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type {
+  MutationFunction,
   QueryFunction,
   QueryKey,
+  UseMutationOptions,
+  UseMutationResult,
   UseQueryOptions,
   UseQueryResult,
 } from "@tanstack/react-query";
 
-import type { HealthStatus } from "./api.schemas";
+import type {
+  ActivityLog,
+  ActivityLogsPage,
+  ActivityStats,
+  FlagActivityBody,
+  HealthStatus,
+  ListActivityLogsParams,
+  LogActivityBody,
+  RecordConsentBody,
+  SessionStatus,
+} from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
-import type { ErrorType } from "../custom-fetch";
+import type { ErrorType, BodyType } from "../custom-fetch";
 
 type AwaitedInput<T> = PromiseLike<T> | T;
 
@@ -92,6 +105,613 @@ export function useHealthCheck<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getHealthCheckQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Logs a user's acknowledgment of all compliance items for legal record-keeping
+ * @summary Record user consent acknowledgment
+ */
+export const getRecordConsentUrl = () => {
+  return `/api/activity/consent`;
+};
+
+export const recordConsent = async (
+  recordConsentBody: RecordConsentBody,
+  options?: RequestInit,
+): Promise<ActivityLog> => {
+  return customFetch<ActivityLog>(getRecordConsentUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(recordConsentBody),
+  });
+};
+
+export const getRecordConsentMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordConsent>>,
+    TError,
+    { data: BodyType<RecordConsentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof recordConsent>>,
+  TError,
+  { data: BodyType<RecordConsentBody> },
+  TContext
+> => {
+  const mutationKey = ["recordConsent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof recordConsent>>,
+    { data: BodyType<RecordConsentBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return recordConsent(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RecordConsentMutationResult = NonNullable<
+  Awaited<ReturnType<typeof recordConsent>>
+>;
+export type RecordConsentMutationBody = BodyType<RecordConsentBody>;
+export type RecordConsentMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Record user consent acknowledgment
+ */
+export const useRecordConsent = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof recordConsent>>,
+    TError,
+    { data: BodyType<RecordConsentBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof recordConsent>>,
+  TError,
+  { data: BodyType<RecordConsentBody> },
+  TContext
+> => {
+  return useMutation(getRecordConsentMutationOptions(options));
+};
+
+/**
+ * Records any user action for audit trail purposes
+ * @summary Log a user action
+ */
+export const getLogActivityUrl = () => {
+  return `/api/activity/log`;
+};
+
+export const logActivity = async (
+  logActivityBody: LogActivityBody,
+  options?: RequestInit,
+): Promise<ActivityLog> => {
+  return customFetch<ActivityLog>(getLogActivityUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(logActivityBody),
+  });
+};
+
+export const getLogActivityMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof logActivity>>,
+    TError,
+    { data: BodyType<LogActivityBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof logActivity>>,
+  TError,
+  { data: BodyType<LogActivityBody> },
+  TContext
+> => {
+  const mutationKey = ["logActivity"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof logActivity>>,
+    { data: BodyType<LogActivityBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return logActivity(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type LogActivityMutationResult = NonNullable<
+  Awaited<ReturnType<typeof logActivity>>
+>;
+export type LogActivityMutationBody = BodyType<LogActivityBody>;
+export type LogActivityMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Log a user action
+ */
+export const useLogActivity = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof logActivity>>,
+    TError,
+    { data: BodyType<LogActivityBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof logActivity>>,
+  TError,
+  { data: BodyType<LogActivityBody> },
+  TContext
+> => {
+  return useMutation(getLogActivityMutationOptions(options));
+};
+
+/**
+ * Returns paginated activity logs for admin review
+ * @summary List all activity logs
+ */
+export const getListActivityLogsUrl = (params?: ListActivityLogsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/admin/activity?${stringifiedParams}`
+    : `/api/admin/activity`;
+};
+
+export const listActivityLogs = async (
+  params?: ListActivityLogsParams,
+  options?: RequestInit,
+): Promise<ActivityLogsPage> => {
+  return customFetch<ActivityLogsPage>(getListActivityLogsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListActivityLogsQueryKey = (
+  params?: ListActivityLogsParams,
+) => {
+  return [`/api/admin/activity`, ...(params ? [params] : [])] as const;
+};
+
+export const getListActivityLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listActivityLogs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListActivityLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listActivityLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListActivityLogsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listActivityLogs>>
+  > = ({ signal }) => listActivityLogs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listActivityLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListActivityLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listActivityLogs>>
+>;
+export type ListActivityLogsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all activity logs
+ */
+
+export function useListActivityLogs<
+  TData = Awaited<ReturnType<typeof listActivityLogs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListActivityLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listActivityLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListActivityLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Flag an activity log entry
+ */
+export const getFlagActivityUrl = (id: number) => {
+  return `/api/admin/activity/${id}/flag`;
+};
+
+export const flagActivity = async (
+  id: number,
+  flagActivityBody: FlagActivityBody,
+  options?: RequestInit,
+): Promise<ActivityLog> => {
+  return customFetch<ActivityLog>(getFlagActivityUrl(id), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(flagActivityBody),
+  });
+};
+
+export const getFlagActivityMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof flagActivity>>,
+    TError,
+    { id: number; data: BodyType<FlagActivityBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof flagActivity>>,
+  TError,
+  { id: number; data: BodyType<FlagActivityBody> },
+  TContext
+> => {
+  const mutationKey = ["flagActivity"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof flagActivity>>,
+    { id: number; data: BodyType<FlagActivityBody> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return flagActivity(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type FlagActivityMutationResult = NonNullable<
+  Awaited<ReturnType<typeof flagActivity>>
+>;
+export type FlagActivityMutationBody = BodyType<FlagActivityBody>;
+export type FlagActivityMutationError = ErrorType<void>;
+
+/**
+ * @summary Flag an activity log entry
+ */
+export const useFlagActivity = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof flagActivity>>,
+    TError,
+    { id: number; data: BodyType<FlagActivityBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof flagActivity>>,
+  TError,
+  { id: number; data: BodyType<FlagActivityBody> },
+  TContext
+> => {
+  return useMutation(getFlagActivityMutationOptions(options));
+};
+
+/**
+ * @summary Remove flag from an activity log entry
+ */
+export const getUnflagActivityUrl = (id: number) => {
+  return `/api/admin/activity/${id}/flag`;
+};
+
+export const unflagActivity = async (
+  id: number,
+  options?: RequestInit,
+): Promise<ActivityLog> => {
+  return customFetch<ActivityLog>(getUnflagActivityUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getUnflagActivityMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unflagActivity>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof unflagActivity>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["unflagActivity"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof unflagActivity>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return unflagActivity(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UnflagActivityMutationResult = NonNullable<
+  Awaited<ReturnType<typeof unflagActivity>>
+>;
+
+export type UnflagActivityMutationError = ErrorType<void>;
+
+/**
+ * @summary Remove flag from an activity log entry
+ */
+export const useUnflagActivity = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof unflagActivity>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof unflagActivity>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getUnflagActivityMutationOptions(options));
+};
+
+/**
+ * @summary Check if a session has been flagged
+ */
+export const getGetSessionStatusUrl = (sessionId: string) => {
+  return `/api/admin/session/${sessionId}/status`;
+};
+
+export const getSessionStatus = async (
+  sessionId: string,
+  options?: RequestInit,
+): Promise<SessionStatus> => {
+  return customFetch<SessionStatus>(getGetSessionStatusUrl(sessionId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSessionStatusQueryKey = (sessionId: string) => {
+  return [`/api/admin/session/${sessionId}/status`] as const;
+};
+
+export const getGetSessionStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSessionStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSessionStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetSessionStatusQueryKey(sessionId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getSessionStatus>>
+  > = ({ signal }) =>
+    getSessionStatus(sessionId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!sessionId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSessionStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSessionStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSessionStatus>>
+>;
+export type GetSessionStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Check if a session has been flagged
+ */
+
+export function useGetSessionStatus<
+  TData = Awaited<ReturnType<typeof getSessionStatus>>,
+  TError = ErrorType<unknown>,
+>(
+  sessionId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getSessionStatus>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSessionStatusQueryOptions(sessionId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get activity statistics
+ */
+export const getGetActivityStatsUrl = () => {
+  return `/api/admin/stats`;
+};
+
+export const getActivityStats = async (
+  options?: RequestInit,
+): Promise<ActivityStats> => {
+  return customFetch<ActivityStats>(getGetActivityStatsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetActivityStatsQueryKey = () => {
+  return [`/api/admin/stats`] as const;
+};
+
+export const getGetActivityStatsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getActivityStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getActivityStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetActivityStatsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getActivityStats>>
+  > = ({ signal }) => getActivityStats({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getActivityStats>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetActivityStatsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getActivityStats>>
+>;
+export type GetActivityStatsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get activity statistics
+ */
+
+export function useGetActivityStats<
+  TData = Awaited<ReturnType<typeof getActivityStats>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getActivityStats>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetActivityStatsQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

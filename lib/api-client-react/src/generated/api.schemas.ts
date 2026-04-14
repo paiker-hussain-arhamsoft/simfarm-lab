@@ -8,3 +8,85 @@
 export interface HealthStatus {
   status: string;
 }
+
+/**
+ * @nullable
+ */
+export type ActivityLogMetadata = { [key: string]: unknown } | null;
+
+export interface ActivityLog {
+  id: number;
+  session_id: string;
+  /** @nullable */
+  ip_address?: string | null;
+  /** @nullable */
+  user_agent?: string | null;
+  action_type: string;
+  /** @nullable */
+  metadata?: ActivityLogMetadata;
+  flagged: boolean;
+  /** @nullable */
+  flag_reason?: string | null;
+  /** @nullable */
+  flagged_by?: string | null;
+  /** @nullable */
+  flagged_at?: string | null;
+  created_at: string;
+}
+
+export interface ActivityLogsPage {
+  items: ActivityLog[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface RecordConsentBody {
+  session_id: string;
+  /** @nullable */
+  user_agent?: string | null;
+  consented_items: string[];
+}
+
+/**
+ * @nullable
+ */
+export type LogActivityBodyMetadata = { [key: string]: unknown } | null;
+
+export interface LogActivityBody {
+  session_id: string;
+  action_type: string;
+  /** @nullable */
+  metadata?: LogActivityBodyMetadata;
+}
+
+export interface FlagActivityBody {
+  flag_reason: string;
+  /** @nullable */
+  flagged_by?: string | null;
+}
+
+export interface SessionStatus {
+  session_id: string;
+  flagged: boolean;
+  /** @nullable */
+  flag_reason?: string | null;
+  /** @nullable */
+  flagged_at?: string | null;
+}
+
+export interface ActivityStats {
+  total_sessions: number;
+  total_events: number;
+  flagged_sessions: number;
+  consents_today: number;
+  events_today: number;
+}
+
+export type ListActivityLogsParams = {
+  page?: number;
+  limit?: number;
+  flagged?: boolean;
+  session_id?: string;
+  action_type?: string;
+};

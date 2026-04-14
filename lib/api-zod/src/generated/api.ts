@@ -14,3 +14,131 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Logs a user's acknowledgment of all compliance items for legal record-keeping
+ * @summary Record user consent acknowledgment
+ */
+export const RecordConsentBody = zod.object({
+  session_id: zod.string(),
+  user_agent: zod.string().nullish(),
+  consented_items: zod.array(zod.string()),
+});
+
+/**
+ * Records any user action for audit trail purposes
+ * @summary Log a user action
+ */
+export const LogActivityBody = zod.object({
+  session_id: zod.string(),
+  action_type: zod.string(),
+  metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+});
+
+/**
+ * Returns paginated activity logs for admin review
+ * @summary List all activity logs
+ */
+export const listActivityLogsQueryPageDefault = 1;
+export const listActivityLogsQueryLimitDefault = 50;
+
+export const ListActivityLogsQueryParams = zod.object({
+  page: zod.coerce.number().default(listActivityLogsQueryPageDefault),
+  limit: zod.coerce.number().default(listActivityLogsQueryLimitDefault),
+  flagged: zod.coerce.boolean().optional(),
+  session_id: zod.coerce.string().optional(),
+  action_type: zod.coerce.string().optional(),
+});
+
+export const ListActivityLogsResponse = zod.object({
+  items: zod.array(
+    zod.object({
+      id: zod.number(),
+      session_id: zod.string(),
+      ip_address: zod.string().nullish(),
+      user_agent: zod.string().nullish(),
+      action_type: zod.string(),
+      metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+      flagged: zod.boolean(),
+      flag_reason: zod.string().nullish(),
+      flagged_by: zod.string().nullish(),
+      flagged_at: zod.string().nullish(),
+      created_at: zod.string(),
+    }),
+  ),
+  total: zod.number(),
+  page: zod.number(),
+  limit: zod.number(),
+});
+
+/**
+ * @summary Flag an activity log entry
+ */
+export const FlagActivityParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const FlagActivityBody = zod.object({
+  flag_reason: zod.string(),
+  flagged_by: zod.string().nullish(),
+});
+
+export const FlagActivityResponse = zod.object({
+  id: zod.number(),
+  session_id: zod.string(),
+  ip_address: zod.string().nullish(),
+  user_agent: zod.string().nullish(),
+  action_type: zod.string(),
+  metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+  flagged: zod.boolean(),
+  flag_reason: zod.string().nullish(),
+  flagged_by: zod.string().nullish(),
+  flagged_at: zod.string().nullish(),
+  created_at: zod.string(),
+});
+
+/**
+ * @summary Remove flag from an activity log entry
+ */
+export const UnflagActivityParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UnflagActivityResponse = zod.object({
+  id: zod.number(),
+  session_id: zod.string(),
+  ip_address: zod.string().nullish(),
+  user_agent: zod.string().nullish(),
+  action_type: zod.string(),
+  metadata: zod.record(zod.string(), zod.unknown()).nullish(),
+  flagged: zod.boolean(),
+  flag_reason: zod.string().nullish(),
+  flagged_by: zod.string().nullish(),
+  flagged_at: zod.string().nullish(),
+  created_at: zod.string(),
+});
+
+/**
+ * @summary Check if a session has been flagged
+ */
+export const GetSessionStatusParams = zod.object({
+  sessionId: zod.coerce.string(),
+});
+
+export const GetSessionStatusResponse = zod.object({
+  session_id: zod.string(),
+  flagged: zod.boolean(),
+  flag_reason: zod.string().nullish(),
+  flagged_at: zod.string().nullish(),
+});
+
+/**
+ * @summary Get activity statistics
+ */
+export const GetActivityStatsResponse = zod.object({
+  total_sessions: zod.number(),
+  total_events: zod.number(),
+  flagged_sessions: zod.number(),
+  consents_today: zod.number(),
+  events_today: zod.number(),
+});

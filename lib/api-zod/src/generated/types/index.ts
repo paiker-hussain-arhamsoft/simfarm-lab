@@ -6,4 +6,14 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./activityLog";
+export * from "./activityLogMetadata";
+export * from "./activityLogsPage";
+export * from "./activityStats";
+export * from "./flagActivityBody";
 export * from "./healthStatus";
+export * from "./listActivityLogsParams";
+export * from "./logActivityBody";
+export * from "./logActivityBodyMetadata";
+export * from "./recordConsentBody";
+export * from "./sessionStatus";

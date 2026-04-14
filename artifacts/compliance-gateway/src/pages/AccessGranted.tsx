@@ -1,20 +1,43 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
 import { ShieldCheck, CheckCircle2, ArrowLeft } from "lucide-react";
+import { useLogActivity, useGetSessionStatus } from "@workspace/api-client-react";
+import { useSessionId } from "@/hooks/useSessionId";
+import RestrictedAccess from "./RestrictedAccess";
 
 export default function AccessGranted() {
   const [, setLocation] = useLocation();
+  const sessionId = useSessionId();
+  const logActivity = useLogActivity();
+
+  const { data: sessionStatus } = useGetSessionStatus(sessionId, {
+    query: {
+      retry: false,
+      refetchInterval: 30000,
+    },
+  });
 
   useEffect(() => {
     if (sessionStorage.getItem("compliance_acknowledged") !== "true") {
       setLocation("/");
+      return;
     }
-  }, [setLocation]);
+    logActivity.mutate({
+      data: {
+        session_id: sessionId,
+        action_type: "access_granted",
+        metadata: { page: "access_granted" },
+      },
+    });
+  }, [sessionId]);
+
+  if (sessionStatus?.flagged) {
+    return <RestrictedAccess reason={sessionStatus.flag_reason} />;
+  }
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4 sm:p-8">
       <div className="w-full max-w-lg text-center">
-        {/* Animated success icon */}
         <div className="flex justify-center mb-6">
           <div className="relative">
             <div className="w-20 h-20 rounded-full bg-emerald-500/10 border-2 border-emerald-500/40 flex items-center justify-center">
@@ -32,7 +55,6 @@ export default function AccessGranted() {
           authorized to proceed with educational use of this material.
         </p>
 
-        {/* Summary box */}
         <div className="mt-8 rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-left">
           <div className="flex items-center gap-2 mb-4">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -56,7 +78,17 @@ export default function AccessGranted() {
             ))}
           </ul>
           <p className="mt-4 text-xs text-muted-foreground/70 border-t border-emerald-500/10 pt-3">
-            Consented on: {new Date().toLocaleString()} &mdash; Session only
+            Consented on: {new Date().toLocaleString()} &mdash; Activity
+            monitored
+          </p>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-border bg-muted/30 px-4 py-3 text-left">
+          <p className="text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground">Session:</span>{" "}
+            <span className="font-mono text-primary/80 text-xs break-all">
+              {sessionId}
+            </span>
           </p>
         </div>
 

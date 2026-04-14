@@ -10,6 +10,10 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: activity
+    description: User activity recording for compliance
+  - name: admin
+    description: Admin operations for reviewing and flagging activity
 paths:
   /healthz:
     get:
@@ -24,6 +28,162 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /activity/consent:
+    post:
+      operationId: recordConsent
+      tags: [activity]
+      summary: Record user consent acknowledgment
+      description: Logs a user's acknowledgment of all compliance items for legal record-keeping
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordConsentBody"
+      responses:
+        "201":
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityLog"
+
+  /activity/log:
+    post:
+      operationId: logActivity
+      tags: [activity]
+      summary: Log a user action
+      description: Records any user action for audit trail purposes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogActivityBody"
+      responses:
+        "201":
+          description: Activity logged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityLog"
+
+  /admin/activity:
+    get:
+      operationId: listActivityLogs
+      tags: [admin]
+      summary: List all activity logs
+      description: Returns paginated activity logs for admin review
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: flagged
+          in: query
+          schema:
+            type: boolean
+        - name: session_id
+          in: query
+          schema:
+            type: string
+        - name: action_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of activity logs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityLogsPage"
+
+  /admin/activity/{id}/flag:
+    patch:
+      operationId: flagActivity
+      tags: [admin]
+      summary: Flag an activity log entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FlagActivityBody"
+      responses:
+        "200":
+          description: Activity flagged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityLog"
+        "404":
+          description: Activity not found
+    delete:
+      operationId: unflagActivity
+      tags: [admin]
+      summary: Remove flag from an activity log entry
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Activity unflagged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityLog"
+        "404":
+          description: Activity not found
+
+  /admin/session/{sessionId}/status:
+    get:
+      operationId: getSessionStatus
+      tags: [admin]
+      summary: Check if a session has been flagged
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionStatus"
+
+  /admin/stats:
+    get:
+      operationId: getActivityStats
+      tags: [admin]
+      summary: Get activity statistics
+      responses:
+        "200":
+          description: Activity statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +194,128 @@ components:
       required:
         - status
 
+    ActivityLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        session_id:
+          type: string
+        ip_address:
+          type: ["string", "null"]
+        user_agent:
+          type: ["string", "null"]
+        action_type:
+          type: string
+        metadata:
+          type: ["object", "null"]
+          additionalProperties: true
+        flagged:
+          type: boolean
+        flag_reason:
+          type: ["string", "null"]
+        flagged_by:
+          type: ["string", "null"]
+        flagged_at:
+          type: ["string", "null"]
+        created_at:
+          type: string
+      required:
+        - id
+        - session_id
+        - action_type
+        - flagged
+        - created_at
+
+    ActivityLogsPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityLog"
+        total:
+          type: integer
+        page:
+          type: integer
+        limit:
+          type: integer
+      required:
+        - items
+        - total
+        - page
+        - limit
+
+    RecordConsentBody:
+      type: object
+      properties:
+        session_id:
+          type: string
+        user_agent:
+          type: ["string", "null"]
+        consented_items:
+          type: array
+          items:
+            type: string
+      required:
+        - session_id
+        - consented_items
+
+    LogActivityBody:
+      type: object
+      properties:
+        session_id:
+          type: string
+        action_type:
+          type: string
+        metadata:
+          type: ["object", "null"]
+          additionalProperties: true
+      required:
+        - session_id
+        - action_type
+
+    FlagActivityBody:
+      type: object
+      properties:
+        flag_reason:
+          type: string
+        flagged_by:
+          type: ["string", "null"]
+      required:
+        - flag_reason
+
+    SessionStatus:
+      type: object
+      properties:
+        session_id:
+          type: string
+        flagged:
+          type: boolean
+        flag_reason:
+          type: ["string", "null"]
+        flagged_at:
+          type: ["string", "null"]
+      required:
+        - session_id
+        - flagged
+
+    ActivityStats:
+      type: object
+      properties:
+        total_sessions:
+          type: integer
+        total_events:
+          type: integer
+        flagged_sessions:
+          type: integer
+        consents_today:
+          type: integer
+        events_today:
+          type: integer
+      required:
+        - total_sessions
+        - total_events
+        - flagged_sessions
+        - consents_today
+        - events_today
