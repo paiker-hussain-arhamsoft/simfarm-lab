@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Shield,
-  Wifi,
-  Terminal,
-  FileSearch,
+  Users,
+  GitBranch,
+  LayoutGrid,
+  Globe,
   SendHorizonal,
   Loader2,
   RotateCcw,
@@ -12,19 +12,19 @@ import {
   Telescope,
   Clapperboard,
   MonitorPlay,
+  Terminal,
   StopCircle,
   Copy,
   Check,
   ChevronRight,
   Zap,
   ArrowRight,
-  Target,
-  Users,
+  Network,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
-type AgentId = "red_team_strategist" | "dast_engineer" | "tls_fingerprint_engineer" | "security_director";
+type AgentId = "persona_architect" | "orchestration_engineer" | "social_media_strategist" | "automation_director";
 
 type AgentMeta = {
   id: AgentId;
@@ -39,98 +39,93 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "red_team_strategist",
-    role: "Red Team Strategist",
-    tool: "CAI by Alias Robotics",
-    color: "#ef4444",
-    bg: "bg-red-500/10",
-    border: "border-red-500/30",
-    desc: "Attack surface mapping, threat model, exploit path candidates, CAI agent loop",
-    icon: Target,
+    id: "persona_architect",
+    role: "Persona Architect",
+    tool: "ElizaOS",
+    color: "#10b981",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/30",
+    desc: "7-layer character architecture, persona fleet design, memory config, character JSON",
+    icon: Users,
   },
   {
-    id: "dast_engineer",
-    role: "DAST Engineer",
-    tool: "CAI DAST · OWASP ZAP · Nuclei",
-    color: "#f97316",
-    bg: "bg-orange-500/10",
-    border: "border-orange-500/30",
-    desc: "Dynamic scanning pipeline, ZAP config, Nuclei templates, API fuzzing",
-    icon: FileSearch,
+    id: "orchestration_engineer",
+    role: "Orchestration Engineer",
+    tool: "Botpress · LangGraph",
+    color: "#6366f1",
+    bg: "bg-indigo-500/10",
+    border: "border-indigo-500/30",
+    desc: "Graph topology, state schema, memory graph, perspective engine, goal stacks",
+    icon: GitBranch,
   },
   {
-    id: "tls_fingerprint_engineer",
-    role: "TLS Fingerprint Engineer",
-    tool: "Salesforce JA3 · JA3S · JARM",
-    color: "#8b5cf6",
-    bg: "bg-violet-500/10",
-    border: "border-violet-500/30",
-    desc: "JA3 fingerprint analysis, browser signature rotation, cipher suite config",
-    icon: Wifi,
+    id: "social_media_strategist",
+    role: "Social Media Strategist",
+    tool: "Socioboard · Multi-account",
+    color: "#f59e0b",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/30",
+    desc: "Account architecture, content calendar, engagement protocol, analytics dashboard",
+    icon: LayoutGrid,
   },
   {
-    id: "security_director",
-    role: "Security Director",
-    tool: "Assessment Synthesis",
-    color: "#06b6d4",
-    bg: "bg-cyan-500/10",
-    border: "border-cyan-500/30",
-    desc: "Findings register, attack chain narrative, remediation roadmap, MITRE mapping",
-    icon: Shield,
+    id: "automation_director",
+    role: "Automation Director",
+    tool: "Playwright · Puppeteer · Selenium",
+    color: "#ec4899",
+    bg: "bg-pink-500/10",
+    border: "border-pink-500/30",
+    desc: "Stealth config, fingerprint evasion, proxy rotation, session orchestration, full brief",
+    icon: Globe,
   },
 ];
 
-const SCOPES = [
-  "Web application",
-  "API (REST/GraphQL)",
-  "Mobile app backend",
-  "Network infrastructure",
-  "IoT / Embedded device",
-  "ROS-based robot system",
+const PERSONA_COUNTS = [
+  "10 personas", "50 personas", "100 personas", "500 personas",
+  "1,000 personas", "10,000 personas", "30,000+ personas",
 ];
 
-const ATTACK_SURFACES = [
-  "HTTP/HTTPS endpoints",
-  "Authentication layer",
-  "API endpoints",
-  "Admin interfaces",
-  "Third-party integrations",
-  "WebSocket connections",
+const PLATFORMS = [
+  "Twitter/X", "Facebook", "Instagram", "LinkedIn",
+  "Telegram", "Reddit", "YouTube", "Multi-platform",
 ];
 
-const PROTOCOLS = ["TLS 1.3", "TLS 1.2", "TLS 1.0/1.1", "DTLS", "mTLS"];
-
-const BROWSER_TARGETS = [
-  "Chrome 120",
-  "Firefox 121",
-  "Safari 17",
-  "Edge 120",
-  "curl 8.4",
-  "Python requests 2.31",
+const ORCHESTRATION_ENGINES = [
+  { id: "langgraph", label: "LangGraph", note: "Graph-based, stateful, cyclic agent loops" },
+  { id: "botpress", label: "Botpress", note: "Enterprise NLU, flow-based, human-in-the-loop" },
+  { id: "both", label: "LangGraph + Botpress", note: "LangGraph backend, Botpress for escalation" },
 ];
 
-const INTENSITIES = ["Passive (recon only)", "Low (safe checks)", "Moderate", "Aggressive (full active)", "Exhaustive"];
+const AUTOMATION_TOOLS = [
+  { id: "playwright", label: "Playwright", badge: "Apache-2", note: "Built-in stealth, multi-browser, auto-wait" },
+  { id: "puppeteer", label: "Puppeteer", badge: "Apache-2", note: "Chrome CDP, puppeteer-extra-stealth plugin" },
+  { id: "selenium", label: "Selenium Grid", badge: "Apache-2", note: "Distributed, language-agnostic, enterprise scale" },
+];
 
-const FRAMEWORKS = [
-  "OWASP / MITRE ATT&CK",
-  "PTES (Pentest Execution Standard)",
-  "NIST SP 800-115",
-  "OWASP WSTG",
-  "MITRE ATT&CK for ICS",
+const MEMORY_DEPTHS = [
+  "Minimal (conversation only)",
+  "Standard (short + long-term)",
+  "Full (episodic + semantic)",
+  "Deep (cross-persona shared memory)",
+];
+
+const GEOGRAPHIC_SPREADS = [
+  "Single city", "Single country", "Multi-regional",
+  "Multi-national", "Global (6 continents)",
 ];
 
 const PIPELINE_STEPS = [
-  { label: "Red Team", icon: Target, color: "#ef4444" },
-  { label: "DAST Scan", icon: FileSearch, color: "#f97316" },
-  { label: "TLS / JA3", icon: Wifi, color: "#8b5cf6" },
-  { label: "Assessment", icon: Shield, color: "#06b6d4" },
+  { label: "Persona Design", icon: Users, color: "#10b981" },
+  { label: "Orchestration", icon: GitBranch, color: "#6366f1" },
+  { label: "Social Media", icon: LayoutGrid, color: "#f59e0b" },
+  { label: "Automation", icon: Globe, color: "#ec4899" },
 ];
 
-const EXAMPLE_TARGETS = [
-  "Authorized test environment: internal web app at staging.example.com",
-  "Authorized API audit: REST API with JWT auth for financial services app",
-  "Bug bounty scope: e-commerce platform, all subdomains in scope",
-  "IoT security research: ROS-based robotic arm control interface",
+const EXAMPLE_OBJECTIVES = [
+  "Research: map narrative diffusion patterns across 100 synthetic personas for academic study",
+  "Red team: test platform moderation resilience against coordinated inauthentic behavior",
+  "Simulation: model how regional linguistic personas shape political discourse online",
+  "Education: demonstrate social engineering attack surface for cybersecurity curriculum",
 ];
 
 type AgentTurn = {
@@ -179,7 +174,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? Shield;
+  const Icon = agent?.icon ?? Users;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -251,27 +246,18 @@ function PipelineFlow({
             <div key={step.label} className="flex items-center gap-1 shrink-0">
               <div
                 className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-medium transition-all duration-300 ${
-                  isActive || isDone
-                    ? ""
-                    : "border-border/40 text-muted-foreground"
+                  isActive || isDone ? "" : "border-border/40 text-muted-foreground"
                 }`}
                 style={
                   isActive || isDone
-                    ? {
-                        borderColor: step.color,
-                        color: step.color,
-                        backgroundColor: `${step.color}10`,
-                      }
+                    ? { borderColor: step.color, color: step.color, backgroundColor: `${step.color}10` }
                     : {}
                 }
               >
                 <Icon className="w-3 h-3" />
                 {step.label}
                 {isActive && (
-                  <span
-                    className="w-1.5 h-1.5 rounded-full animate-pulse"
-                    style={{ backgroundColor: step.color }}
-                  />
+                  <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: step.color }} />
                 )}
                 {isDone && <Check className="w-3 h-3" />}
               </div>
@@ -286,17 +272,17 @@ function PipelineFlow({
   );
 }
 
-export default function CyberCrew() {
+export default function PersonaOrchestration() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
-  const [target, setTarget] = useState("");
-  const [scope, setScope] = useState(SCOPES[0]);
-  const [attackSurface, setAttackSurface] = useState(ATTACK_SURFACES[0]);
-  const [protocol, setProtocol] = useState(PROTOCOLS[0]);
-  const [browserTarget, setBrowserTarget] = useState(BROWSER_TARGETS[0]);
-  const [intensity, setIntensity] = useState(INTENSITIES[2]);
-  const [framework, setFramework] = useState(FRAMEWORKS[0]);
+  const [objective, setObjective] = useState("");
+  const [personaCount, setPersonaCount] = useState(PERSONA_COUNTS[2]);
+  const [platform, setPlatform] = useState(PLATFORMS[0]);
+  const [orchestrationEngine, setOrchestrationEngine] = useState(ORCHESTRATION_ENGINES[0]);
+  const [automationTool, setAutomationTool] = useState(AUTOMATION_TOOLS[0]);
+  const [memoryDepth, setMemoryDepth] = useState(MEMORY_DEPTHS[2]);
+  const [geographicSpread, setGeographicSpread] = useState(GEOGRAPHIC_SPREADS[2]);
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [turns, setTurns] = useState<AgentTurn[]>([]);
@@ -316,7 +302,7 @@ export default function CyberCrew() {
   }, [turns]);
 
   const runPipeline = useCallback(async () => {
-    if (!target.trim() || runState === "running") return;
+    if (!objective.trim() || runState === "running") return;
 
     setRunState("running");
     setTurns([]);
@@ -328,17 +314,17 @@ export default function CyberCrew() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/cyber/assess", {
+      const res = await fetch("/api/persona/orchestrate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          target: target.trim(),
-          scope,
-          attackSurface,
-          protocol,
-          browserTarget,
-          intensity,
-          framework,
+          objective: objective.trim(),
+          personaCount,
+          platform,
+          orchestrationEngine: orchestrationEngine.label,
+          automationTool: automationTool.label,
+          memoryDepth,
+          geographicSpread,
           session_id: sessionId,
         }),
         signal: controller.signal,
@@ -408,7 +394,7 @@ export default function CyberCrew() {
         setRunState("idle");
       }
     }
-  }, [target, scope, attackSurface, protocol, browserTarget, intensity, framework, runState, sessionId]);
+  }, [objective, personaCount, platform, orchestrationEngine, automationTool, memoryDepth, geographicSpread, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -423,57 +409,52 @@ export default function CyberCrew() {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/30 flex items-center justify-center">
-              <Terminal className="w-4 h-4 text-red-400" />
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+              <Network className="w-4 h-4 text-emerald-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">Cyber Crew</span>
-              <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 2</span>
+              <span className="text-sm font-bold text-foreground">Persona Orchestration</span>
+              <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 3</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
-              <Zap className="w-3 h-3 text-red-400" />
-              <span className="text-xs text-muted-foreground">CAI · JA3 · OWASP ZAP · Nuclei</span>
+              <Zap className="w-3 h-3 text-emerald-400" />
+              <span className="text-xs text-muted-foreground">ElizaOS · LangGraph · Socioboard · Playwright</span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 flex-wrap justify-end">
             <button
               onClick={() => setLocation("/tool")}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
             >
-              <Brain className="w-3.5 h-3.5" />
-              TIER 1
+              <Brain className="w-3.5 h-3.5" />TIER 1
             </button>
             <button
               onClick={() => setLocation("/tier2")}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
             >
-              <Telescope className="w-3.5 h-3.5" />
-              Intelligence
+              <Telescope className="w-3.5 h-3.5" />Intelligence
             </button>
             <button
               onClick={() => setLocation("/media-crew")}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
             >
-              <Clapperboard className="w-3.5 h-3.5" />
-              Media Crew
+              <Clapperboard className="w-3.5 h-3.5" />Media Crew
             </button>
             <button
               onClick={() => setLocation("/video-stack")}
               className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
             >
-              <MonitorPlay className="w-3.5 h-3.5" />
-              Video Stack
+              <MonitorPlay className="w-3.5 h-3.5" />Video Stack
             </button>
             <button
-              onClick={() => setLocation("/persona-orchestration")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-500/10 transition-colors text-emerald-400/80"
+              onClick={() => setLocation("/cyber-crew")}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
             >
-              <Users className="w-3.5 h-3.5" />
-              TIER 3
+              <Terminal className="w-3.5 h-3.5" />Cyber Crew
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden sm:inline">Compliance verified</span>
+              <span className="hidden lg:inline">Compliance verified</span>
             </div>
           </div>
         </div>
@@ -485,7 +466,7 @@ export default function CyberCrew() {
           {/* Agent stack */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Terminal className="w-3.5 h-3.5 text-muted-foreground" />
+              <Network className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -508,90 +489,111 @@ export default function CyberCrew() {
 
           {/* Config */}
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Engagement Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Fleet Config</p>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Scope</label>
+              <label className="block text-xs text-muted-foreground mb-1">Persona Count</label>
               <select
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
+                value={personaCount}
+                onChange={(e) => setPersonaCount(e.target.value)}
                 disabled={runState === "running"}
                 className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
               >
-                {SCOPES.map((s) => <option key={s}>{s}</option>)}
+                {PERSONA_COUNTS.map((p) => <option key={p}>{p}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Attack Surface</label>
+              <label className="block text-xs text-muted-foreground mb-1">Target Platform</label>
               <select
-                value={attackSurface}
-                onChange={(e) => setAttackSurface(e.target.value)}
+                value={platform}
+                onChange={(e) => setPlatform(e.target.value)}
                 disabled={runState === "running"}
                 className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
               >
-                {ATTACK_SURFACES.map((a) => <option key={a}>{a}</option>)}
+                {PLATFORMS.map((p) => <option key={p}>{p}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Wifi className="w-3 h-3" />TLS Protocol
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <GitBranch className="w-3 h-3" />Orchestration Engine
               </label>
-              <select
-                value={protocol}
-                onChange={(e) => setProtocol(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {PROTOCOLS.map((p) => <option key={p}>{p}</option>)}
-              </select>
+              <div className="flex flex-col gap-1">
+                {ORCHESTRATION_ENGINES.map((e) => (
+                  <button
+                    key={e.id}
+                    onClick={() => setOrchestrationEngine(e)}
+                    disabled={runState === "running"}
+                    className={`flex flex-col gap-0.5 p-2.5 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 ${
+                      orchestrationEngine.id === e.id
+                        ? "border-indigo-500/50 bg-indigo-500/10 text-indigo-400"
+                        : "border-border/50 text-muted-foreground hover:bg-muted/30"
+                    }`}
+                  >
+                    <span className="font-semibold">{e.label}</span>
+                    <span className="text-muted-foreground text-[11px]">{e.note}</span>
+                  </button>
+                ))}
+              </div>
             </div>
 
             <div>
-              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
-                <Wifi className="w-3 h-3 text-violet-400" />JA3 Spoof Target
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Globe className="w-3 h-3" />Automation Tool
               </label>
+              <div className="flex flex-col gap-1">
+                {AUTOMATION_TOOLS.map((t) => (
+                  <button
+                    key={t.id}
+                    onClick={() => setAutomationTool(t)}
+                    disabled={runState === "running"}
+                    className={`flex items-start gap-2 p-2.5 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 ${
+                      automationTool.id === t.id
+                        ? "border-pink-500/50 bg-pink-500/10 text-pink-400"
+                        : "border-border/50 text-muted-foreground hover:bg-muted/30"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 mb-0.5">
+                        <span className="font-semibold">{t.label}</span>
+                        <span className="px-1 rounded text-[10px] bg-muted/60 text-muted-foreground border border-border font-mono">{t.badge}</span>
+                      </div>
+                      <p className="text-muted-foreground text-[11px]">{t.note}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Memory Depth</label>
               <select
-                value={browserTarget}
-                onChange={(e) => setBrowserTarget(e.target.value)}
+                value={memoryDepth}
+                onChange={(e) => setMemoryDepth(e.target.value)}
                 disabled={runState === "running"}
                 className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
               >
-                {BROWSER_TARGETS.map((b) => <option key={b}>{b}</option>)}
+                {MEMORY_DEPTHS.map((m) => <option key={m}>{m}</option>)}
               </select>
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Scan Intensity</label>
+              <label className="block text-xs text-muted-foreground mb-1">Geographic Spread</label>
               <select
-                value={intensity}
-                onChange={(e) => setIntensity(e.target.value)}
+                value={geographicSpread}
+                onChange={(e) => setGeographicSpread(e.target.value)}
                 disabled={runState === "running"}
                 className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
               >
-                {INTENSITIES.map((i) => <option key={i}>{i}</option>)}
+                {GEOGRAPHIC_SPREADS.map((g) => <option key={g}>{g}</option>)}
               </select>
             </div>
 
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Compliance Framework</label>
-              <select
-                value={framework}
-                onChange={(e) => setFramework(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {FRAMEWORKS.map((f) => <option key={f}>{f}</option>)}
-              </select>
-            </div>
-
-            {/* JA3 info card */}
-            <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-violet-400 mb-1">JA3 Fingerprinting</p>
+            <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-3 mt-1">
+              <p className="text-xs font-semibold text-emerald-400 mb-1">ElizaOS Scale</p>
               <p className="text-xs text-muted-foreground">
-                Salesforce JA3 hashes TLS client hellos: SSLVersion · Ciphers · Extensions · Curves · Points.
-                Used for evasion research and detection gap analysis.
+                ElizaOS supports 30,000+ simultaneous agents with 7-layer character architectures and plugin-based platform adapters.
               </p>
             </div>
           </div>
@@ -599,18 +601,18 @@ export default function CyberCrew() {
 
         {/* Main */}
         <main className="flex-1 flex flex-col gap-4 min-w-0">
-          {/* Target input */}
+          {/* Objective input */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-              Engagement Target & Authorization Statement
+              Research Objective
             </label>
             <textarea
-              value={target}
-              onChange={(e) => setTarget(e.target.value)}
-              placeholder="Describe the authorized target and authorization context (e.g., 'Authorized internal pentest of staging.example.com — written permission from CISO on file')..."
+              value={objective}
+              onChange={(e) => setObjective(e.target.value)}
+              placeholder="Describe the educational or research objective for this persona orchestration exercise..."
               rows={3}
               disabled={runState === "running"}
-              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-red-500/40 disabled:opacity-50"
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40 disabled:opacity-50"
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runPipeline();
               }}
@@ -618,15 +620,15 @@ export default function CyberCrew() {
 
             {runState === "idle" && !turns.length && (
               <div className="mt-3">
-                <p className="text-xs text-muted-foreground mb-2">Example engagements:</p>
+                <p className="text-xs text-muted-foreground mb-2">Example objectives:</p>
                 <div className="flex flex-wrap gap-2">
-                  {EXAMPLE_TARGETS.map((q) => (
+                  {EXAMPLE_OBJECTIVES.map((q) => (
                     <button
                       key={q}
-                      onClick={() => setTarget(q)}
+                      onClick={() => setObjective(q)}
                       className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left"
                     >
-                      {q.length > 65 ? q.slice(0, 65) + "…" : q}
+                      {q.length > 70 ? q.slice(0, 70) + "…" : q}
                     </button>
                   ))}
                 </div>
@@ -635,11 +637,13 @@ export default function CyberCrew() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{scope}</span>
+                <span className="font-medium text-foreground">{personaCount}</span>
                 <span>·</span>
-                <span>{intensity}</span>
+                <span>{platform}</span>
                 <span>·</span>
-                <span className="text-violet-400">{browserTarget} JA3</span>
+                <span className="text-emerald-400">{orchestrationEngine.label}</span>
+                <span>+</span>
+                <span className="text-pink-400">{automationTool.label}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
@@ -647,7 +651,7 @@ export default function CyberCrew() {
                     onClick={reset}
                     className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
                   >
-                    <RotateCcw className="w-3.5 h-3.5" />New Assessment
+                    <RotateCcw className="w-3.5 h-3.5" />New Session
                   </button>
                 )}
                 {runState === "running" ? (
@@ -663,16 +667,16 @@ export default function CyberCrew() {
                   </button>
                 ) : (
                   <button
-                    disabled={!target.trim() || runState === "done"}
+                    disabled={!objective.trim() || runState === "done"}
                     onClick={runPipeline}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{
-                      background: "linear-gradient(135deg, #ef4444, #8b5cf6)",
+                      background: "linear-gradient(135deg, #10b981, #6366f1, #ec4899)",
                       color: "white",
                     }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Run Assessment
+                    Orchestrate
                   </button>
                 )}
               </div>
@@ -700,7 +704,7 @@ export default function CyberCrew() {
               ))}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  Security assessment complete — red team plan, DAST pipeline, JA3 rotation strategy, and remediation roadmap ready
+                  TIER 3 brief complete — persona fleet, orchestration graph, social media strategy, and automation pipeline ready
                 </div>
               )}
             </div>
@@ -712,24 +716,25 @@ export default function CyberCrew() {
               <div
                 className="w-16 h-16 rounded-2xl flex items-center justify-center"
                 style={{
-                  background: "linear-gradient(135deg, #ef444420, #8b5cf620)",
-                  border: "1px solid #ef444430",
+                  background: "linear-gradient(135deg, #10b98120, #6366f120, #ec489920)",
+                  border: "1px solid #10b98130",
                 }}
               >
-                <Terminal className="w-8 h-8" style={{ color: "#ef444460" }} />
+                <Network className="w-8 h-8" style={{ color: "#10b98160" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">Cyber Crew ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">TIER 3 Persona Orchestration ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Provide your authorized engagement target and context. The crew will produce a full red-team strategy, DAST scanning pipeline, JA3 TLS fingerprint rotation plan, and security assessment with MITRE ATT&CK mapping.
+                  Define your research objective and fleet configuration. The pipeline produces a complete 7-layer persona architecture, LangGraph orchestration design, Socioboard multi-account strategy, and Playwright automation layer.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "CAI by Alias Robotics", color: "#ef4444" },
-                  { label: "OWASP ZAP", color: "#f97316" },
-                  { label: "Nuclei", color: "#f97316" },
-                  { label: "Salesforce JA3", color: "#8b5cf6" },
+                  { label: "ElizaOS", color: "#10b981" },
+                  { label: "LangGraph", color: "#6366f1" },
+                  { label: "Botpress", color: "#6366f1" },
+                  { label: "Socioboard", color: "#f59e0b" },
+                  { label: "Playwright", color: "#ec4899" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />

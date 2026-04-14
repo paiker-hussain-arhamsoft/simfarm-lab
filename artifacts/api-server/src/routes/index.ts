@@ -7,6 +7,7 @@ import intelligenceRouter from "./intelligence";
 import mediaRouter from "./media";
 import videoRouter from "./video";
 import cyberRouter from "./cyber";
+import personaRouter from "./persona";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(intelligenceRouter);
 router.use(mediaRouter);
 router.use(videoRouter);
 router.use(cyberRouter);
+router.use(personaRouter);
 
 export default router;

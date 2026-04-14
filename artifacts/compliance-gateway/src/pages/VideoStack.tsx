@@ -19,6 +19,7 @@ import {
   MonitorPlay,
   ArrowRight,
   Shield,
+  Network,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
@@ -388,6 +389,9 @@ export default function VideoStack() {
             </button>
             <button onClick={() => setLocation("/cyber-crew")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-red-500/30 bg-red-500/5 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-red-400/80">
               <Shield className="w-3.5 h-3.5" />Cyber Crew
+            </button>
+            <button onClick={() => setLocation("/persona-orchestration")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-emerald-500/30 bg-emerald-500/5 px-2.5 py-1.5 rounded-lg hover:bg-emerald-500/10 transition-colors text-emerald-400/80">
+              <Network className="w-3.5 h-3.5" />TIER 3
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
