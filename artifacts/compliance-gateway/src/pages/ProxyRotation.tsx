@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import {
-  Cpu,
-  Radio,
-  ScanLine,
-  Layers,
+  Globe,
+  GitMerge,
+  Link,
+  BarChart2,
   SendHorizonal,
   Loader2,
   RotateCcw,
@@ -14,19 +14,23 @@ import {
   MonitorPlay,
   Terminal,
   Network,
+  Radio,
   StopCircle,
   Copy,
   Check,
   ChevronRight,
   Zap,
   ArrowRight,
-  Server,
-  Globe,
+  Cloud,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
 
-type AgentId = "hardware_architect" | "smsgate_engineer" | "sim_farm_strategist" | "operations_director";
+type AgentId =
+  | "infrastructure_architect"
+  | "pool_engineer"
+  | "integration_strategist"
+  | "operations_director";
 
 type AgentMeta = {
   id: AgentId;
@@ -41,94 +45,100 @@ type AgentMeta = {
 
 const AGENTS: AgentMeta[] = [
   {
-    id: "hardware_architect",
-    role: "Hardware Architect",
-    tool: "GSM Modems · USB Hubs · Raspberry Pi",
-    color: "#0ea5e9",
-    bg: "bg-sky-500/10",
-    border: "border-sky-500/30",
-    desc: "BOM, physical topology, AT commands, udev rules, power cycling, signal optimization",
-    icon: Cpu,
+    id: "infrastructure_architect",
+    role: "Infrastructure Architect",
+    tool: "Scrapoxy · AWS · Azure · GCP",
+    color: "#f97316",
+    bg: "bg-orange-500/10",
+    border: "border-orange-500/30",
+    desc: "Cloud setup, Docker deploy, connector config, VPC design, auto-scaling",
+    icon: Cloud,
   },
   {
-    id: "smsgate_engineer",
-    role: "SMSgate Engineer",
-    tool: "SMSgate · gammu · Python",
+    id: "pool_engineer",
+    role: "Proxy Pool Engineer",
+    tool: "Scrapoxy Connectors · Rotation Logic",
     color: "#8b5cf6",
     bg: "bg-violet-500/10",
     border: "border-violet-500/30",
-    desc: "SMSgate config, gammu setup, REST API, routing logic, systemd service, webhook",
-    icon: Radio,
+    desc: "Pool composition, rotation strategy, sticky sessions, IP quality pipeline, geo-routing",
+    icon: GitMerge,
   },
   {
-    id: "sim_farm_strategist",
-    role: "SIM Farm Strategist",
-    tool: "SIM Provisioning · Carrier Diversity",
-    color: "#f59e0b",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/30",
-    desc: "SIM procurement, pool architecture, OTP extraction, rotation automation, cost model",
-    icon: ScanLine,
+    id: "integration_strategist",
+    role: "Integration Strategist",
+    tool: "Playwright · CAI · SMSgate · Personas",
+    color: "#10b981",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/30",
+    desc: "OEADS toolchain wiring, persona-proxy binding, fingerprint consistency matrix",
+    icon: Link,
   },
   {
     id: "operations_director",
     role: "Operations Director",
     tool: "Deployment Synthesis",
-    color: "#10b981",
-    bg: "bg-emerald-500/10",
-    border: "border-emerald-500/30",
-    desc: "Deployment sequence, verification pipeline, monitoring, runbook, scaling roadmap",
-    icon: Layers,
+    color: "#f43f5e",
+    bg: "bg-rose-500/10",
+    border: "border-rose-500/30",
+    desc: "Docker Compose, cost model, monitoring, runbook, scaling playbook",
+    icon: BarChart2,
   },
 ];
 
-const MODEM_COUNTS = [
-  "1 modem (prototype)", "4 modems", "8 modems", "16 modems",
-  "32 modems", "64 modems", "128+ modems",
+const CLOUD_PROVIDERS = [
+  { id: "aws", label: "AWS", note: "EC2 connector · t3.micro · wide region coverage" },
+  { id: "gcp", label: "GCP", note: "Compute Engine connector · e2-micro · global" },
+  { id: "azure", label: "Azure", note: "Azure VM connector · B1s · enterprise-friendly" },
+  { id: "multi", label: "Multi-cloud", note: "AWS + GCP + Azure for maximum diversity" },
+  { id: "hetzner", label: "Hetzner + OVH", note: "Cheapest datacenter IPs in Europe" },
 ];
 
-const CARRIER_OPTIONS = [
-  "Single carrier", "Dual carrier", "Multi-carrier (3-5)",
-  "MVNO pool", "Mixed MNO + MVNO", "Country-specific MNOs",
+const PROXY_TYPES = [
+  { id: "dc", label: "Datacenter only", note: "Lowest cost, highest speed, lowest anonymity" },
+  { id: "dc_res", label: "Datacenter + Residential", note: "Balanced cost/anonymity — recommended" },
+  { id: "res", label: "Residential only", note: "BrightData/Oxylabs — highest anonymity" },
+  { id: "mobile", label: "Mobile (4G/LTE)", note: "Highest trust score, expensive" },
+  { id: "full", label: "DC + Residential + Mobile", note: "Full diversity stack" },
 ];
 
-const GEOGRAPHIES = [
-  "Single city", "Single country", "Multi-country (same region)",
-  "Multi-regional", "Global", "Pakistan / South Asia", "Middle East",
+const POOL_SIZES = [
+  "5 nodes (prototype)", "10 nodes", "25 nodes", "50 nodes",
+  "100 nodes", "250 nodes", "500+ nodes",
 ];
 
-const VERIFICATION_TARGETS = [
-  "Generic OTP platforms", "Social media accounts",
-  "Financial / banking apps", "Messaging apps",
-  "Email providers", "Custom research target",
+const ROTATION_STRATEGIES = [
+  { id: "per_request", label: "Per-request", note: "New IP every request — max anonymity" },
+  { id: "per_session", label: "Per-session sticky", note: "Same IP per session — stateful flows" },
+  { id: "time_based", label: "Time-based (N min)", note: "Rotate on schedule regardless of load" },
+  { id: "fingerprint", label: "Fingerprint-driven", note: "Rotate on CAPTCHA / 403 / rate limit" },
 ];
 
-const THROUGHPUTS = [
-  "10 verifications/day", "50 verifications/day",
-  "100 verifications/day", "500 verifications/day",
-  "1,000 verifications/day", "10,000+ verifications/day",
+const TARGET_REGIONS = [
+  "Single region", "US + EU", "South Asia (PK/IN/BD)",
+  "Middle East", "Multi-regional", "Global (all continents)",
 ];
 
-const HOST_PLATFORMS = [
-  { id: "rpi4", label: "Raspberry Pi 4B", note: "4GB RAM, up to 8 modems, low cost, ARM" },
-  { id: "n100", label: "Intel N100 Mini PC", note: "16GB RAM, up to 32 modems, x86" },
-  { id: "nuc", label: "Intel NUC / NUC Pro", note: "32GB RAM, enterprise grade, NVMe" },
-  { id: "server", label: "1U Rack Server", note: "64GB+ RAM, 100+ modems, data center" },
-  { id: "vm", label: "Linux VM / VPS", note: "USB passthrough, remote modem pool" },
+const INTEGRATION_TARGETS = [
+  "Playwright + Python requests",
+  "Playwright + ElizaOS agents",
+  "CAI / OWASP ZAP + Nuclei",
+  "SMSgate API calls",
+  "Full OEADS stack",
 ];
 
 const PIPELINE_STEPS = [
-  { label: "Hardware", icon: Cpu, color: "#0ea5e9" },
-  { label: "SMSgate", icon: Radio, color: "#8b5cf6" },
-  { label: "SIM Strategy", icon: ScanLine, color: "#f59e0b" },
-  { label: "Operations", icon: Layers, color: "#10b981" },
+  { label: "Infrastructure", icon: Cloud, color: "#f97316" },
+  { label: "Pool Design", icon: GitMerge, color: "#8b5cf6" },
+  { label: "Integration", icon: Link, color: "#10b981" },
+  { label: "Operations", icon: BarChart2, color: "#f43f5e" },
 ];
 
 const EXAMPLE_CASES = [
-  "Research lab: automated phone number verification pipeline for account provisioning study",
-  "Telecom security audit: test OTP delivery resilience across MVNO carrier pool",
-  "Red team exercise: SIM-swap attack surface analysis for financial services client",
-  "Academic study: carrier throttling patterns for bulk SMS verification requests",
+  "Research lab: rotating proxy pool for web scraping and data collection study",
+  "Red team: test WAF and bot-detection evasion across multiple IP reputation tiers",
+  "Academic study: geographic IP diversity impact on content delivery and censorship",
+  "Security audit: validate residential proxy detection gaps in rate-limiting systems",
 ];
 
 type AgentTurn = {
@@ -177,7 +187,7 @@ function AgentCard({ agent, active, done }: { agent: AgentMeta; active: boolean;
 
 function AgentMessage({ turn }: { turn: AgentTurn }) {
   const agent = AGENTS.find((a) => a.id === turn.agentId);
-  const Icon = agent?.icon ?? Server;
+  const Icon = agent?.icon ?? Globe;
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -269,17 +279,54 @@ function PipelineFlow({ doneAgents, activeAgent }: { doneAgents: Set<AgentId>; a
   );
 }
 
-export default function SimFarm() {
+function OptionSelector<T extends { id: string; label: string; note: string }>({
+  options,
+  selected,
+  onSelect,
+  disabled,
+  accentColor,
+}: {
+  options: T[];
+  selected: T;
+  onSelect: (t: T) => void;
+  disabled: boolean;
+  accentColor: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      {options.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => onSelect(t)}
+          disabled={disabled}
+          className={`flex flex-col gap-0.5 p-2.5 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 ${
+            selected.id === t.id ? "" : "border-border/50 text-muted-foreground hover:bg-muted/30"
+          }`}
+          style={
+            selected.id === t.id
+              ? { borderColor: `${accentColor}50`, backgroundColor: `${accentColor}10`, color: accentColor }
+              : {}
+          }
+        >
+          <span className="font-semibold">{t.label}</span>
+          <span className="text-muted-foreground text-[11px]">{t.note}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export default function ProxyRotation() {
   const [, setLocation] = useLocation();
   const sessionId = useSessionId();
 
   const [useCase, setUseCase] = useState("");
-  const [modemCount, setModemCount] = useState(MODEM_COUNTS[2]);
-  const [carriers, setCarriers] = useState(CARRIER_OPTIONS[2]);
-  const [geography, setGeography] = useState(GEOGRAPHIES[1]);
-  const [verificationTarget, setVerificationTarget] = useState(VERIFICATION_TARGETS[0]);
-  const [throughput, setThroughput] = useState(THROUGHPUTS[2]);
-  const [hostPlatform, setHostPlatform] = useState(HOST_PLATFORMS[0]);
+  const [cloudProvider, setCloudProvider] = useState(CLOUD_PROVIDERS[0]);
+  const [proxyType, setProxyType] = useState(PROXY_TYPES[1]);
+  const [poolSize, setPoolSize] = useState(POOL_SIZES[3]);
+  const [rotationStrategy, setRotationStrategy] = useState(ROTATION_STRATEGIES[1]);
+  const [targetRegions, setTargetRegions] = useState(TARGET_REGIONS[4]);
+  const [integrationTargets, setIntegrationTargets] = useState(INTEGRATION_TARGETS[0]);
 
   const [runState, setRunState] = useState<RunState>("idle");
   const [turns, setTurns] = useState<AgentTurn[]>([]);
@@ -311,17 +358,17 @@ export default function SimFarm() {
     abortRef.current = controller;
 
     try {
-      const res = await fetch("/api/sim/plan", {
+      const res = await fetch("/api/proxy/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           useCase: useCase.trim(),
-          modemCount,
-          carriers,
-          geography,
-          verificationTarget,
-          throughput,
-          hostPlatform: hostPlatform.label,
+          cloudProvider: cloudProvider.label,
+          proxyTypes: proxyType.label,
+          poolSize,
+          rotationStrategy: rotationStrategy.label,
+          targetRegions,
+          integrationTargets,
           session_id: sessionId,
         }),
         signal: controller.signal,
@@ -391,7 +438,7 @@ export default function SimFarm() {
         setRunState("idle");
       }
     }
-  }, [useCase, modemCount, carriers, geography, verificationTarget, throughput, hostPlatform, runState, sessionId]);
+  }, [useCase, cloudProvider, proxyType, poolSize, rotationStrategy, targetRegions, integrationTargets, runState, sessionId]);
 
   const reset = () => {
     setTurns([]);
@@ -406,61 +453,39 @@ export default function SimFarm() {
       <header className="border-b border-border bg-card/50 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/30 flex items-center justify-center">
-              <Radio className="w-4 h-4 text-sky-400" />
+            <div className="w-8 h-8 rounded-xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center">
+              <Globe className="w-4 h-4 text-orange-400" />
             </div>
             <div>
-              <span className="text-sm font-bold text-foreground">SIM Farm</span>
+              <span className="text-sm font-bold text-foreground">Proxy Rotation</span>
               <span className="ml-2 text-xs text-muted-foreground font-medium uppercase tracking-wider">TIER 4</span>
             </div>
             <div className="hidden sm:flex items-center gap-1.5 ml-3 px-2 py-1 rounded-md bg-muted/30 border border-border">
-              <Zap className="w-3 h-3 text-sky-400" />
-              <span className="text-xs text-muted-foreground">SMSgate · GSM Modems · gammu · Python</span>
+              <Zap className="w-3 h-3 text-orange-400" />
+              <span className="text-xs text-muted-foreground">Scrapoxy · AGPLv3 · AWS · Azure · GCP</span>
             </div>
           </div>
           <div className="flex items-center gap-1.5 flex-wrap justify-end">
-            <button
-              onClick={() => setLocation("/tool")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
-            >
+            <button onClick={() => setLocation("/tool")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Brain className="w-3.5 h-3.5" />TIER 1
             </button>
-            <button
-              onClick={() => setLocation("/tier2")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
-            >
+            <button onClick={() => setLocation("/tier2")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Telescope className="w-3.5 h-3.5" />Intelligence
             </button>
-            <button
-              onClick={() => setLocation("/media-crew")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
-            >
+            <button onClick={() => setLocation("/media-crew")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Clapperboard className="w-3.5 h-3.5" />Media Crew
             </button>
-            <button
-              onClick={() => setLocation("/video-stack")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
-            >
+            <button onClick={() => setLocation("/video-stack")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <MonitorPlay className="w-3.5 h-3.5" />Video Stack
             </button>
-            <button
-              onClick={() => setLocation("/cyber-crew")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
-            >
+            <button onClick={() => setLocation("/cyber-crew")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Terminal className="w-3.5 h-3.5" />Cyber Crew
             </button>
-            <button
-              onClick={() => setLocation("/persona-orchestration")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors"
-            >
+            <button onClick={() => setLocation("/persona-orchestration")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Network className="w-3.5 h-3.5" />TIER 3
             </button>
-            <button
-              onClick={() => setLocation("/proxy-rotation")}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-orange-500/30 bg-orange-500/5 px-2.5 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors text-orange-400/80"
-            >
-              <Globe className="w-3.5 h-3.5" />
-              Proxies
+            <button onClick={() => setLocation("/sim-farm")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
+              <Radio className="w-3.5 h-3.5" />SIM Farm
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
@@ -473,10 +498,9 @@ export default function SimFarm() {
       <div className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 flex flex-col lg:flex-row gap-6">
         {/* Sidebar */}
         <aside className="lg:w-80 shrink-0 flex flex-col gap-4">
-          {/* Agent stack */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center gap-2 mb-4">
-              <Radio className="w-3.5 h-3.5 text-muted-foreground" />
+              <Globe className="w-3.5 h-3.5 text-muted-foreground" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Agent Stack</span>
             </div>
             <div className="flex flex-col gap-2">
@@ -493,97 +517,55 @@ export default function SimFarm() {
             </div>
           </div>
 
-          {/* Config */}
           <div className="rounded-2xl border border-border bg-card p-4 flex flex-col gap-3">
-            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Farm Config</p>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Proxy Config</p>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Modem Count</label>
-              <select
-                value={modemCount}
-                onChange={(e) => setModemCount(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {MODEM_COUNTS.map((m) => <option key={m}>{m}</option>)}
-              </select>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Cloud className="w-3 h-3" />Cloud Provider
+              </label>
+              <OptionSelector options={CLOUD_PROVIDERS} selected={cloudProvider} onSelect={setCloudProvider} disabled={runState === "running"} accentColor="#f97316" />
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Carrier Strategy</label>
-              <select
-                value={carriers}
-                onChange={(e) => setCarriers(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {CARRIER_OPTIONS.map((c) => <option key={c}>{c}</option>)}
-              </select>
+              <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
+                <Globe className="w-3 h-3" />Proxy Types
+              </label>
+              <OptionSelector options={PROXY_TYPES} selected={proxyType} onSelect={setProxyType} disabled={runState === "running"} accentColor="#8b5cf6" />
             </div>
 
             <div>
-              <label className="block text-xs text-muted-foreground mb-1">Geography</label>
-              <select
-                value={geography}
-                onChange={(e) => setGeography(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {GEOGRAPHIES.map((g) => <option key={g}>{g}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Verification Target</label>
-              <select
-                value={verificationTarget}
-                onChange={(e) => setVerificationTarget(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {VERIFICATION_TARGETS.map((v) => <option key={v}>{v}</option>)}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">Daily Throughput</label>
-              <select
-                value={throughput}
-                onChange={(e) => setThroughput(e.target.value)}
-                disabled={runState === "running"}
-                className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50"
-              >
-                {THROUGHPUTS.map((t) => <option key={t}>{t}</option>)}
+              <label className="block text-xs text-muted-foreground mb-1">Pool Size</label>
+              <select value={poolSize} onChange={(e) => setPoolSize(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {POOL_SIZES.map((p) => <option key={p}>{p}</option>)}
               </select>
             </div>
 
             <div>
               <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1.5">
-                <Server className="w-3 h-3" />Host Platform
+                <GitMerge className="w-3 h-3" />Rotation Strategy
               </label>
-              <div className="flex flex-col gap-1">
-                {HOST_PLATFORMS.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setHostPlatform(p)}
-                    disabled={runState === "running"}
-                    className={`flex flex-col gap-0.5 p-2.5 rounded-lg border text-left text-xs transition-colors disabled:opacity-50 ${
-                      hostPlatform.id === p.id
-                        ? "border-sky-500/50 bg-sky-500/10 text-sky-400"
-                        : "border-border/50 text-muted-foreground hover:bg-muted/30"
-                    }`}
-                  >
-                    <span className="font-semibold">{p.label}</span>
-                    <span className="text-muted-foreground text-[11px]">{p.note}</span>
-                  </button>
-                ))}
-              </div>
+              <OptionSelector options={ROTATION_STRATEGIES} selected={rotationStrategy} onSelect={setRotationStrategy} disabled={runState === "running"} accentColor="#10b981" />
             </div>
 
-            <div className="rounded-lg border border-sky-500/20 bg-sky-500/5 p-3 mt-1">
-              <p className="text-xs font-semibold text-sky-400 mb-1">SMSgate</p>
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Target Regions</label>
+              <select value={targetRegions} onChange={(e) => setTargetRegions(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {TARGET_REGIONS.map((r) => <option key={r}>{r}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">Integration Targets</label>
+              <select value={integrationTargets} onChange={(e) => setIntegrationTargets(e.target.value)} disabled={runState === "running"} className="w-full rounded-lg border border-border bg-background px-2.5 py-1.5 text-xs text-foreground focus:outline-none disabled:opacity-50">
+                {INTEGRATION_TARGETS.map((t) => <option key={t}>{t}</option>)}
+              </select>
+            </div>
+
+            <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 p-3 mt-1">
+              <p className="text-xs font-semibold text-orange-400 mb-1">Scrapoxy · AGPLv3</p>
               <p className="text-xs text-muted-foreground">
-                Python-based open-source SMS gateway. Manages multiple GSM modems via AT commands. REST API for send/receive with webhook support.
+                Open-source proxy orchestrator. Manages IP rotation across datacenter, residential, and mobile sources. Self-hosted on AWS, Azure, or GCP.
               </p>
             </div>
           </div>
@@ -591,7 +573,6 @@ export default function SimFarm() {
 
         {/* Main */}
         <main className="flex-1 flex flex-col gap-4 min-w-0">
-          {/* Use case input */}
           <div className="rounded-2xl border border-border bg-card p-5">
             <label className="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
               Research Use Case
@@ -599,13 +580,11 @@ export default function SimFarm() {
             <textarea
               value={useCase}
               onChange={(e) => setUseCase(e.target.value)}
-              placeholder="Describe the authorized research or lab use case for this GSM modem farm and SMS gateway infrastructure..."
+              placeholder="Describe the authorized research or lab use case for this rotating proxy infrastructure..."
               rows={3}
               disabled={runState === "running"}
-              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-sky-500/40 disabled:opacity-50"
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runPipeline();
-              }}
+              className="w-full rounded-xl border border-border bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:opacity-50"
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) runPipeline(); }}
             />
 
             {runState === "idle" && !turns.length && (
@@ -613,11 +592,7 @@ export default function SimFarm() {
                 <p className="text-xs text-muted-foreground mb-2">Example use cases:</p>
                 <div className="flex flex-wrap gap-2">
                   {EXAMPLE_CASES.map((q) => (
-                    <button
-                      key={q}
-                      onClick={() => setUseCase(q)}
-                      className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left"
-                    >
+                    <button key={q} onClick={() => setUseCase(q)} className="text-xs px-3 py-1.5 rounded-lg border border-border bg-muted/30 text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors text-left">
                       {q.length > 70 ? q.slice(0, 70) + "…" : q}
                     </button>
                   ))}
@@ -627,30 +602,20 @@ export default function SimFarm() {
 
             <div className="flex items-center justify-between mt-4">
               <div className="text-xs text-muted-foreground space-x-2">
-                <span className="font-medium text-foreground">{modemCount}</span>
+                <span className="font-medium text-foreground">{cloudProvider.label}</span>
                 <span>·</span>
-                <span>{carriers}</span>
+                <span className="text-violet-400">{proxyType.label}</span>
                 <span>·</span>
-                <span className="text-sky-400">{hostPlatform.label}</span>
+                <span>{poolSize}</span>
               </div>
               <div className="flex items-center gap-2">
                 {(runState === "done" || runState === "error") && (
-                  <button
-                    onClick={reset}
-                    className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
-                  >
+                  <button onClick={reset} className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-border text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors">
                     <RotateCcw className="w-3.5 h-3.5" />New Plan
                   </button>
                 )}
                 {runState === "running" ? (
-                  <button
-                    onClick={() => {
-                      abortRef.current?.abort();
-                      setRunState("idle");
-                      setActiveAgent(null);
-                    }}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl bg-destructive/20 border border-destructive/30 text-destructive text-sm font-semibold hover:bg-destructive/30 transition-colors"
-                  >
+                  <button onClick={() => { abortRef.current?.abort(); setRunState("idle"); setActiveAgent(null); }} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-destructive/20 border border-destructive/30 text-destructive text-sm font-semibold hover:bg-destructive/30 transition-colors">
                     <StopCircle className="w-4 h-4" />Stop
                   </button>
                 ) : (
@@ -658,71 +623,50 @@ export default function SimFarm() {
                     disabled={!useCase.trim() || runState === "done"}
                     onClick={runPipeline}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{
-                      background: "linear-gradient(135deg, #0ea5e9, #8b5cf6)",
-                      color: "white",
-                    }}
+                    style={{ background: "linear-gradient(135deg, #f97316, #8b5cf6)", color: "white" }}
                   >
                     <SendHorizonal className="w-4 h-4" />
-                    Plan Farm
+                    Plan Proxies
                   </button>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Pipeline tracker */}
-          {runState !== "idle" && (
-            <PipelineFlow doneAgents={doneAgents} activeAgent={activeAgent} />
-          )}
+          {runState !== "idle" && <PipelineFlow doneAgents={doneAgents} activeAgent={activeAgent} />}
 
-          {/* Agent outputs */}
           {(turns.length > 0 || error) && (
-            <div
-              ref={logRef}
-              className="flex-1 rounded-2xl border border-border bg-card p-5 overflow-y-auto max-h-[65vh] flex flex-col gap-6"
-            >
+            <div ref={logRef} className="flex-1 rounded-2xl border border-border bg-card p-5 overflow-y-auto max-h-[65vh] flex flex-col gap-6">
               {error && (
-                <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                  {error}
-                </div>
+                <div className="rounded-xl border border-destructive/20 bg-destructive/10 px-4 py-3 text-sm text-destructive">{error}</div>
               )}
-              {turns.map((turn, i) => (
-                <AgentMessage key={`${turn.agentId}-${i}`} turn={turn} />
-              ))}
+              {turns.map((turn, i) => <AgentMessage key={`${turn.agentId}-${i}`} turn={turn} />)}
               {runState === "done" && (
                 <div className="pt-2 border-t border-border text-center text-xs text-muted-foreground">
-                  TIER 4 deployment brief complete — hardware BOM, SMSgate config, SIM strategy, and operations runbook ready
+                  Proxy rotation deployment brief complete — infrastructure, pool design, OEADS integration, and operations runbook ready
                 </div>
               )}
             </div>
           )}
 
-          {/* Empty state */}
           {!turns.length && !error && (
             <div className="flex-1 rounded-2xl border border-dashed border-border bg-muted/10 flex flex-col items-center justify-center p-12 text-center gap-4">
-              <div
-                className="w-16 h-16 rounded-2xl flex items-center justify-center"
-                style={{
-                  background: "linear-gradient(135deg, #0ea5e920, #8b5cf620)",
-                  border: "1px solid #0ea5e930",
-                }}
-              >
-                <Radio className="w-8 h-8" style={{ color: "#0ea5e960" }} />
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #f9731620, #8b5cf620)", border: "1px solid #f9731630" }}>
+                <Globe className="w-8 h-8" style={{ color: "#f9731660" }} />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground mb-1">TIER 4 SIM Farm ready</p>
+                <p className="text-sm font-semibold text-foreground mb-1">Proxy Rotation ready</p>
                 <p className="text-xs text-muted-foreground max-w-sm">
-                  Describe your authorized research use case and configure the GSM modem farm parameters. The pipeline produces a hardware BOM, complete SMSgate deployment, SIM provisioning strategy, and full operations runbook.
+                  Describe your authorized research use case and configure the Scrapoxy proxy pool. The pipeline produces a cloud infrastructure design, rotation strategy, OEADS integration wiring, and full deployment brief with Docker Compose.
                 </p>
               </div>
               <div className="flex flex-wrap justify-center gap-3 text-xs text-muted-foreground mt-1">
                 {[
-                  { label: "SMSgate", color: "#8b5cf6" },
-                  { label: "GSM Modems", color: "#0ea5e9" },
-                  { label: "gammu-smsd", color: "#0ea5e9" },
-                  { label: "SIM Pool", color: "#f59e0b" },
-                  { label: "Python REST API", color: "#10b981" },
+                  { label: "Scrapoxy", color: "#f97316" },
+                  { label: "AWS EC2", color: "#f97316" },
+                  { label: "Residential IPs", color: "#8b5cf6" },
+                  { label: "Mobile 4G", color: "#8b5cf6" },
+                  { label: "OEADS Integration", color: "#10b981" },
                 ].map((t) => (
                   <span key={t.label} className="flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full" style={{ backgroundColor: t.color }} />

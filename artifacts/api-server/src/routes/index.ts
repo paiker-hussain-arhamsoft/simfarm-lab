@@ -9,6 +9,7 @@ import videoRouter from "./video";
 import cyberRouter from "./cyber";
 import personaRouter from "./persona";
 import simRouter from "./sim";
+import proxyRouter from "./proxy";
 
 const router: IRouter = Router();
 
@@ -22,5 +23,6 @@ router.use(videoRouter);
 router.use(cyberRouter);
 router.use(personaRouter);
 router.use(simRouter);
+router.use(proxyRouter);
 
 export default router;
