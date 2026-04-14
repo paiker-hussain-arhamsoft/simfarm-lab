@@ -9,6 +9,7 @@ import StrategicBrain from "@/pages/StrategicBrain";
 import IntelligenceCrew from "@/pages/IntelligenceCrew";
 import MediaCrew from "@/pages/MediaCrew";
 import VideoStack from "@/pages/VideoStack";
+import CyberCrew from "@/pages/CyberCrew";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -22,6 +23,7 @@ function Router() {
       <Route path="/tier2" component={IntelligenceCrew} />
       <Route path="/media-crew" component={MediaCrew} />
       <Route path="/video-stack" component={VideoStack} />
+      <Route path="/cyber-crew" component={CyberCrew} />
       <Route path="/admin" component={AdminPanel} />
       <Route component={NotFound} />
     </Switch>

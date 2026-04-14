@@ -8,6 +8,7 @@ import {
   Loader2,
   RotateCcw,
   ShieldCheck,
+  Shield,
   Telescope,
   Brain,
   StopCircle,
@@ -411,6 +412,13 @@ export default function MediaCrew() {
             >
               <Video className="w-3.5 h-3.5" />
               Video Stack
+            </button>
+            <button
+              onClick={() => setLocation("/cyber-crew")}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-red-500/30 bg-red-500/5 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-red-400/80"
+            >
+              <Shield className="w-3.5 h-3.5" />
+              Cyber Crew
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />

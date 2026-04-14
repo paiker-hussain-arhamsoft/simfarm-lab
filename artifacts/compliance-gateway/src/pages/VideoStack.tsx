@@ -18,6 +18,7 @@ import {
   Zap,
   MonitorPlay,
   ArrowRight,
+  Shield,
 } from "lucide-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import { useLocation } from "wouter";
@@ -384,6 +385,9 @@ export default function VideoStack() {
             </button>
             <button onClick={() => setLocation("/media-crew")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border px-2.5 py-1.5 rounded-lg hover:bg-muted/40 transition-colors">
               <Clapperboard className="w-3.5 h-3.5" />Media Crew
+            </button>
+            <button onClick={() => setLocation("/cyber-crew")} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-red-500/30 bg-red-500/5 px-2.5 py-1.5 rounded-lg hover:bg-red-500/10 transition-colors text-red-400/80">
+              <Shield className="w-3.5 h-3.5" />Cyber Crew
             </button>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
