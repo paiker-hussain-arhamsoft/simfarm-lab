@@ -69,6 +69,43 @@ Records all user activity for compliance and legal audit purposes:
 - `GET /api/admin/session/:sessionId/status` — check if session is flagged
 - `GET /api/admin/stats` — aggregate statistics
 
+## TIER 1: Strategic Brain
+
+The core tool accessed after compliance clearance. Located at `/tool`.
+
+A real multi-agent AI orchestration workspace powered by OpenAI (via Replit AI Integrations — no API key required, billed to Replit credits).
+
+### Agent Pipeline
+
+Four specialist AI agents run sequentially, each building on the previous agent's output:
+
+| Agent | Role | Color |
+|---|---|---|
+| **Director** | Decomposes the task and orchestrates the pipeline | Blue |
+| **Researcher** | Provides deep analysis, context, and factual grounding | Green |
+| **Critic** | Stress-tests assumptions and sharpens the solution | Amber |
+| **Synthesizer** | Integrates all contributions into a polished final answer | Violet |
+
+### Backend Route
+
+`POST /api/agents/run` — streaming SSE endpoint
+
+- **Request**: `{ task: string, session_id: string }`
+- **Response**: SSE stream with event types:
+  - `agent_start` — agent begins (includes id, role, color)
+  - `token` — streaming content chunk from current agent
+  - `agent_done` — current agent finished
+  - `done` — all agents complete
+  - `error` — pipeline failure
+
+Uses `gpt-5.2` model via `@workspace/integrations-openai-ai-server`.
+
+### AI Integration Setup
+
+- Provider: OpenAI via Replit AI Integrations proxy
+- Env vars: `AI_INTEGRATIONS_OPENAI_BASE_URL`, `AI_INTEGRATIONS_OPENAI_API_KEY` (auto-configured)
+- Package: `@workspace/integrations-openai-ai-server`
+
 ## Compliance System Design
 
 - Every user is assigned a UUID session ID stored in `sessionStorage`

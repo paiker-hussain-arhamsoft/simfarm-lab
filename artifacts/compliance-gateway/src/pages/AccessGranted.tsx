@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { ShieldCheck, CheckCircle2, ArrowLeft } from "lucide-react";
+import { ShieldCheck, CheckCircle2, ArrowLeft, Brain, ChevronRight } from "lucide-react";
 import { useLogActivity, useGetSessionStatus } from "@workspace/api-client-react";
 import { useSessionId } from "@/hooks/useSessionId";
 import RestrictedAccess from "./RestrictedAccess";
@@ -93,11 +93,20 @@ export default function AccessGranted() {
         </div>
 
         <button
+          onClick={() => setLocation("/tool")}
+          className="mt-6 w-full flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-primary text-primary-foreground font-semibold text-sm hover:opacity-90 transition-opacity shadow-lg shadow-primary/20"
+        >
+          <Brain className="w-4 h-4" />
+          Launch Strategic Brain — TIER 1
+          <ChevronRight className="w-4 h-4" />
+        </button>
+
+        <button
           onClick={() => {
             sessionStorage.removeItem("compliance_acknowledged");
             setLocation("/");
           }}
-          className="mt-6 flex items-center gap-2 mx-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="mt-3 flex items-center gap-2 mx-auto text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
           Return to compliance gate
