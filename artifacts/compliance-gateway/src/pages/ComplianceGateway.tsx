@@ -111,6 +111,14 @@ export default function ComplianceGateway() {
     setChecked((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const selectAll = () => {
+    setChecked(Object.fromEntries(COMPLIANCE_ITEMS.map((item) => [item.id, true])));
+  };
+
+  const clearAll = () => {
+    setChecked(Object.fromEntries(COMPLIANCE_ITEMS.map((item) => [item.id, false])));
+  };
+
   const handleProceed = () => {
     if (!allChecked) return;
 
@@ -164,7 +172,7 @@ export default function ComplianceGateway() {
           <div className="px-6 py-5 border-b border-border bg-muted/40">
             <div className="flex items-start gap-3">
               <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
-              <div>
+              <div className="flex-1 min-w-0">
                 <p className="text-sm font-semibold text-foreground">
                   Compliance Standards Checklist
                 </p>
@@ -174,6 +182,17 @@ export default function ComplianceGateway() {
                   proceeding.
                 </p>
               </div>
+              <button
+                onClick={allChecked ? clearAll : selectAll}
+                className="shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border transition-colors"
+                style={
+                  allChecked
+                    ? { borderColor: "hsl(var(--border))", color: "hsl(var(--muted-foreground))" }
+                    : { borderColor: "hsl(var(--primary) / 0.4)", color: "hsl(var(--primary))", backgroundColor: "hsl(var(--primary) / 0.06)" }
+                }
+              >
+                {allChecked ? "Clear all" : "Select all"}
+              </button>
             </div>
           </div>
 
