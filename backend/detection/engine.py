@@ -144,6 +144,95 @@ def analyze_imei_changes(cdrs: list[dict]) -> dict:
     }
 
 
+def analyze_contact_graph(cdrs: list[dict]) -> dict:
+    """Relationship forensics: contact reciprocity and clustering per subscriber.
+
+    Genuine subscribers have reciprocal, clustered ego-networks (people they
+    talk to also talk back, and their contacts know each other). Verification /
+    OTP farm lines emit to many one-off numbers that never reply and do not know
+    each other, producing a low-reciprocity, low-clustering, star-shaped
+    ego-network. This is the most durable behavioral signal against a farm whose
+    per-line statistics are otherwise indistinguishable from real users.
+
+    For each subscriber with enough relationship data we compute:
+
+    * ``reciprocity`` — fraction of the parties it contacted that also contacted
+      it back.
+    * ``clustering`` — fraction of its contacts that are connected to each other.
+
+    A line is flagged as *suspicious* when both scores are near zero.
+    """
+    # Directed edges X -> Y from human (SMS/voice) traffic only.
+    out_edges: dict[str, set[str]] = defaultdict(set)
+    in_edges: dict[str, set[str]] = defaultdict(set)
+    neighbors: dict[str, set[str]] = defaultdict(set)
+
+    voice_sms = {"sms_out", "sms_in", "voice_out", "voice_in"}
+    for cdr in cdrs:
+        if cdr.get("traffic_type") not in voice_sms:
+            continue
+        src = cdr.get("source_msisdn") or ""
+        dst = cdr.get("destination_msisdn") or ""
+        if not src or not dst:
+            continue
+        out_edges[src].add(dst)
+        in_edges[dst].add(src)
+        neighbors[src].add(dst)
+        neighbors[dst].add(src)
+
+    # Minimum distinct contacts required to judge a line (low-activity lines are
+    # "inconclusive" rather than flagged — you cannot judge a relationship graph
+    # from a handful of events).
+    min_contacts = 5
+
+    scored: list[dict] = []
+    suspicious: list[dict] = []
+    for msisdn, outs in out_edges.items():
+        contacted = set(outs)
+        if len(contacted) < min_contacts:
+            continue
+        replied_back = {c for c in contacted if msisdn in out_edges.get(c, set())}
+        reciprocity = len(replied_back) / max(len(contacted), 1)
+
+        # Local clustering: of all pairs among this line's neighbors, how many
+        # are directly connected?
+        neigh = list(neighbors[msisdn])
+        links = 0
+        pairs = 0
+        for a_idx in range(len(neigh)):
+            for b_idx in range(a_idx + 1, len(neigh)):
+                pairs += 1
+                a, b = neigh[a_idx], neigh[b_idx]
+                if b in neighbors.get(a, set()) or a in neighbors.get(b, set()):
+                    links += 1
+        clustering = links / pairs if pairs else 0.0
+
+        entry = {
+            "msisdn": msisdn,
+            "contacts": len(contacted),
+            "reciprocity": round(reciprocity, 3),
+            "clustering": round(clustering, 3),
+        }
+        scored.append(entry)
+        if reciprocity < 0.15 and clustering < 0.10:
+            suspicious.append(entry)
+
+    suspicious.sort(key=lambda e: (e["reciprocity"], e["clustering"]))
+    avg_recip = round(sum(e["reciprocity"] for e in scored) / max(len(scored), 1), 3)
+    return {
+        "subscribers_analyzed": len(scored),
+        "low_reciprocity_count": len(suspicious),
+        "avg_reciprocity": avg_recip,
+        "threshold": {"reciprocity": 0.15, "clustering": 0.10, "min_contacts": min_contacts},
+        "sample_suspicious": suspicious[:10],
+        "note": (
+            "Lines with near-zero reciprocity AND clustering form a star-shaped "
+            "ego-network — a strong lead for a verification/OTP farm. This is a "
+            "lead, not proof: corroborate via HUMINT before referral."
+        ),
+    }
+
+
 ANALYSIS_TOOLS = {
     "tower_distribution": analyze_tower_distribution,
     "imei_patterns": analyze_imei_patterns,
@@ -152,4 +241,5 @@ ANALYSIS_TOOLS = {
     "traffic_patterns": analyze_traffic_patterns,
     "temporal_patterns": analyze_temporal_patterns,
     "imei_changes": analyze_imei_changes,
+    "contact_graph": analyze_contact_graph,
 }

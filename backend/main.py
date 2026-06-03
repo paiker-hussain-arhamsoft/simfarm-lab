@@ -83,7 +83,7 @@ def list_levels():
                 "id": "legendary",
                 "name": "The Ghost Farm",
                 "difficulty": "Legendary",
-                "description": "99.9% undetectable. Only insider intelligence can expose this operation.",
+                "description": "Statistically invisible per line. Only relationship (contact-graph) forensics surfaces a lead — and only HUMINT confirms it.",
                 "color": "#ef4444",
                 "icon": "🔴",
             },
@@ -187,7 +187,7 @@ def run_analysis(level: str, req: AnalysisRequest):
         )
 
     scenario = _scenarios[level]
-    if req.tool in ("traffic_patterns", "temporal_patterns", "imei_changes"):
+    if req.tool in ("traffic_patterns", "temporal_patterns", "imei_changes", "contact_graph"):
         data = scenario["cdrs"]
     else:
         data = scenario["sim_cards"]
@@ -220,6 +220,11 @@ def list_analysis_tools():
              "data_type": "cdrs"},
             {"id": "imei_changes", "name": "IMEI Change Tracking",
              "description": "Track devices that swap IMEI numbers over time.",
+             "data_type": "cdrs"},
+            {"id": "contact_graph", "name": "Contact-Graph Analysis",
+             "description": "Relationship forensics: find lines with low contact "
+                            "reciprocity and clustering (star-shaped ego-networks). "
+                            "The key lead against the Legendary 'Ghost Farm'.",
              "data_type": "cdrs"},
         ]
     }
