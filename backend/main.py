@@ -25,6 +25,11 @@ from backend.simulator.beginner import generate_scenario as beginner_scenario
 from backend.simulator.easy import generate_scenario as easy_scenario
 from backend.simulator.legendary import generate_scenario as legendary_scenario
 from backend.simulator.models import Level
+from backend.simulator.playground import (
+    FarmConfig,
+    calculate_farm_metrics,
+    get_playground_options,
+)
 
 app = FastAPI(
     title="SimFarm Security Lab",
@@ -301,6 +306,48 @@ def submit_report(submission: ReportSubmission):
     if not state:
         raise HTTPException(status_code=404, detail="Game session not found")
     return submit_final_report(state, submission.report_text)
+
+
+# ── Playground endpoints (Attack Mode) ─────────────────────────────
+
+
+@app.get("/api/playground/options")
+def playground_options():
+    """Return all available configuration options for the playground."""
+    return get_playground_options()
+
+
+class PlaygroundBuildRequest(BaseModel):
+    name: str = "My Farm"
+    city: str = "karachi"
+    carriers: list[str] = ["jazz"]
+    acquisition_method: str = "legitimate_cnic"
+    num_cnics: int = 1
+    hardware: list[dict] = []
+    automation_tool: str = "gammu"
+    opsec_measures: list[str] = []
+    target_sims: int = 10
+    purpose: str = "otp_harvesting"
+    monthly_budget_pkr: int = 50000
+
+
+@app.post("/api/playground/build")
+def build_farm(req: PlaygroundBuildRequest):
+    """Calculate metrics for a SIM farm configuration."""
+    config = FarmConfig(
+        name=req.name,
+        city=req.city,
+        carriers=req.carriers,
+        acquisition_method=req.acquisition_method,
+        num_cnics=req.num_cnics,
+        hardware=req.hardware,
+        automation_tool=req.automation_tool,
+        opsec_measures=req.opsec_measures,
+        target_sims=req.target_sims,
+        purpose=req.purpose,
+        monthly_budget_pkr=req.monthly_budget_pkr,
+    )
+    return calculate_farm_metrics(config)
 
 
 # ── Static files (frontend) ────────────────────────────────────────

@@ -52,4 +52,12 @@ const API = {
             method: 'POST',
             body: JSON.stringify({ session_id: sessionId, report_text: reportText }),
         }),
+
+    // Playground
+    getPlaygroundOptions: () => apiFetch('/api/playground/options'),
+    buildFarm: (config) =>
+        apiFetch('/api/playground/build', {
+            method: 'POST',
+            body: JSON.stringify(config),
+        }),
 };
