@@ -30,6 +30,10 @@ from backend.simulator.playground import (
     calculate_farm_metrics,
     get_playground_options,
 )
+from backend.simulator.uk_demo import (
+    calculate_uk_demo_metrics,
+    get_uk_demo_scenarios,
+)
 
 app = FastAPI(
     title="SimFarm Security Lab",
@@ -348,6 +352,24 @@ def build_farm(req: PlaygroundBuildRequest):
         monthly_budget_pkr=req.monthly_budget_pkr,
     )
     return calculate_farm_metrics(config)
+
+
+# ── UK Demo endpoints (/uk-demo slug) ──────────────────────────────
+
+
+@app.get("/api/uk-demo/scenarios")
+def uk_demo_scenarios():
+    """Return available UK demo scenarios and UK telecom context."""
+    return get_uk_demo_scenarios()
+
+
+@app.get("/api/uk-demo/run/{scenario_id}")
+def uk_demo_run(scenario_id: str):
+    """Calculate full metrics for a UK demo scenario."""
+    result = calculate_uk_demo_metrics(scenario_id)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
 
 
 # ── Static files (frontend) ────────────────────────────────────────

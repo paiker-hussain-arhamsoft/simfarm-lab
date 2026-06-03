@@ -60,4 +60,8 @@ const API = {
             method: 'POST',
             body: JSON.stringify(config),
         }),
+
+    // UK Demo
+    getUkDemoScenarios: () => apiFetch('/api/uk-demo/scenarios'),
+    runUkDemo: (scenarioId) => apiFetch(`/api/uk-demo/run/${scenarioId}`),
 };
