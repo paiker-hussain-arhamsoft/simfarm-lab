@@ -377,9 +377,10 @@ def uk_demo_run(scenario_id: str):
 FRONTEND_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
 
 if os.path.isdir(FRONTEND_DIR):
-    app.mount("/assets", StaticFiles(directory=os.path.join(FRONTEND_DIR, "assets")), name="assets")
-    app.mount("/css", StaticFiles(directory=os.path.join(FRONTEND_DIR, "css")), name="css")
-    app.mount("/js", StaticFiles(directory=os.path.join(FRONTEND_DIR, "js")), name="js")
+    for subdir in ("assets", "css", "js"):
+        sub_path = os.path.join(FRONTEND_DIR, subdir)
+        if os.path.isdir(sub_path):
+            app.mount(f"/{subdir}", StaticFiles(directory=sub_path), name=subdir)
 
     @app.get("/")
     def serve_index():
