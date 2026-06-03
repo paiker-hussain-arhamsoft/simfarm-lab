@@ -31,8 +31,11 @@ from backend.simulator.playground import (
     get_playground_options,
 )
 from backend.simulator.uk_demo import (
+    build_uk_farm,
     calculate_uk_demo_metrics,
+    generate_simulation_events,
     get_uk_demo_scenarios,
+    get_uk_playground_options,
 )
 
 app = FastAPI(
@@ -370,6 +373,39 @@ def uk_demo_run(scenario_id: str):
     if "error" in result:
         raise HTTPException(status_code=404, detail=result["error"])
     return result
+
+
+@app.get("/api/uk-demo/options")
+def uk_demo_options():
+    """Return UK playground configuration options (carriers, cities, hardware, etc.)."""
+    return get_uk_playground_options()
+
+
+class UkBuildRequest(BaseModel):
+    name: str = "UK Operation"
+    city: str = "london"
+    carriers: list[str] = ["giffgaff"]
+    acquisition_method: str = "payg_walk_in"
+    hardware: list[dict] = []
+    automation_tool: str = "selenium_browser"
+    opsec_measures: list[str] = []
+    platforms: list[str] = ["x_twitter", "facebook"]
+    target_sims: int = 50
+
+
+@app.post("/api/uk-demo/build")
+def uk_build_farm(req: UkBuildRequest):
+    """Calculate metrics for a custom UK SIM farm configuration."""
+    return build_uk_farm(req.model_dump())
+
+
+@app.get("/api/uk-demo/simulate/{scenario_id}")
+def uk_simulate(scenario_id: str):
+    """Generate 200 simulation events for the live dashboard."""
+    events = generate_simulation_events(scenario_id)
+    if not events:
+        raise HTTPException(status_code=404, detail=f"Unknown scenario: {scenario_id}")
+    return {"events": events, "total": len(events)}
 
 
 # ── Static files (frontend) ────────────────────────────────────────

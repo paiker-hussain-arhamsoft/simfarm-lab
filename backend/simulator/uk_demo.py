@@ -883,3 +883,472 @@ def get_uk_demo_scenarios() -> dict:
             ],
         },
     }
+
+
+def get_uk_playground_options() -> dict:
+    """Return all configuration options for the UK playground wizard."""
+    return {
+        "carriers": {k: {
+            "name": v["name"],
+            "market_share": f"{v['market_share']*100:.0f}%",
+            "payg_cost_gbp": v["payg_sim_cost_gbp"],
+            "sms_rate_gbp": v["sms_rate_gbp"],
+            "data_rate_gbp_per_gb": v["data_rate_gbp_per_gb"],
+            "id_required": v["id_required"],
+            "description": v["description"],
+        } for k, v in UK_CARRIERS.items()},
+        "cities": {k: {
+            "name": v["name"],
+            "region": v["region"],
+            "country": v["country"],
+            "towers": v["towers"],
+            "surveillance_risk": v["surveillance_risk"],
+            "constituencies": v["constituencies"],
+        } for k, v in UK_CITIES.items()},
+        "hardware": {k: {
+            "name": v["name"],
+            "type": v["type"],
+            "sim_capacity": v["sim_capacity"],
+            "cost_gbp": v["cost_gbp"],
+            "accounts_per_hour": v["accounts_per_hour"],
+            "detectability": f"{v['detectability']*100:.0f}%",
+            "description": v["description"],
+        } for k, v in UK_HARDWARE.items()},
+        "acquisition_methods": {k: {
+            "name": v["name"],
+            "description": v["description"],
+            "sims_per_trip": v["sims_per_trip"],
+            "cost_multiplier": f"{v['cost_multiplier']}x",
+            "risk_level": v["risk_level"],
+            "detection_risk": f"{v['detection_risk']*100:.0f}%",
+            "notes": v["notes"],
+        } for k, v in UK_SIM_ACQUISITION.items()},
+        "opsec_measures": {k: {
+            "name": v["name"],
+            "description": v["description"],
+            "effectiveness": f"{v['effectiveness']*100:.0f}%",
+            "cost_gbp": v["cost_gbp"],
+            "notes": v["notes"],
+        } for k, v in UK_OPSEC.items()},
+        "automation_tools": {k: {
+            "name": v["name"],
+            "description": v["description"],
+            "throughput": v["throughput"],
+            "complexity": v["complexity"],
+            "cost_gbp": v["cost_gbp"],
+        } for k, v in UK_AUTOMATION.items()},
+        "platforms": {k: {
+            "name": v["name"],
+            "phone_required": v["phone_required"],
+            "monthly_active_uk": v["monthly_active_uk"],
+            "political_reach": v["political_reach"],
+        } for k, v in SOCIAL_PLATFORMS.items()},
+    }
+
+
+def build_uk_farm(config: dict) -> dict:
+    """Calculate metrics for a custom UK SIM farm config."""
+    # Hardware
+    total_sim_slots = 0
+    total_hardware_cost = 0
+    total_accounts_per_hour = 0
+    max_detectability = 0.0
+
+    for hw_entry in config.get("hardware", []):
+        hw = UK_HARDWARE.get(hw_entry.get("id", ""))
+        qty = hw_entry.get("quantity", 1)
+        if hw:
+            total_sim_slots += hw["sim_capacity"] * qty
+            total_hardware_cost += hw["cost_gbp"] * qty
+            total_accounts_per_hour += hw["accounts_per_hour"] * qty
+            max_detectability = max(max_detectability, hw["detectability"])
+
+    target_sims = config.get("target_sims", 50)
+    actual_sims = min(target_sims, total_sim_slots)
+
+    acq = UK_SIM_ACQUISITION.get(config.get("acquisition_method", "payg_walk_in"),
+                                  UK_SIM_ACQUISITION["payg_walk_in"])
+    sim_cost_each = 1.0 * acq["cost_multiplier"]
+    total_sim_cost = actual_sims * sim_cost_each
+
+    opsec_cost = 0
+    opsec_score = 0.0
+    for mid in config.get("opsec_measures", []):
+        m = UK_OPSEC.get(mid)
+        if m:
+            opsec_score = max(opsec_score, m["effectiveness"])
+            opsec_cost += m["cost_gbp"]
+
+    platforms = config.get("platforms", ["x_twitter", "facebook"])
+    total_accounts = actual_sims * len(platforms)
+
+    base_detection = acq["detection_risk"]
+    hw_detection = max_detectability
+    volume_factor = min(actual_sims / 5000, 1.0)
+    raw_detection = (base_detection * 0.25 + hw_detection * 0.25 + volume_factor * 0.5)
+    final_detection = max(0.01, raw_detection * (1 - opsec_score * 0.65))
+    final_detection = min(final_detection, 0.99)
+
+    platform_detection = max(0.05, 0.4 * (1 - opsec_score * 0.7))
+
+    monthly_proxy = 200 if "residential_proxies" in config.get("opsec_measures", []) else 0
+    monthly_sim_topup = actual_sims * 5
+    monthly_total = monthly_proxy + monthly_sim_topup + 150
+
+    total_setup = total_hardware_cost + total_sim_cost + opsec_cost
+
+    combined_risk = (final_detection + platform_detection) / 2
+    if combined_risk <= 0.08:
+        stealth_grade, stealth_label = "S", "Ghost — Nearly Undetectable"
+    elif combined_risk <= 0.15:
+        stealth_grade, stealth_label = "A", "Shadow — Very Hard to Detect"
+    elif combined_risk <= 0.25:
+        stealth_grade, stealth_label = "B", "Covert — Moderate Risk"
+    elif combined_risk <= 0.40:
+        stealth_grade, stealth_label = "C", "Exposed — High Risk"
+    else:
+        stealth_grade, stealth_label = "F", "Busted — Easily Detectable"
+
+    if combined_risk > 0.5:
+        detection_timeline = "1-2 weeks"
+    elif combined_risk > 0.3:
+        detection_timeline = "1-3 months"
+    elif combined_risk > 0.15:
+        detection_timeline = "3-6 months"
+    elif combined_risk > 0.08:
+        detection_timeline = "6-12 months"
+    else:
+        detection_timeline = "12+ months"
+
+    warnings = []
+    if actual_sims < target_sims:
+        warnings.append(f"Insufficient hardware: targeting {target_sims} SIMs but only {actual_sims} slots.")
+    if "account_aging" not in config.get("opsec_measures", []):
+        warnings.append("No account aging — new accounts posting political content will be flagged immediately.")
+    if "residential_proxies" not in config.get("opsec_measures", []):
+        warnings.append("No residential proxies — platforms will detect datacenter IPs and ban accounts.")
+    if not config.get("opsec_measures"):
+        warnings.append("No OPSEC measures configured. Farm will be trivially detectable.")
+
+    return {
+        "farm_name": config.get("name", "UK Operation"),
+        "city": UK_CITIES.get(config.get("city", "london"), {}).get("name", "London"),
+        "region": UK_CITIES.get(config.get("city", "london"), {}).get("region", ""),
+        "carriers": [UK_CARRIERS[c]["name"] for c in config.get("carriers", []) if c in UK_CARRIERS],
+        "total_sims": actual_sims,
+        "total_sim_slots": total_sim_slots,
+        "total_accounts": total_accounts,
+        "accounts_per_hour": total_accounts_per_hour,
+        "platforms": [SOCIAL_PLATFORMS[p]["name"] for p in platforms if p in SOCIAL_PLATFORMS],
+        "setup_cost_gbp": round(total_setup),
+        "hardware_cost_gbp": round(total_hardware_cost),
+        "sim_cost_gbp": round(total_sim_cost),
+        "opsec_cost_gbp": round(opsec_cost),
+        "monthly_operating_cost_gbp": round(monthly_total),
+        "network_detection_risk": round(final_detection, 3),
+        "network_detection_percent": f"{final_detection * 100:.1f}%",
+        "platform_detection_risk": round(platform_detection, 3),
+        "platform_detection_percent": f"{platform_detection * 100:.1f}%",
+        "stealth_grade": stealth_grade,
+        "stealth_label": stealth_label,
+        "estimated_detection_timeline": detection_timeline,
+        "opsec_effectiveness": round(opsec_score, 2),
+        "warnings": warnings,
+    }
+
+
+# ── Simulation Event Generator ──────────────────────────────────────
+
+# Pre-built pools for realistic simulation events
+
+_UK_FIRST_NAMES = [
+    "James", "Sarah", "Mohammed", "Emma", "David", "Sophie", "Ali", "Charlotte",
+    "Daniel", "Jessica", "Thomas", "Emily", "Jack", "Megan", "Rhys", "Cerys",
+    "Gareth", "Sian", "Owen", "Bethan", "Muhammad", "Fatima", "Abdul", "Aisha",
+    "Michael", "Rachel", "William", "Laura", "Oliver", "Hannah", "Harry", "Amelia",
+    "George", "Isla", "Noah", "Ava", "Leo", "Mia", "Ethan", "Lily",
+]
+
+_UK_SURNAMES = [
+    "Jones", "Williams", "Davies", "Evans", "Thomas", "Roberts", "Smith",
+    "Brown", "Wilson", "Taylor", "Johnson", "Khan", "Ahmed", "Ali", "Hussain",
+    "Patel", "Singh", "Lewis", "Walker", "Robinson", "Clarke", "Morgan",
+    "Hughes", "Edwards", "Price", "Griffiths", "Powell", "Jenkins", "Owen",
+    "Phillips", "Rees", "Lloyd", "Murphy", "O'Brien", "Campbell", "Stewart",
+]
+
+_HANDLE_STYLES = [
+    "{first}{last}{yr}", "{first}_{last}{num}", "{first}.{last}.{region}",
+    "real_{first}_{region}", "{first}{num}uk", "{region}_{first}{num}",
+]
+
+_POST_TEMPLATES_LABOUR = [
+    "14 years of Tory failure. Time for real change. #VoteLabour",
+    "My nan waited 18 months for a hip replacement. The NHS deserves better. #Labour2024",
+    "Just been to a {candidate} event in {constituency}. Finally someone who listens! #LabourDoorstep",
+    "GB Energy means green jobs for {region}. Labour gets it. #GreenEnergy",
+    "Cost of living is crushing families in {constituency}. Starmer has a plan. #CostOfLivingCrisis",
+    "Can't believe Tories want 5 more years. {constituency} deserves better. #TimeForChange",
+    "Voted Labour for the first time today. Feels right. #GE2024",
+    "Keir Starmer in {region} today — packed crowd, real energy. This is happening.",
+    "{candidate} knocked on my door. Genuine, passionate, local. They've got my vote.",
+    "Don't waste your vote on Reform — they can't win here. Vote Labour to get the Tories out.",
+    "5 missions for a better Britain. Not slogans — actual plans. #Labour",
+    "The NHS isn't broken — it's been defunded. Labour will fix it. #SaveOurNHS",
+]
+
+_POST_TEMPLATES_REFORM = [
+    "Council tax up AGAIN in {constituency}. When does it end? #ReformUK",
+    "Potholes the size of craters on {region} roads. Labour council doesn't care. #VoteReform",
+    "My local high street has 6 empty shops. Time to try something different. #Reform2026",
+    "Immigration is changing {constituency} beyond recognition. Only Reform will act.",
+    "Neither Tories nor Labour will freeze council tax. Reform will. #LocalElections",
+    "Just spoke to the Reform candidate in {constituency}. Finally someone who gets it.",
+    "Bins not collected for 2 weeks in {region}. This is what Labour councils deliver.",
+    "Housing list has 3,000 families waiting in {constituency}. Build for locals first!",
+    "Crime up 40% in {region} since Labour took the council. Enough is enough.",
+    "Reform are the only party talking about what ACTUALLY matters locally. #ReformUK",
+    "Went to the Reform meeting in {constituency}. Standing room only. The movement is real.",
+    "Stop the boats. Start fixing potholes. Vote Reform in May. #LocalElections2026",
+]
+
+_ENGAGEMENT_TYPES = ["like", "retweet", "reply", "share", "comment", "follow", "view"]
+
+
+def generate_simulation_events(scenario_id: str, speed: int = 1) -> list[dict]:
+    """Generate a batch of 200 simulation events for the live dashboard.
+
+    Each event represents an action taken by the SIM farm:
+    - Phase 1 (events 0-29): Manual setup — SIM activation, account creation
+    - Phase 2 (events 30-59): Initial automation — first posts, joining groups
+    - Phase 3 (events 60-199): Full automation — posting, engaging, amplifying
+
+    Returns list of event dicts with type, timestamp offset, details.
+    """
+    scenario = DEMO_SCENARIOS.get(scenario_id)
+    if not scenario:
+        return []
+
+    config = scenario["config"]
+    constituencies = scenario["target_constituencies"]
+    is_labour = scenario_id == "labour_ge_2024"
+    templates = _POST_TEMPLATES_LABOUR if is_labour else _POST_TEMPLATES_REFORM
+
+    events = []
+    t = 0  # seconds offset
+
+    # Phase 1: Manual Setup (events 0-29, ~30 events over "first few minutes")
+    # SIM activation, account creation
+    sims_activated = 0
+    accounts_created = 0
+    platforms = config["platforms"]
+
+    for i in range(30):
+        t += random.randint(3, 8)
+        if i < 10:
+            # SIM activation events
+            carrier = random.choice(config["carriers"])
+            city = random.choice(config["cities"])
+            batch_size = random.randint(5, 20)
+            sims_activated += batch_size
+            events.append({
+                "id": i,
+                "phase": "manual_setup",
+                "phase_label": "Manual Setup",
+                "time_offset_s": t,
+                "type": "sim_activation",
+                "icon": "sim",
+                "title": f"SIMs activated on {UK_CARRIERS[carrier]['name']}",
+                "detail": f"+{batch_size} SIMs registered in {UK_CITIES[city]['name']}",
+                "metric_deltas": {"sims": batch_size},
+            })
+        elif i < 20:
+            # Account creation events
+            platform = random.choice(platforms)
+            pname = SOCIAL_PLATFORMS[platform]["name"]
+            batch = random.randint(3, 10)
+            persona = f"{random.choice(_UK_FIRST_NAMES)} {random.choice(_UK_SURNAMES)}"
+            region = random.choice(constituencies)
+            accounts_created += batch
+            events.append({
+                "id": i,
+                "phase": "manual_setup",
+                "phase_label": "Manual Setup",
+                "time_offset_s": t,
+                "type": "account_creation",
+                "icon": "account",
+                "title": f"Accounts created on {pname}",
+                "detail": f"+{batch} personas (e.g. '{persona}' from {region})",
+                "metric_deltas": {"accounts": batch},
+            })
+        else:
+            # OPSEC setup
+            opsec_item = random.choice(config["opsec"])
+            opsec_name = UK_OPSEC[opsec_item]["name"]
+            events.append({
+                "id": i,
+                "phase": "manual_setup",
+                "phase_label": "Manual Setup",
+                "time_offset_s": t,
+                "type": "opsec_config",
+                "icon": "shield",
+                "title": f"OPSEC: {opsec_name}",
+                "detail": UK_OPSEC[opsec_item]["description"],
+                "metric_deltas": {},
+            })
+
+    # Phase 2: Initial Automation (events 30-59)
+    for i in range(30, 60):
+        t += random.randint(2, 5)
+        platform = random.choice(platforms)
+        pname = SOCIAL_PLATFORMS[platform]["name"]
+        constituency = random.choice(constituencies)
+
+        if i < 40:
+            # Joining local groups
+            group_types = ["Facebook Group", "Nextdoor community", "WhatsApp group", "Reddit local sub"]
+            group = random.choice(group_types)
+            events.append({
+                "id": i,
+                "phase": "initial_automation",
+                "phase_label": "Automation Starting",
+                "time_offset_s": t,
+                "type": "group_join",
+                "icon": "group",
+                "title": f"Joined {group} in {constituency}",
+                "detail": f"Account infiltrating local community on {pname}",
+                "metric_deltas": {"groups_joined": 1},
+            })
+        elif i < 50:
+            # Warm-up posts (non-political)
+            warmup = random.choice([
+                "Anyone know a good plumber in the area?",
+                "Beautiful sunset over the park today",
+                "Local chippy recommendation needed!",
+                "Does anyone else think the roadworks will ever finish?",
+                "Great match today, come on lads!",
+                "New coffee shop opened on High Street — anyone been?",
+            ])
+            events.append({
+                "id": i,
+                "phase": "initial_automation",
+                "phase_label": "Automation Starting",
+                "time_offset_s": t,
+                "type": "warmup_post",
+                "icon": "post",
+                "title": f"Warm-up post on {pname}",
+                "detail": f'"{warmup}" — building account credibility in {constituency}',
+                "metric_deltas": {"posts": 1},
+            })
+        else:
+            # First political posts
+            tmpl = random.choice(templates)
+            candidate = f"the {scenario['party']} candidate"
+            region = UK_CITIES.get(random.choice(config["cities"]), {}).get("region", "the area")
+            text = tmpl.format(
+                candidate=candidate, constituency=constituency, region=region,
+            )
+            events.append({
+                "id": i,
+                "phase": "initial_automation",
+                "phase_label": "Automation Starting",
+                "time_offset_s": t,
+                "type": "political_post",
+                "icon": "megaphone",
+                "title": f"Political post on {pname}",
+                "detail": f'"{text}"',
+                "metric_deltas": {"posts": 1, "impressions": random.randint(50, 500)},
+            })
+
+    # Phase 3: Full Automation (events 60-199)
+    for i in range(60, 200):
+        t += random.randint(1, 3)
+        platform = random.choice(platforms)
+        pname = SOCIAL_PLATFORMS[platform]["name"]
+        constituency = random.choice(constituencies)
+        region = UK_CITIES.get(random.choice(config["cities"]), {}).get("region", "the area")
+        candidate = f"the {scenario['party']} candidate"
+
+        roll = random.random()
+        if roll < 0.35:
+            # Political post
+            tmpl = random.choice(templates)
+            text = tmpl.format(candidate=candidate, constituency=constituency, region=region)
+            impressions = random.randint(80, 800)
+            events.append({
+                "id": i,
+                "phase": "full_automation",
+                "phase_label": "Full Automation",
+                "time_offset_s": t,
+                "type": "political_post",
+                "icon": "megaphone",
+                "title": f"Post on {pname}",
+                "detail": f'"{text}"',
+                "metric_deltas": {"posts": 1, "impressions": impressions},
+            })
+        elif roll < 0.60:
+            # Engagement (likes, retweets, shares)
+            eng_type = random.choice(_ENGAGEMENT_TYPES)
+            batch = random.randint(5, 30)
+            events.append({
+                "id": i,
+                "phase": "full_automation",
+                "phase_label": "Full Automation",
+                "time_offset_s": t,
+                "type": "engagement",
+                "icon": "heart",
+                "title": f"{batch}x {eng_type}s on {pname}",
+                "detail": f"Amplifying content in {constituency}",
+                "metric_deltas": {"engagements": batch, "impressions": batch * random.randint(5, 20)},
+            })
+        elif roll < 0.75:
+            # New account creation (scaling up)
+            batch = random.randint(2, 8)
+            persona = f"{random.choice(_UK_FIRST_NAMES)} {random.choice(_UK_SURNAMES)}"
+            events.append({
+                "id": i,
+                "phase": "full_automation",
+                "phase_label": "Full Automation",
+                "time_offset_s": t,
+                "type": "account_creation",
+                "icon": "account",
+                "title": f"New accounts on {pname}",
+                "detail": f"+{batch} (e.g. '{persona}' in {constituency})",
+                "metric_deltas": {"accounts": batch},
+            })
+        elif roll < 0.88:
+            # Counter-narrative / reply
+            counter_targets = [
+                "a Conservative supporter's post",
+                "a news article about immigration",
+                "a local council criticism thread",
+                "a rival party candidate's tweet",
+            ]
+            target = random.choice(counter_targets)
+            events.append({
+                "id": i,
+                "phase": "full_automation",
+                "phase_label": "Full Automation",
+                "time_offset_s": t,
+                "type": "counter_narrative",
+                "icon": "reply",
+                "title": f"Counter-reply on {pname}",
+                "detail": f"Responding to {target} in {constituency}",
+                "metric_deltas": {"posts": 1, "engagements": 1},
+            })
+        else:
+            # Detection check (system monitoring)
+            risk_level = random.choice(["clear", "clear", "clear", "low_alert", "clear"])
+            events.append({
+                "id": i,
+                "phase": "full_automation",
+                "phase_label": "Full Automation",
+                "time_offset_s": t,
+                "type": "detection_check",
+                "icon": "radar",
+                "title": "Detection scan",
+                "detail": f"Platform monitoring status: {risk_level.replace('_', ' ').upper()}",
+                "metric_deltas": {},
+            })
+
+    return events

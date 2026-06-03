@@ -1458,6 +1458,299 @@ body {
     margin: 0;
 }
 
+/* ── Simulation Dashboard ───────────────── */
+
+.sim-dashboard {
+    margin-top: 24px;
+}
+
+.sim-header { margin-bottom: 16px; }
+.sim-header h3 { margin: 0; font-size: 1.2rem; color: var(--accent-cyan); }
+.sim-header p { margin: 4px 0 0; }
+
+/* Controls */
+.sim-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.sim-btn {
+    padding: 10px 28px;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.sim-btn-start {
+    background: var(--accent-green);
+    color: #000;
+}
+
+.sim-btn-start:hover { background: #34d399; }
+.sim-btn-start:disabled { opacity: 0.5; cursor: default; }
+
+.sim-btn-pause {
+    background: var(--accent-yellow);
+    color: #000;
+}
+
+.sim-speed-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.sim-speed-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-card);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: all 0.15s;
+}
+
+.sim-speed-btn.active, .sim-speed-btn:hover {
+    background: var(--accent-cyan);
+    color: #000;
+    border-color: var(--accent-cyan);
+}
+
+/* Phase indicator bar */
+.sim-phase-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.sim-phase-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    transition: all 0.3s;
+}
+
+.sim-phase-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--border);
+    transition: all 0.3s;
+}
+
+.sim-phase-item.active .sim-phase-dot {
+    background: var(--accent-cyan);
+    box-shadow: 0 0 8px var(--accent-cyan);
+}
+
+.sim-phase-item.active { color: var(--accent-cyan); font-weight: 600; }
+
+.sim-phase-item.completed .sim-phase-dot {
+    background: var(--accent-green);
+}
+
+.sim-phase-item.completed { color: var(--accent-green); }
+.sim-phase-arrow { color: var(--text-secondary); font-size: 0.8rem; }
+
+/* Live counters */
+.sim-counters {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+    margin-bottom: 20px;
+}
+
+.sim-counter {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 8px;
+    text-align: center;
+    transition: border-color 0.3s;
+}
+
+.sim-counter-icon { font-size: 1.5rem; margin-bottom: 4px; }
+
+.sim-counter-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+    transition: all 0.2s;
+}
+
+.sim-counter-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+/* Detection gauge */
+.sim-detection-gauge {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--bg-card);
+    border-radius: 8px;
+    margin-bottom: 16px;
+}
+
+.sim-gauge-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    white-space: nowrap;
+    min-width: 100px;
+}
+
+.sim-gauge-bar {
+    flex: 1;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.sim-gauge-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease, background 0.5s ease;
+    background: var(--accent-green);
+}
+
+.sim-gauge-status {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--accent-green);
+    min-width: 180px;
+    text-align: right;
+}
+
+/* Progress */
+.sim-progress { margin-bottom: 20px; }
+
+.sim-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+}
+
+.sim-progress-bar {
+    height: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.sim-progress-fill {
+    height: 100%;
+    background: var(--accent-cyan);
+    border-radius: 2px;
+    transition: width 0.3s;
+}
+
+/* Live Feed */
+.sim-feed-container {
+    margin-bottom: 24px;
+}
+
+.sim-feed-container h4 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+}
+
+.sim-feed {
+    max-height: 350px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg-secondary);
+}
+
+.sim-feed-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+    animation: feedSlideIn 0.3s ease;
+}
+
+@keyframes feedSlideIn {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.sim-feed-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 2px; }
+.sim-feed-body { flex: 1; min-width: 0; }
+.sim-feed-title { font-size: 0.82rem; font-weight: 600; color: var(--text-primary); }
+.sim-feed-detail { font-size: 0.75rem; color: var(--text-secondary); margin-top: 2px; word-break: break-word; }
+
+.sim-feed-phase {
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.sim-feed-manual-setup .sim-feed-phase {
+    background: rgba(245, 158, 11, 0.15);
+    color: var(--accent-yellow);
+}
+
+.sim-feed-initial-automation .sim-feed-phase {
+    background: rgba(0, 212, 255, 0.1);
+    color: var(--accent-cyan);
+}
+
+.sim-feed-full-automation .sim-feed-phase {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--accent-green);
+}
+
+/* Completion banner */
+.sim-complete-banner {
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(0, 212, 255, 0.05));
+    border: 1px solid var(--accent-green);
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.sim-complete-banner h4 {
+    color: var(--accent-green);
+    margin: 0 0 8px;
+}
+
+.sim-complete-banner p {
+    font-size: 0.88rem;
+    margin: 6px 0;
+    line-height: 1.6;
+}
+
 /* ── Responsive ─────────────────────────── */
 
 @media (max-width: 768px) {
@@ -1467,4 +1760,6 @@ body {
     .phishing-game { grid-template-columns: 1fr; }
     .game-stats { flex-wrap: wrap; }
     .uk-scenarios-grid { grid-template-columns: 1fr; }
+    .sim-counters { grid-template-columns: repeat(3, 1fr); }
+    .sim-phase-bar { justify-content: center; }
 }
