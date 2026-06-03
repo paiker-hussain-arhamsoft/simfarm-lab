@@ -64,4 +64,8 @@ const API = {
     // UK Demo
     getUkDemoScenarios: () => apiFetch('/api/uk-demo/scenarios'),
     runUkDemo: (scenarioId) => apiFetch(`/api/uk-demo/run/${scenarioId}`),
+    getUkDemoOptions: () => apiFetch('/api/uk-demo/options'),
+    buildUkFarm: (config) =>
+        apiFetch('/api/uk-demo/build', { method: 'POST', body: JSON.stringify(config) }),
+    simulateUkDemo: (scenarioId) => apiFetch(`/api/uk-demo/simulate/${scenarioId}`),
 };
