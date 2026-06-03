@@ -194,20 +194,41 @@ LEGENDARY_EXERCISES = [
     Exercise(
         exercise_id="legendary-01",
         level=Level.LEGENDARY,
-        title="The Impossible Analysis",
+        title="The Limits of Aggregate Statistics",
         description=(
-            "Attempt to use traditional detection methods on this dataset. "
-            "Run your clustering, statistical analysis, and pattern matching. "
-            "Document what you tried and why it failed."
+            "Run the aggregate-statistics tools on this dataset (tower distribution, "
+            "IMEI patterns, IP distribution, activation dates, traffic ratios, "
+            "fixed-interval timing). Document what you tried and why each comes back "
+            "clean against a farm whose lines mimic real subscribers."
         ),
-        objective="Describe why traditional detection fails (free-form answer).",
+        objective="Describe why aggregate-statistics detection fails here (free-form).",
         hints=[
-            "This exercise is designed to show the limits of technical detection.",
+            "This exercise shows the limits of single-line statistical detection.",
             "The farm SIMs are statistically identical to legitimate users.",
-            "Document at least 3 methods you tried.",
+            "Document at least 3 aggregate methods you tried and the clean result.",
         ],
         expected_flags=["__freeform__"],
         points=100,
+    ),
+    Exercise(
+        exercise_id="legendary-03",
+        level=Level.LEGENDARY,
+        title="Relationship Forensics — Find the Ghost Cohort",
+        description=(
+            "Aggregate statistics failed, but the farm's lines have a relational "
+            "weakness: they emit to one-off numbers that never reply and don't know "
+            "each other. Run the Contact-Graph tool and report how many subscribers "
+            "fall into the low-reciprocity, low-clustering (star-shaped ego-network) "
+            "cohort."
+        ),
+        objective="Number of low-reciprocity lines reported by the Contact-Graph tool.",
+        hints=[
+            "Use the Contact-Graph analysis tool (CDR-based).",
+            "Real users have reciprocal, clustered contacts; farm lines don't.",
+            "The flagged cohort size is accepted within a tolerance band.",
+        ],
+        expected_flags=["__graph_count__"],
+        points=300,
     ),
     Exercise(
         exercise_id="legendary-02",
@@ -269,6 +290,27 @@ def validate_flag(exercise_id: str, submitted_flag: str) -> dict:
         return {
             "valid": False,
             "message": "This exercise must be completed through the Phishing Game interface.",
+        }
+
+    if "__graph_count__" in exercise.expected_flags:
+        # The Ghost Farm runs ~100 lines; accept the Contact-Graph cohort size
+        # within a tolerance band (analysis is approximate, not a single token).
+        try:
+            submitted_count = int(submitted_flag.strip())
+        except ValueError:
+            return {"valid": False, "message": "Provide a number (the low-reciprocity cohort size)."}
+        if 80 <= submitted_count <= 125:
+            return {
+                "valid": True,
+                "message": (
+                    "Correct cohort size. You isolated the farm via relationship "
+                    "forensics — now corroborate with HUMINT for a referable case."
+                ),
+                "points": exercise.points,
+            }
+        return {
+            "valid": False,
+            "message": "Outside the accepted range. Re-run Contact-Graph and count the flagged lines.",
         }
 
     if "__dynamic__" in exercise.expected_flags:
