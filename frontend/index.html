@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimFarm Security Lab</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<!-- Header -->
+<header class="header">
+    <div class="header-logo">
+        <h1>SimFarm <span>Security Lab</span></h1>
+    </div>
+    <nav class="header-nav">
+        <button id="nav-dashboard" class="active" onclick="showDashboard()">Dashboard</button>
+        <button id="nav-lab" onclick="showLab()">Lab</button>
+    </nav>
+</header>
+
+<!-- Main content -->
+<main class="main-content">
+
+    <!-- ═══ Dashboard view ═══ -->
+    <section id="view-dashboard">
+        <div class="dashboard-hero">
+            <h2>SIM Farm Detection Lab</h2>
+            <p>A hands-on cybersecurity training platform. Detect SIM farm operations across three difficulty levels — from blatant to invisible.</p>
+        </div>
+        <div class="level-grid" id="level-grid">
+            <div class="loading"><div class="spinner"></div> Loading levels...</div>
+        </div>
+    </section>
+
+    <!-- ═══ Lab view ═══ -->
+    <section id="view-lab" class="hidden">
+        <div class="lab-header">
+            <div>
+                <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
+                <h2 id="lab-title" class="mt-1"></h2>
+            </div>
+            <div id="lab-stats" class="game-stats"></div>
+        </div>
+
+        <!-- Briefing -->
+        <div class="briefing-box" id="lab-briefing"></div>
+
+        <!-- Tab bar -->
+        <div class="tab-bar" id="lab-tabs">
+            <button class="active" data-tab="tab-data" onclick="switchTab(this)">Data Explorer</button>
+            <button data-tab="tab-analysis" onclick="switchTab(this)">Analysis Tools</button>
+            <button data-tab="tab-exercises" onclick="switchTab(this)">Exercises</button>
+            <button data-tab="tab-phishing" id="phishing-tab-btn" class="hidden" onclick="switchTab(this)">Phishing Game</button>
+        </div>
+
+        <!-- Tab: Data Explorer -->
+        <div class="tab-panel active" id="tab-data">
+            <div class="tab-bar" id="data-sub-tabs" style="border-color: var(--bg-card);">
+                <button class="active" data-tab="subtab-sims" onclick="switchSubTab(this)">SIM Cards</button>
+                <button data-tab="subtab-cdrs" onclick="switchSubTab(this)">CDRs</button>
+                <button data-tab="subtab-netlogs" onclick="switchSubTab(this)">Network Logs</button>
+            </div>
+            <div class="tab-panel active" id="subtab-sims">
+                <div id="sims-table-container"><div class="loading"><div class="spinner"></div> Loading SIM data...</div></div>
+            </div>
+            <div class="tab-panel" id="subtab-cdrs">
+                <div id="cdrs-table-container"><div class="loading"><div class="spinner"></div> Loading CDR data...</div></div>
+            </div>
+            <div class="tab-panel" id="subtab-netlogs">
+                <div id="netlogs-table-container"><div class="loading"><div class="spinner"></div> Loading network logs...</div></div>
+            </div>
+        </div>
+
+        <!-- Tab: Analysis Tools -->
+        <div class="tab-panel" id="tab-analysis">
+            <div class="analysis-grid" id="analysis-grid"></div>
+            <div id="analysis-result-container"></div>
+        </div>
+
+        <!-- Tab: Exercises -->
+        <div class="tab-panel" id="tab-exercises">
+            <div class="exercise-list" id="exercise-list"></div>
+        </div>
+
+        <!-- Tab: Phishing Game (Legendary only) -->
+        <div class="tab-panel" id="tab-phishing">
+            <div id="phishing-container"></div>
+        </div>
+    </section>
+</main>
+
+<script src="/js/api.js"></script>
+<script src="/js/dashboard.js"></script>
+<script src="/js/lab.js"></script>
+<script src="/js/phishing.js"></script>
+<script src="/js/app.js"></script>
+
+</body>
+</html>
