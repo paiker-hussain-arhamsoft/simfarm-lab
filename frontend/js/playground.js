@@ -7,6 +7,7 @@ async function showPlayground() {
     document.getElementById('view-dashboard').classList.add('hidden');
     document.getElementById('view-lab').classList.add('hidden');
     document.getElementById('view-playground').classList.remove('hidden');
+    document.getElementById('view-uk-demo').classList.add('hidden');
     document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
     document.getElementById('nav-playground').classList.add('active');
 

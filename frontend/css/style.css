@@ -1214,6 +1214,250 @@ body {
     border-bottom: none;
 }
 
+/* ── UK Demo ────────────────────────────── */
+
+.uk-scenarios-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+}
+
+.uk-scenario-card {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1.5rem;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.uk-scenario-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+.uk-scenario-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.uk-party-badge {
+    display: inline-block;
+    padding: 3px 12px;
+    border-radius: 20px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.uk-election-type {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.uk-scenario-card h3 {
+    margin: 0 0 4px;
+    font-size: 1.3rem;
+}
+
+.uk-subtitle {
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+    margin: 0 0 10px;
+}
+
+.uk-objective {
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+
+.uk-card-footer {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    font-size: 0.8rem;
+    color: var(--accent-cyan);
+    font-weight: 500;
+}
+
+.uk-reg-box {
+    background: var(--bg-card);
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    border-left: 4px solid var(--accent-cyan);
+}
+
+.uk-reg-box h4 {
+    margin: 0 0 8px;
+    font-size: 1rem;
+}
+
+.uk-reg-highlight {
+    color: var(--accent-red);
+    font-weight: 700;
+    font-size: 0.95rem;
+    margin-bottom: 6px;
+}
+
+.uk-laws {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.uk-law-badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    border: 1px solid var(--border);
+}
+
+.uk-objective-box {
+    background: var(--bg-secondary);
+    border-radius: 8px;
+    padding: 12px 16px;
+    margin: 16px 0;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    border-left: 3px solid var(--accent-cyan);
+}
+
+.uk-section {
+    margin-top: 24px;
+}
+
+.uk-section-title {
+    font-size: 0.95rem;
+    color: var(--accent-cyan);
+    margin-bottom: 12px;
+}
+
+.pg-cost-title {
+    font-size: 0.95rem;
+    color: var(--accent-green);
+    margin-bottom: 12px;
+}
+
+.pg-notes-title {
+    font-size: 0.95rem;
+    color: var(--accent-blue);
+    margin-bottom: 12px;
+}
+
+.pg-cost-total {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 0 6px;
+    font-weight: 700;
+    color: var(--accent-green);
+    border-top: 2px solid var(--accent-green);
+    margin-top: 4px;
+    font-size: 0.9rem;
+}
+
+.uk-info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 10px;
+}
+
+.uk-info-item {
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    padding: 8px 12px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+}
+
+.uk-info-item strong {
+    color: var(--text-primary);
+}
+
+.uk-messages-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 8px;
+}
+
+.uk-message-card {
+    background: var(--bg-secondary);
+    padding: 10px 14px;
+    border-radius: 6px;
+    font-size: 0.82rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.uk-constituency-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.uk-constituency-badge {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    background: var(--bg-secondary);
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+}
+
+.uk-timeline {
+    position: relative;
+    padding-left: 0;
+}
+
+.uk-timeline-item {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 16px;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 8px;
+}
+
+.uk-timeline-week {
+    min-width: 80px;
+    font-weight: 700;
+    font-size: 0.82rem;
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+}
+
+.uk-timeline-body {
+    flex: 1;
+}
+
+.uk-timeline-body strong {
+    display: block;
+    margin-bottom: 4px;
+    font-size: 0.88rem;
+}
+
+.uk-timeline-body p {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
 /* ── Responsive ─────────────────────────── */
 
 @media (max-width: 768px) {
@@ -1222,4 +1466,5 @@ body {
     .level-grid { grid-template-columns: 1fr; }
     .phishing-game { grid-template-columns: 1fr; }
     .game-stats { flex-wrap: wrap; }
+    .uk-scenarios-grid { grid-template-columns: 1fr; }
 }
