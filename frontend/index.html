@@ -20,6 +20,7 @@
         <button id="nav-lab" onclick="showLab()">Lab</button>
         <button id="nav-playground" onclick="showPlayground()">Playground</button>
         <button id="nav-uk-demo" onclick="showUkDemo()">UK Demo</button>
+        <button id="nav-legendary" onclick="showLegendary()">Legendary</button>
     </nav>
 </header>
 
@@ -136,6 +137,53 @@
         <div id="uk-scenarios" class="uk-scenarios-grid"></div>
         <div id="uk-result"></div>
     </section>
+
+    <!-- ═══ Legendary Detection Module ═══ -->
+    <section id="view-legendary" class="hidden">
+        <div class="lab-header">
+            <div>
+                <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
+                <h2 class="mt-1">Legendary Detection Module</h2>
+                <p class="text-muted" style="margin-top:4px;">Advanced SIM farm threat intelligence — TTP reference library and forensic investigation scenarios.</p>
+            </div>
+        </div>
+
+        <div class="briefing-box" style="border-left-color: var(--accent-red);">
+            <strong style="color: var(--accent-red);">CLASSIFIED — INSTRUCTOR-SUPERVISED ACCESS ONLY</strong><br><br>
+            This module contains advanced threat intelligence documentation for detecting near-undetectable
+            SIM farm operations. Content is structured as a defender's reference following the MITRE ATT&CK
+            framework. Each technique includes: technical definition, indicators of compromise, detection
+            methods, countermeasures, and analysis of how operators disguise their activities.
+            <br><br>
+            <em>Accessible only by authorised students under oath and direct instructor supervision.
+            Misuse constitutes a violation of Computer Misuse Act 1990, PECA 2016, and institutional conduct codes.</em>
+        </div>
+
+        <!-- Sub-tabs -->
+        <div class="tab-bar" id="legendary-tabs">
+            <button class="active" data-tab="leg-tab-ttps" onclick="switchLegendaryTab(this)">TTP Library</button>
+            <button data-tab="leg-tab-scenarios" onclick="switchLegendaryTab(this)">Investigation Scenarios</button>
+            <button data-tab="leg-tab-killchain" onclick="switchLegendaryTab(this)">Kill Chain Map</button>
+        </div>
+
+        <!-- Tab: TTP Library -->
+        <div class="leg-tab-panel active" id="leg-tab-ttps">
+            <div class="ttp-filter-bar" id="ttp-filter-bar"></div>
+            <div class="ttp-list" id="ttp-list"></div>
+            <div class="ttp-detail-container hidden" id="ttp-detail-container"></div>
+        </div>
+
+        <!-- Tab: Investigation Scenarios -->
+        <div class="leg-tab-panel" id="leg-tab-scenarios">
+            <div class="scenario-grid" id="scenario-grid"></div>
+            <div class="scenario-active hidden" id="scenario-active"></div>
+        </div>
+
+        <!-- Tab: Kill Chain Map -->
+        <div class="leg-tab-panel" id="leg-tab-killchain">
+            <div class="killchain-container" id="killchain-container"></div>
+        </div>
+    </section>
 </main>
 
 <script src="/js/api.js"></script>
@@ -144,6 +192,7 @@
 <script src="/js/phishing.js"></script>
 <script src="/js/playground.js"></script>
 <script src="/js/uk_demo.js"></script>
+<script src="/js/legendary.js"></script>
 <script src="/js/app.js"></script>
 
 </body>

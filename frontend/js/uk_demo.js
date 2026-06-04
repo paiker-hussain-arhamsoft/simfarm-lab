@@ -6,9 +6,7 @@ let ukSimTimer = null;
 let ukSimSpeed = 1;
 
 async function showUkDemo() {
-    document.getElementById('view-dashboard').classList.add('hidden');
-    document.getElementById('view-lab').classList.add('hidden');
-    document.getElementById('view-playground').classList.add('hidden');
+    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
     document.getElementById('view-uk-demo').classList.remove('hidden');
     document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
     document.getElementById('nav-uk-demo').classList.add('active');
