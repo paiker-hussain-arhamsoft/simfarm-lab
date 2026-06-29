@@ -100,6 +100,11 @@ def _generate_residential_ip() -> str:
     return f"{prefix[0]}.{random.randint(1,254)}.{random.randint(1,254)}.{random.randint(1,254)}"
 
 
+def _random_external_msisdn() -> str:
+    """A one-off number outside the observed population (no relationship to us)."""
+    return f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}"
+
+
 def generate_sim_cards(count: int = 100) -> list[SIMCard]:
     """Each SIM card is indistinguishable from a real user's."""
     cards: list[SIMCard] = []
@@ -175,8 +180,35 @@ def _generate_persona_traffic(
     sim: SIMCard,
     base_time: datetime,
     hours: int,
+    contacts: list[str] | None = None,
+    is_farm: bool = False,
 ) -> list[CDR]:
-    """Generate human-realistic traffic for a single SIM based on persona."""
+    """Generate human-realistic traffic for a single SIM based on persona.
+
+    The ``contacts`` list models this subscriber's social graph:
+
+    * Legitimate subscribers draw both their outbound *and* inbound human
+      SMS/voice partners from a shared community pool, so their ego-network is
+      reciprocal (people they text also text them) and clustered (their
+      contacts know each other).
+    * Farm lines mostly emit to one-off external numbers that never reply and
+      do not know each other (a low-reciprocity, star-shaped ego-network).
+      A small amount of operator cross-chatter is injected as realistic noise
+      so the signal is subtle rather than a clean binary split.
+
+    This relationship structure is what the ``contact_graph`` detection tool
+    surfaces, and it is the only purely-technical lead against the Ghost Farm.
+    """
+    contacts = contacts or []
+
+    def _partner(default_external: bool) -> str:
+        # Legit lines always talk within their community.
+        if not is_farm and contacts:
+            return random.choice(contacts)
+        # Farm lines: rare operator cross-chatter, otherwise one-off externals.
+        if is_farm and contacts and random.random() < 0.18:
+            return random.choice(contacts)
+        return _random_external_msisdn()
     persona_cfg = None
     for p in PERSONAS:
         if p["type"] == sim.metadata.get("persona"):
@@ -246,15 +278,22 @@ def _generate_persona_traffic(
                      "call me", "lol", "thanks", "see you", "meeting at 3"]
             sms_hash = hashlib.sha256(random.choice(msgs).encode()).hexdigest()[:16]
 
-        # Contacts: farm SIMs mostly message external numbers, like real users
-        dest = f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}"
+        # Direction determines which side of the edge this line is on. Inbound
+        # records (someone -> us) carry the partner as the source; outbound
+        # records (us -> someone) carry the partner as the destination.
+        if traffic == TrafficType.DATA:
+            src_msisdn, dst_msisdn = sim.msisdn, ""
+        elif traffic in (TrafficType.SMS_OUT, TrafficType.VOICE_OUT):
+            src_msisdn, dst_msisdn = sim.msisdn, _partner(default_external=True)
+        else:  # SMS_IN / VOICE_IN
+            src_msisdn, dst_msisdn = _partner(default_external=True), sim.msisdn
 
         records.append(
             CDR(
                 record_id=str(uuid.uuid4()),
                 timestamp=current_time.isoformat(),
-                source_msisdn=sim.msisdn,
-                destination_msisdn=dest,
+                source_msisdn=src_msisdn,
+                destination_msisdn=dst_msisdn,
                 traffic_type=traffic,
                 duration_seconds=duration,
                 cell_tower_id=tower,
@@ -273,6 +312,30 @@ def _generate_persona_traffic(
     return records
 
 
+def _build_communities(sims: list[SIMCard], size_range: tuple[int, int] = (9, 14)) -> dict[str, list[str]]:
+    """Partition subscribers into overlapping social communities.
+
+    Each subscriber's contacts are drawn from its community, which makes the
+    resulting contact graph reciprocal and clustered (real users' contacts tend
+    to know each other).
+    """
+    pool = [s.msisdn for s in sims]
+    random.shuffle(pool)
+    contacts_map: dict[str, list[str]] = {}
+    i = 0
+    while i < len(pool):
+        size = random.randint(*size_range)
+        community = pool[i:i + size]
+        # Bridge tiny trailing communities into the previous one.
+        if len(community) < 4 and contacts_map:
+            community = community + pool[max(0, i - size):i][:4]
+        for m in community:
+            peers = [p for p in community if p != m]
+            contacts_map[m] = peers
+        i += size
+    return contacts_map
+
+
 def generate_cdrs(
     farm_sims: list[SIMCard],
     legit_sims: list[SIMCard],
@@ -281,11 +344,36 @@ def generate_cdrs(
     records: list[CDR] = []
     base_time = datetime(2026, 5, 10, 0, 0, 0)
 
+    # Legitimate subscribers live inside reciprocal, clustered communities.
+    legit_contacts = _build_communities(legit_sims)
+
+    # ~18% of farm lines get a couple of "operator cross-chatter" contacts
+    # (other farm lines), which blurs the reciprocity signal so the cohort is
+    # not a clean binary split. The rest talk only to one-off externals.
+    farm_msisdns = [s.msisdn for s in farm_sims]
+    farm_contacts: dict[str, list[str]] = {}
+    for s in farm_sims:
+        if random.random() < 0.18 and len(farm_msisdns) > 3:
+            peers = random.sample([m for m in farm_msisdns if m != s.msisdn], k=2)
+            farm_contacts[s.msisdn] = peers
+
     for sim in farm_sims:
-        records.extend(_generate_persona_traffic(sim, base_time, hours))
+        records.extend(
+            _generate_persona_traffic(
+                sim, base_time, hours,
+                contacts=farm_contacts.get(sim.msisdn, []),
+                is_farm=True,
+            )
+        )
 
     for sim in legit_sims:
-        records.extend(_generate_persona_traffic(sim, base_time, hours))
+        records.extend(
+            _generate_persona_traffic(
+                sim, base_time, hours,
+                contacts=legit_contacts.get(sim.msisdn, []),
+                is_farm=False,
+            )
+        )
 
     records.sort(key=lambda r: r.timestamp)
     return records
@@ -430,24 +518,27 @@ def generate_scenario() -> dict:
         "level": Level.LEGENDARY.value,
         "name": "The Ghost Farm",
         "description": (
-            "A SIM farm is rumored to be operating in the city, but all conventional "
-            "detection methods have failed. The traffic is indistinguishable from "
-            "legitimate users. Statistical analysis, pattern matching, and network "
-            "forensics will all come up empty. The only way to uncover this operation "
-            "is through human intelligence — social engineering an insider."
+            "A SIM farm is rumored to be operating in the city. Every conventional "
+            "aggregate detector — tower density, IMEI prefixes, shared IPs, activation "
+            "batches, fixed-interval timing — comes back clean: each line behaves like a "
+            "real subscriber. The farm's one durable weakness is relational: its lines "
+            "talk to one-off numbers that never reply and don't know each other. "
+            "Graph forensics can surface a lead, but only HUMINT confirms the operation."
         ),
         "briefing": (
-            "TOP SECRET BRIEF: All automated detection systems have returned clean. "
-            "Every SIM in the dataset behaves like a real user. Traditional forensics "
-            "cannot distinguish farm SIMs from legitimate ones. Your only option is "
-            "HUMINT — human intelligence gathering. A company called 'NovaCom Digital "
-            "Solutions' has been flagged by a confidential informant as a potential "
-            "front. You must social-engineer employees to obtain evidence of the "
-            "SIM farm operation. Be careful — if the CEO catches wind, the operation "
-            "will go dark permanently."
+            "TOP SECRET BRIEF: All aggregate-statistics detectors have returned clean. "
+            "Per-line behavior is indistinguishable from real users, so basic forensics "
+            "will fail — do not waste time re-running them. Escalate to RELATIONSHIP "
+            "analysis: run the Contact-Graph tool and look for a cohort of lines with "
+            "near-zero contact reciprocity and clustering (they emit to strangers who "
+            "never respond). That cohort is your lead — but it is only a lead. To build "
+            "a referable case you must corroborate via HUMINT: a company called 'NovaCom "
+            "Digital Solutions' has been flagged by a confidential informant as a front. "
+            "Social-engineer employees for evidence. Be careful — if the CEO catches "
+            "wind, the operation will go dark permanently."
         ),
         "sim_cards": [s.to_dict() for s in all_sims],
-        "cdrs": [c.to_dict() for c in cdrs[:10000]],
+        "cdrs": [c.to_dict() for c in cdrs[:15000]],
         "network_logs": [n.to_dict() for n in net_logs[:5000]],
         "cell_towers": [t.to_dict() for t in towers],
         "farm_sim_count": len(farm_sims),
@@ -455,7 +546,10 @@ def generate_scenario() -> dict:
         "total_cdrs": len(cdrs),
         "insider_evidence": get_insider_evidence(),
         "detection_note": (
-            "Traditional detection will fail. This level requires the phishing game. "
-            "The farm SIMs are statistically identical to legitimate users."
+            "Aggregate statistics will fail — farm SIMs are statistically identical to "
+            "legitimate users at the single-line level. The one technical lead is the "
+            "contact graph: farm lines have a low-reciprocity, low-clustering, "
+            "star-shaped ego-network. Use the Contact-Graph tool to surface the cohort, "
+            "then corroborate with the Phishing/HUMINT game for proof."
         ),
     }
