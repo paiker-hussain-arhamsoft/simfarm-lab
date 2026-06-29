@@ -21,19 +21,15 @@ async function loadDashboard() {
 }
 
 function showDashboard() {
+    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
     document.getElementById('view-dashboard').classList.remove('hidden');
-    document.getElementById('view-lab').classList.add('hidden');
-    document.getElementById('view-playground').classList.add('hidden');
-    document.getElementById('view-uk-demo').classList.add('hidden');
     document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
     document.getElementById('nav-dashboard').classList.add('active');
 }
 
 function showLab() {
-    document.getElementById('view-dashboard').classList.add('hidden');
+    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
     document.getElementById('view-lab').classList.remove('hidden');
-    document.getElementById('view-playground').classList.add('hidden');
-    document.getElementById('view-uk-demo').classList.add('hidden');
     document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
     document.getElementById('nav-lab').classList.add('active');
 }

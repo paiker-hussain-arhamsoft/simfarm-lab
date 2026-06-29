@@ -37,6 +37,17 @@ from backend.simulator.uk_demo import (
     get_uk_demo_scenarios,
     get_uk_playground_options,
 )
+from backend.legendary.ttp_database import (
+    get_all_ttps,
+    get_categories,
+    get_ttp_by_id,
+    get_ttps_by_category,
+)
+from backend.legendary.detection_scenarios import (
+    check_answer,
+    get_all_scenarios,
+    get_scenario_detail,
+)
 
 app = FastAPI(
     title="SimFarm Security Lab",
@@ -406,6 +417,59 @@ def uk_simulate(scenario_id: str):
     if not events:
         raise HTTPException(status_code=404, detail=f"Unknown scenario: {scenario_id}")
     return {"events": events, "total": len(events)}
+
+
+# ── Legendary Detection Module endpoints ───────────────────────────
+
+
+@app.get("/api/legendary/ttps")
+def legendary_ttp_list(category: Optional[str] = None):
+    """List all TTPs, optionally filtered by category."""
+    if category:
+        return {"ttps": get_ttps_by_category(category)}
+    return {"ttps": get_all_ttps()}
+
+
+@app.get("/api/legendary/ttps/categories")
+def legendary_ttp_categories():
+    """List all TTP categories with counts."""
+    return {"categories": get_categories()}
+
+
+@app.get("/api/legendary/ttps/{ttp_id}")
+def legendary_ttp_detail(ttp_id: str):
+    """Get a single TTP entry by ID."""
+    ttp = get_ttp_by_id(ttp_id)
+    if not ttp:
+        raise HTTPException(status_code=404, detail=f"TTP not found: {ttp_id}")
+    return ttp
+
+
+@app.get("/api/legendary/scenarios")
+def legendary_scenario_list():
+    """List all detection scenarios."""
+    return {"scenarios": get_all_scenarios()}
+
+
+@app.get("/api/legendary/scenarios/{scenario_id}")
+def legendary_scenario_detail(scenario_id: str):
+    """Get full scenario with evidence and questions."""
+    scenario = get_scenario_detail(scenario_id)
+    if not scenario:
+        raise HTTPException(status_code=404, detail=f"Scenario not found: {scenario_id}")
+    return scenario
+
+
+class LegendaryAnswerSubmission(BaseModel):
+    scenario_id: str
+    question_id: str
+    answer: str
+
+
+@app.post("/api/legendary/scenarios/check")
+def legendary_check_answer(submission: LegendaryAnswerSubmission):
+    """Check a student's answer for a scenario question."""
+    return check_answer(submission.scenario_id, submission.question_id, submission.answer)
 
 
 # ── Static files (frontend) ────────────────────────────────────────
