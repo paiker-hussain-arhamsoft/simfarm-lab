@@ -1,4 +1,4 @@
-modules = ["nodejs-24"]
+modules = ["nodejs-24", "python-3.11"]
 
 [deployment]
 router = "application"
@@ -10,6 +10,26 @@ env = { "CI" = "true" }
 
 [workflows]
 runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "SimFarm Sidecar"
+
+[[workflows.workflow]]
+name = "SimFarm Sidecar"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "(cd references/simfarm-lab && uvicorn backend.main:app --host 0.0.0.0 --port 8000 &) && PORT=8080 pnpm --filter @workspace/api-server run dev"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -30,3 +50,8 @@ externalPort = 80
 [[ports]]
 localPort = 24277
 externalPort = 3000
+
+[userenv]
+
+[userenv.shared]
+SIMFARM_SIDECAR_URL = "http://localhost:8000"

@@ -14,6 +14,7 @@ import ivrRouter from "./ivr";
 import contentRouter from "./content";
 import stealthRouter from "./stealth";
 import memoryRouter from "./memory";
+import simfarmRouter from "./simfarm";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(ivrRouter);
 router.use(contentRouter);
 router.use(stealthRouter);
 router.use(memoryRouter);
+router.use(simfarmRouter);
 
 export default router;
