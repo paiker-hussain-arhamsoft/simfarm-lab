@@ -12,12 +12,17 @@ Near-undetectable closed-system SIM farm:
 
 from __future__ import annotations
 
-import hashlib
 import math
 import random
 import uuid
 from datetime import datetime, timedelta
 
+from .common import (
+    random_us_msisdn,
+    random_timestamp,
+    sms_content_hash,
+    sort_by_timestamp,
+)
 from .models import CDR, CellTower, Level, NetworkLog, SIMCard, TrafficType
 
 # Towers span entire metro — farm SIMs use ALL of them, just like real users
@@ -102,7 +107,7 @@ def _generate_residential_ip() -> str:
 
 def _random_external_msisdn() -> str:
     """A one-off number outside the observed population (no relationship to us)."""
-    return f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}"
+    return random_us_msisdn()
 
 
 def generate_sim_cards(count: int = 100) -> list[SIMCard]:
@@ -128,7 +133,7 @@ def generate_sim_cards(count: int = 100) -> list[SIMCard]:
         cards.append(
             SIMCard(
                 iccid=f"8901{random.randint(100, 999)}{random.randint(10**12, 10**13-1)}",
-                msisdn=f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}",
+                msisdn=random_us_msisdn(),
                 imsi=f"31{random.choice(['026', '041', '058', '070'])}{random.randint(10**8, 10**9-1)}",
                 imei=_generate_unique_imei(),
                 activation_date=activation.strftime("%Y-%m-%d"),
@@ -158,7 +163,7 @@ def generate_legitimate_sims(count: int = 150) -> list[SIMCard]:
         cards.append(
             SIMCard(
                 iccid=f"8901{random.randint(100, 999)}{random.randint(10**12, 10**13-1)}",
-                msisdn=f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}",
+                msisdn=random_us_msisdn(),
                 imsi=f"31{random.choice(['026', '041', '058', '070'])}{random.randint(10**8, 10**9-1)}",
                 imei=_generate_unique_imei(),
                 activation_date=activation.strftime("%Y-%m-%d"),
@@ -276,7 +281,7 @@ def _generate_persona_traffic(
         else:
             msgs = ["hey", "ok", "sure", "on my way", "running late",
                      "call me", "lol", "thanks", "see you", "meeting at 3"]
-            sms_hash = hashlib.sha256(random.choice(msgs).encode()).hexdigest()[:16]
+            sms_hash = sms_content_hash(random.choice(msgs))
 
         # Direction determines which side of the edge this line is on. Inbound
         # records (someone -> us) carry the partner as the source; outbound
@@ -375,8 +380,7 @@ def generate_cdrs(
             )
         )
 
-    records.sort(key=lambda r: r.timestamp)
-    return records
+    return sort_by_timestamp(records)
 
 
 def generate_network_logs(
@@ -401,10 +405,7 @@ def generate_network_logs(
     for sim in all_sims:
         num_logs = random.randint(20, 100)
         for _ in range(num_logs):
-            ts = base_time + timedelta(
-                hours=random.randint(0, hours - 1),
-                minutes=random.randint(0, 59),
-            )
+            ts = random_timestamp(base_time, hours, with_seconds=False)
             dest_ip, port, proto = random.choice(common_destinations)
             logs.append(
                 NetworkLog(
@@ -418,8 +419,7 @@ def generate_network_logs(
                 )
             )
 
-    logs.sort(key=lambda l: l.timestamp)
-    return logs
+    return sort_by_timestamp(logs)
 
 
 def get_insider_evidence() -> dict:

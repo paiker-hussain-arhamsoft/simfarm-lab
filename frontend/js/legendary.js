@@ -8,10 +8,7 @@ let scenarioAnswers = {};
 // ── Navigation ─────────────────────────────────────────────────────
 
 function showLegendary() {
-    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
-    document.getElementById('view-legendary').classList.remove('hidden');
-    document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('nav-legendary').classList.add('active');
+    showView('view-legendary', 'nav-legendary');
     loadLegendaryTTPs();
     loadLegendaryScenarios();
 }

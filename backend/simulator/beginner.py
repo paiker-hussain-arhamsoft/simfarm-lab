@@ -11,11 +11,17 @@ Generates blatantly detectable SIM farm activity:
 
 from __future__ import annotations
 
-import hashlib
 import random
 import uuid
 from datetime import datetime, timedelta
 
+from .common import (
+    random_us_msisdn,
+    random_public_ipv4,
+    random_timestamp,
+    sms_content_hash,
+    sort_by_timestamp,
+)
 from .models import CDR, CellTower, Level, NetworkLog, SIMCard, TrafficType
 
 FARM_TOWER = CellTower(
@@ -45,10 +51,6 @@ def _seq_imei(index: int) -> str:
 
 def _generate_msisdn(index: int) -> str:
     return f"+1555{index:07d}"
-
-
-def _random_external_msisdn() -> str:
-    return f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}"
 
 
 def generate_sim_cards(count: int = 200) -> list[SIMCard]:
@@ -83,12 +85,12 @@ def generate_legitimate_sims(count: int = 50) -> list[SIMCard]:
         cards.append(
             SIMCard(
                 iccid=f"8901550{random.randint(10**12, 10**13-1)}",
-                msisdn=f"+1{random.randint(200,999)}{random.randint(1000000,9999999)}",
+                msisdn=random_us_msisdn(),
                 imsi=f"310550{random.randint(10**8, 10**9-1)}",
                 imei=f"{random.randint(10**14, 10**15-1)}",
                 activation_date=activation.strftime("%Y-%m-%d"),
                 cell_tower_id=tower.tower_id,
-                ip_address=f"{random.randint(1,223)}.{random.randint(0,255)}.{random.randint(0,255)}.{random.randint(1,254)}",
+                ip_address=random_public_ipv4(),
                 device_model=random.choice(models),
                 is_sim_farm=False,
             )
@@ -115,13 +117,13 @@ def generate_cdrs(
                     record_id=str(uuid.uuid4()),
                     timestamp=ts.isoformat(),
                     source_msisdn=sim.msisdn,
-                    destination_msisdn=_random_external_msisdn(),
+                    destination_msisdn=random_us_msisdn(),
                     traffic_type=TrafficType.SMS_OUT,
                     duration_seconds=0,
                     cell_tower_id=sim.cell_tower_id,
                     imei=sim.imei,
                     ip_address=sim.ip_address,
-                    sms_content_hash=hashlib.sha256(content.encode()).hexdigest()[:16],
+                    sms_content_hash=sms_content_hash(content),
                 )
             )
 
@@ -129,11 +131,7 @@ def generate_cdrs(
     for sim in legit_sims:
         num_events = random.randint(5, 40)
         for _ in range(num_events):
-            ts = base_time + timedelta(
-                hours=random.randint(0, hours - 1),
-                minutes=random.randint(0, 59),
-                seconds=random.randint(0, 59),
-            )
+            ts = random_timestamp(base_time, hours)
             traffic = random.choices(
                 [TrafficType.SMS_OUT, TrafficType.VOICE_OUT, TrafficType.DATA],
                 weights=[0.3, 0.4, 0.3],
@@ -149,7 +147,7 @@ def generate_cdrs(
                     record_id=str(uuid.uuid4()),
                     timestamp=ts.isoformat(),
                     source_msisdn=sim.msisdn,
-                    destination_msisdn=_random_external_msisdn(),
+                    destination_msisdn=random_us_msisdn(),
                     traffic_type=traffic,
                     duration_seconds=duration,
                     cell_tower_id=sim.cell_tower_id,
@@ -159,8 +157,7 @@ def generate_cdrs(
                 )
             )
 
-    records.sort(key=lambda r: r.timestamp)
-    return records
+    return sort_by_timestamp(records)
 
 
 def generate_network_logs(
@@ -186,8 +183,7 @@ def generate_network_logs(
                     flags="PSH,ACK",
                 )
             )
-    logs.sort(key=lambda l: l.timestamp)
-    return logs
+    return sort_by_timestamp(logs)
 
 
 def get_cell_towers() -> list[CellTower]:

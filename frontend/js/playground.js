@@ -4,10 +4,7 @@ let pgOptions = null;
 let pgResult = null;
 
 async function showPlayground() {
-    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
-    document.getElementById('view-playground').classList.remove('hidden');
-    document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('nav-playground').classList.add('active');
+    showView('view-playground', 'nav-playground');
 
     if (!pgOptions) {
         await loadPlaygroundOptions();
@@ -225,8 +222,7 @@ async function buildFarm() {
 }
 
 function renderFarmResult(r) {
-    const gradeColors = { S: '#a855f7', A: '#22c55e', B: '#f59e0b', C: '#f97316', F: '#ef4444' };
-    const gradeColor = gradeColors[r.stealth_grade] || '#888';
+    const gradeColor = stealthGradeColor(r.stealth_grade);
 
     const warningsHtml = r.warnings.length
         ? `<div class="pg-warnings">${r.warnings.map(w => `<div class="pg-warning">${w}</div>`).join('')}</div>`
