@@ -328,14 +328,15 @@ export default function ComplianceGateway() {
           All activity is recorded for compliance and audit purposes.
         </p>
 
-        <p className="text-center mt-3">
-          <a
-            href="/admin"
-            className="text-xs text-muted-foreground/50 hover:text-muted-foreground transition-colors"
-          >
-            Admin
-          </a>
-        </p>
+        <div className="flex items-center justify-center gap-3 mt-4 text-[10px] text-muted-foreground/50">
+          <a href="/privacy-policy" className="hover:text-muted-foreground transition-colors">Privacy Policy</a>
+          <span>&bull;</span>
+          <a href="/user-agreement" className="hover:text-muted-foreground transition-colors">User Agreement</a>
+          <span>&bull;</span>
+          <a href="/documentation" className="hover:text-muted-foreground transition-colors">Documentation</a>
+          <span>&bull;</span>
+          <a href="/admin" className="hover:text-muted-foreground transition-colors">Admin</a>
+        </div>
       </div>
     </div>
   );

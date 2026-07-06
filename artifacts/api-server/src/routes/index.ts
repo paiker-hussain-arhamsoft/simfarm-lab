@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import activityRouter from "./activity";
 import adminRouter from "./admin";
+import authRouter from "./auth";
 import agentsRouter from "./agents";
 import intelligenceRouter from "./intelligence";
 import mediaRouter from "./media";
@@ -19,6 +20,7 @@ import simfarmRouter from "./simfarm";
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(authRouter);
 router.use(activityRouter);
 router.use(adminRouter);
 router.use(agentsRouter);
