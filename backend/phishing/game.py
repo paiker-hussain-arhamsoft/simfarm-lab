@@ -263,7 +263,7 @@ def _evaluate_email_quality(subject: str, body: str, pretext: str) -> float:
     # Professional tone
     if len(body) > 100 and len(body) < 2000:
         score += 0.1
-    if body[0].isupper() and body.rstrip().endswith((".", "!", "?")):
+    if body and body[0].isupper() and body.rstrip().endswith((".", "!", "?")):
         score += 0.05
 
     # Urgency (helps but not too much)

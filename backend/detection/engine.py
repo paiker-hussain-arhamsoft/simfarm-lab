@@ -8,7 +8,9 @@ from datetime import datetime
 
 def analyze_tower_distribution(sim_cards: list[dict]) -> dict:
     """Count SIMs per cell tower."""
-    tower_counts = Counter(s["cell_tower_id"] for s in sim_cards)
+    if not sim_cards:
+        return {"tower_distribution": {}, "total_sims": 0, "unique_towers": 0, "avg_sims_per_tower": 0}
+    tower_counts = Counter(s.get("cell_tower_id", "unknown") for s in sim_cards)
     return {
         "tower_distribution": dict(tower_counts.most_common()),
         "total_sims": len(sim_cards),
@@ -19,9 +21,11 @@ def analyze_tower_distribution(sim_cards: list[dict]) -> dict:
 
 def analyze_imei_patterns(sim_cards: list[dict]) -> dict:
     """Analyze IMEI distribution for sequential/duplicate patterns."""
-    imeis = [s["imei"] for s in sim_cards]
-    prefixes = Counter(imei[:7] for imei in imeis)
-    models = Counter(s["device_model"] for s in sim_cards)
+    if not sim_cards:
+        return {"imei_prefix_distribution": {}, "device_model_distribution": {}, "unique_imeis": 0, "total_sims": 0, "duplicate_imeis": 0}
+    imeis = [s.get("imei", "") for s in sim_cards]
+    prefixes = Counter(imei[:7] for imei in imeis if imei)
+    models = Counter(s.get("device_model", "unknown") for s in sim_cards)
     return {
         "imei_prefix_distribution": dict(prefixes.most_common(10)),
         "device_model_distribution": dict(models.most_common(10)),
@@ -33,7 +37,9 @@ def analyze_imei_patterns(sim_cards: list[dict]) -> dict:
 
 def analyze_activation_dates(sim_cards: list[dict]) -> dict:
     """Analyze SIM activation date clusters."""
-    date_counts = Counter(s["activation_date"] for s in sim_cards)
+    if not sim_cards:
+        return {"activation_timeline": {}, "peak_date": None, "date_spread_days": 0, "total_sims": 0}
+    date_counts = Counter(s.get("activation_date", "unknown") for s in sim_cards)
     sorted_dates = sorted(date_counts.items())
     return {
         "activation_timeline": dict(sorted_dates),
@@ -46,14 +52,19 @@ def analyze_activation_dates(sim_cards: list[dict]) -> dict:
 def _date_spread(sorted_dates: list) -> int:
     if len(sorted_dates) < 2:
         return 0
-    first = datetime.strptime(sorted_dates[0][0], "%Y-%m-%d")
-    last = datetime.strptime(sorted_dates[-1][0], "%Y-%m-%d")
-    return (last - first).days
+    try:
+        first = datetime.strptime(sorted_dates[0][0], "%Y-%m-%d")
+        last = datetime.strptime(sorted_dates[-1][0], "%Y-%m-%d")
+        return (last - first).days
+    except (ValueError, TypeError):
+        return 0
 
 
 def analyze_ip_distribution(sim_cards: list[dict]) -> dict:
     """Analyze IP address sharing patterns."""
-    ip_counts = Counter(s["ip_address"] for s in sim_cards)
+    if not sim_cards:
+        return {"ip_distribution": {}, "shared_ips": {}, "unique_ips": 0, "sims_on_shared_ips": 0}
+    ip_counts = Counter(s.get("ip_address", "unknown") for s in sim_cards)
     shared_ips = {ip: count for ip, count in ip_counts.items() if count > 1}
     return {
         "ip_distribution": dict(ip_counts.most_common(20)),
@@ -65,9 +76,11 @@ def analyze_ip_distribution(sim_cards: list[dict]) -> dict:
 
 def analyze_traffic_patterns(cdrs: list[dict]) -> dict:
     """Analyze traffic type distribution per MSISDN."""
+    if not cdrs:
+        return {"sms_heavy_sims": 0, "balanced_sims": 0, "total_analyzed": 0, "sample_sms_heavy": []}
     per_msisdn: dict[str, Counter] = defaultdict(Counter)
     for cdr in cdrs:
-        per_msisdn[cdr["source_msisdn"]][cdr["traffic_type"]] += 1
+        per_msisdn[cdr.get("source_msisdn", "unknown")][cdr.get("traffic_type", "unknown")] += 1
 
     sms_heavy = []
     balanced = []
@@ -90,10 +103,12 @@ def analyze_traffic_patterns(cdrs: list[dict]) -> dict:
 
 def analyze_temporal_patterns(cdrs: list[dict]) -> dict:
     """Analyze timing patterns — look for regular intervals."""
+    if not cdrs:
+        return {"regular_senders": 0, "total_analyzed": 0, "sample_regular": []}
     per_msisdn: dict[str, list[str]] = defaultdict(list)
     for cdr in cdrs:
-        if cdr["traffic_type"] == "sms_out":
-            per_msisdn[cdr["source_msisdn"]].append(cdr["timestamp"])
+        if cdr.get("traffic_type") == "sms_out":
+            per_msisdn[cdr.get("source_msisdn", "unknown")].append(cdr.get("timestamp", ""))
 
     regular_senders = []
     for msisdn, timestamps in per_msisdn.items():
@@ -102,8 +117,11 @@ def analyze_temporal_patterns(cdrs: list[dict]) -> dict:
         timestamps.sort()
         intervals = []
         for i in range(1, min(len(timestamps), 20)):
-            t1 = datetime.fromisoformat(timestamps[i - 1])
-            t2 = datetime.fromisoformat(timestamps[i])
+            try:
+                t1 = datetime.fromisoformat(timestamps[i - 1])
+                t2 = datetime.fromisoformat(timestamps[i])
+            except (ValueError, TypeError):
+                continue
             intervals.append((t2 - t1).total_seconds())
 
         if intervals:
@@ -127,9 +145,11 @@ def analyze_temporal_patterns(cdrs: list[dict]) -> dict:
 
 def analyze_imei_changes(cdrs: list[dict]) -> dict:
     """Track IMEI changes per MSISDN across CDRs."""
+    if not cdrs:
+        return {"sims_with_imei_changes": 0, "total_analyzed": 0, "sample_changers": {}}
     per_msisdn: dict[str, set[str]] = defaultdict(set)
     for cdr in cdrs:
-        per_msisdn[cdr["source_msisdn"]].add(cdr["imei"])
+        per_msisdn[cdr.get("source_msisdn", "unknown")].add(cdr.get("imei", "unknown"))
 
     changers = {
         msisdn: list(imeis)

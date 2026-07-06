@@ -351,6 +351,11 @@ class FarmConfig:
 def calculate_farm_metrics(config: FarmConfig) -> dict:
     """Calculate the farm's operational metrics and detection risk."""
 
+    # Validate carrier keys upfront
+    invalid_carriers = [c for c in config.carriers if c not in CARRIERS]
+    if invalid_carriers:
+        raise KeyError(f"Unknown carrier(s): {', '.join(invalid_carriers)}")
+
     # SIM capacity from hardware
     total_sim_slots = 0
     total_hardware_cost = 0
