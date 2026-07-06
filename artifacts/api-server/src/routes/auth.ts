@@ -9,20 +9,27 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-const AUTH_USERNAME = process.env.AUTH_USERNAME;
+const AUTH_USERNAME = process.env.AUTH_USERNAME ?? "oeads_admin";
 const AUTH_PASSWORD = process.env.AUTH_PASSWORD;
 const AUTH_PORTAL_KEY = process.env.AUTH_PORTAL_KEY;
 
-if (!AUTH_USERNAME || !AUTH_PASSWORD || !AUTH_PORTAL_KEY) {
-  throw new Error(
-    "OEADS auth is not configured. Set AUTH_USERNAME, AUTH_PASSWORD, and AUTH_PORTAL_KEY environment variables before starting the server."
+const AUTH_CONFIGURED = !!(AUTH_PASSWORD && AUTH_PORTAL_KEY);
+const AUTH_PASSWORD_HASH = AUTH_PASSWORD ? sha256(AUTH_PASSWORD) : null;
+const AUTH_PORTAL_KEY_HASH = AUTH_PORTAL_KEY ? sha256(AUTH_PORTAL_KEY) : null;
+
+if (!AUTH_CONFIGURED) {
+  console.warn(
+    "[auth] WARNING: AUTH_PASSWORD and AUTH_PORTAL_KEY secrets are not set. " +
+    "Login endpoint will return 503 until both secrets are configured."
   );
 }
 
-const AUTH_PASSWORD_HASH = sha256(AUTH_PASSWORD);
-const AUTH_PORTAL_KEY_HASH = sha256(AUTH_PORTAL_KEY);
-
 router.post("/api/auth/login", (req, res) => {
+  if (!AUTH_CONFIGURED) {
+    res.status(503).json({ error: "Authentication not configured — set AUTH_PASSWORD and AUTH_PORTAL_KEY secrets" });
+    return;
+  }
+
   const { username, password_hash, portal_key_hash } = req.body as Record<string, string>;
 
   if (!username || !password_hash || !portal_key_hash) {
