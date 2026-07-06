@@ -56,7 +56,7 @@ export async function login(
     const portal_key_hash = await sha256(portalKeyRaw);
 
     const base = import.meta.env.BASE_URL?.replace(/\/$/, "") ?? "";
-    const res = await fetch(`${base}/api/auth/login`, {
+    const res = await fetch(`${base}/api/auth/login`, {  // proxied via Replit to /api/auth/login → Express /auth/login
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username, password_hash, portal_key_hash }),

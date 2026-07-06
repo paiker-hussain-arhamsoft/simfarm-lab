@@ -24,7 +24,7 @@ if (!AUTH_CONFIGURED) {
   );
 }
 
-router.post("/api/auth/login", (req, res) => {
+router.post("/auth/login", (req, res) => {
   if (!AUTH_CONFIGURED) {
     res.status(503).json({ error: "Authentication not configured — set AUTH_PASSWORD and AUTH_PORTAL_KEY secrets" });
     return;
@@ -52,14 +52,14 @@ router.post("/api/auth/login", (req, res) => {
   res.json({ success: true, token });
 });
 
-router.post("/api/auth/logout", (req, res) => {
+router.post("/auth/logout", (req, res) => {
   const auth = (req.headers["authorization"] ?? "") as string;
   const token = auth.replace("Bearer ", "").trim();
   activeSessions.delete(token);
   res.json({ success: true });
 });
 
-router.get("/api/auth/verify", (req, res) => {
+router.get("/auth/verify", (req, res) => {
   const auth = (req.headers["authorization"] ?? "") as string;
   const token = auth.replace("Bearer ", "").trim();
   if (activeSessions.has(token)) {
