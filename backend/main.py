@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.detection.engine import ANALYSIS_TOOLS
 from backend.detection.exercises import get_exercises, validate_flag
@@ -49,22 +49,34 @@ from backend.legendary.detection_scenarios import (
     get_scenario_detail,
 )
 
+_DOCS_ENABLED = os.getenv("SIMFARM_DOCS", "false").lower() in ("1", "true", "yes")
+
 app = FastAPI(
     title="SimFarm Security Lab",
     description="A cybersecurity training platform for SIM farm detection",
     version="1.0.0",
+    docs_url="/docs" if _DOCS_ENABLED else None,
+    redoc_url="/redoc" if _DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if _DOCS_ENABLED else None,
 )
+
+_ALLOWED_ORIGINS = os.getenv(
+    "SIMFARM_CORS_ORIGINS",
+    "http://localhost:8000,http://127.0.0.1:8000,http://localhost:3000",
+).split(",")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=_ALLOWED_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
 )
 
 # In-memory stores
 _scenarios: dict[str, dict] = {}
 _game_sessions: dict[str, GameState] = {}
+_MAX_GAME_SESSIONS = 1000
+_MAX_PER_PAGE = 500
 
 
 # ── Scenario endpoints ──────────────────────────────────────────────
@@ -133,7 +145,11 @@ def generate_scenario(level: str):
 
 
 @app.get("/api/scenario/{level}/sims")
-def get_sims(level: str, page: int = 1, per_page: int = 50):
+def get_sims(
+    level: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=_MAX_PER_PAGE),
+):
     if level not in _scenarios:
         raise HTTPException(status_code=404, detail="Generate scenario first")
     sims = _scenarios[level]["sim_cards"]
@@ -148,7 +164,11 @@ def get_sims(level: str, page: int = 1, per_page: int = 50):
 
 
 @app.get("/api/scenario/{level}/cdrs")
-def get_cdrs(level: str, page: int = 1, per_page: int = 100):
+def get_cdrs(
+    level: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=_MAX_PER_PAGE),
+):
     if level not in _scenarios:
         raise HTTPException(status_code=404, detail="Generate scenario first")
     cdrs = _scenarios[level]["cdrs"]
@@ -163,7 +183,11 @@ def get_cdrs(level: str, page: int = 1, per_page: int = 100):
 
 
 @app.get("/api/scenario/{level}/network-logs")
-def get_network_logs(level: str, page: int = 1, per_page: int = 100):
+def get_network_logs(
+    level: str,
+    page: int = Query(1, ge=1),
+    per_page: int = Query(100, ge=1, le=_MAX_PER_PAGE),
+):
     if level not in _scenarios:
         raise HTTPException(status_code=404, detail="Generate scenario first")
     logs = _scenarios[level]["network_logs"]
@@ -269,6 +293,9 @@ def submit_exercise_flag(submission: FlagSubmission):
 
 @app.post("/api/phishing/new-game")
 def new_phishing_game():
+    if len(_game_sessions) >= _MAX_GAME_SESSIONS:
+        oldest_key = next(iter(_game_sessions))
+        del _game_sessions[oldest_key]
     state = create_game_session()
     _game_sessions[state.session_id] = state
     return {
@@ -286,10 +313,10 @@ def phishing_directory():
 class PhishingEmail(BaseModel):
     session_id: str
     target_email: str
-    subject: str
-    body: str
-    sender_alias: str = "Anonymous Researcher"
-    pretext: str = ""
+    subject: str = Field(..., max_length=200)
+    body: str = Field(..., max_length=5000)
+    sender_alias: str = Field("Anonymous Researcher", max_length=100)
+    pretext: str = Field("", max_length=200)
 
 
 @app.post("/api/phishing/send")
@@ -320,7 +347,7 @@ def phishing_status(session_id: str):
 
 class ReportSubmission(BaseModel):
     session_id: str
-    report_text: str
+    report_text: str = Field(..., max_length=10000)
 
 
 @app.post("/api/phishing/submit-report")
@@ -341,17 +368,17 @@ def playground_options():
 
 
 class PlaygroundBuildRequest(BaseModel):
-    name: str = "My Farm"
+    name: str = Field("My Farm", max_length=100)
     city: str = "karachi"
     carriers: list[str] = ["jazz"]
     acquisition_method: str = "legitimate_cnic"
-    num_cnics: int = 1
+    num_cnics: int = Field(1, ge=1, le=1000)
     hardware: list[dict] = []
     automation_tool: str = "gammu"
     opsec_measures: list[str] = []
-    target_sims: int = 10
+    target_sims: int = Field(10, ge=1, le=10000)
     purpose: str = "otp_harvesting"
-    monthly_budget_pkr: int = 50000
+    monthly_budget_pkr: int = Field(50000, ge=0, le=100_000_000)
 
 
 @app.post("/api/playground/build")
@@ -493,7 +520,9 @@ if os.path.isdir(FRONTEND_DIR):
 
     @app.get("/{path:path}")
     def serve_spa(path: str):
-        file_path = os.path.join(FRONTEND_DIR, path)
+        file_path = os.path.normpath(os.path.join(FRONTEND_DIR, path))
+        if not file_path.startswith(os.path.normpath(FRONTEND_DIR)):
+            raise HTTPException(status_code=403, detail="Forbidden")
         if os.path.isfile(file_path):
             return FileResponse(file_path)
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
