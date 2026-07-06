@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 from typing import Optional
 
@@ -114,7 +115,14 @@ def generate_scenario(level: str):
             "easy": easy_scenario,
             "legendary": legendary_scenario,
         }
-        _scenarios[level] = generators[level]()
+        try:
+            _scenarios[level] = generators[level]()
+        except Exception:
+            logging.exception("Failed to generate scenario for level=%s", level)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate scenario for level '{level}'",
+            )
 
     scenario = _scenarios[level]
     # Return metadata without full data arrays (those are fetched separately)
@@ -203,7 +211,14 @@ def run_analysis(level: str, req: AnalysisRequest):
     else:
         data = scenario["sim_cards"]
 
-    result = tool_fn(data)
+    try:
+        result = tool_fn(data)
+    except Exception:
+        logging.exception("Analysis tool '%s' failed on level=%s", req.tool, level)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Analysis tool '{req.tool}' failed. The scenario data may be malformed.",
+        )
     return {"tool": req.tool, "level": level, "result": result}
 
 
@@ -260,7 +275,14 @@ class FlagSubmission(BaseModel):
 
 @app.post("/api/exercises/submit")
 def submit_exercise_flag(submission: FlagSubmission):
-    result = validate_flag(submission.exercise_id, submission.flag)
+    try:
+        result = validate_flag(submission.exercise_id, submission.flag)
+    except Exception:
+        logging.exception("Flag validation failed for exercise=%s", submission.exercise_id)
+        raise HTTPException(
+            status_code=500,
+            detail="Flag validation encountered an internal error.",
+        )
     return result
 
 
@@ -370,7 +392,19 @@ def build_farm(req: PlaygroundBuildRequest):
         purpose=req.purpose,
         monthly_budget_pkr=req.monthly_budget_pkr,
     )
-    return calculate_farm_metrics(config)
+    try:
+        return calculate_farm_metrics(config)
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid configuration value: {exc}",
+        )
+    except Exception:
+        logging.exception("Farm metrics calculation failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to calculate farm metrics.",
+        )
 
 
 # ── UK Demo endpoints (/uk-demo slug) ──────────────────────────────
@@ -412,7 +446,19 @@ class UkBuildRequest(BaseModel):
 @app.post("/api/uk-demo/build")
 def uk_build_farm(req: UkBuildRequest):
     """Calculate metrics for a custom UK SIM farm configuration."""
-    return build_uk_farm(req.model_dump())
+    try:
+        return build_uk_farm(req.model_dump())
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid configuration value: {exc}",
+        )
+    except Exception:
+        logging.exception("UK farm build failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to calculate UK farm metrics.",
+        )
 
 
 @app.get("/api/uk-demo/simulate/{scenario_id}")
@@ -474,7 +520,10 @@ class LegendaryAnswerSubmission(BaseModel):
 @app.post("/api/legendary/scenarios/check")
 def legendary_check_answer(submission: LegendaryAnswerSubmission):
     """Check a student's answer for a scenario question."""
-    return check_answer(submission.scenario_id, submission.question_id, submission.answer)
+    result = check_answer(submission.scenario_id, submission.question_id, submission.answer)
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+    return result
 
 
 # ── Static files (frontend) ────────────────────────────────────────
