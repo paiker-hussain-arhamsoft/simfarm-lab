@@ -69,3 +69,23 @@ const API = {
         apiFetch('/api/uk-demo/build', { method: 'POST', body: JSON.stringify(config) }),
     simulateUkDemo: (scenarioId) => apiFetch(`/api/uk-demo/simulate/${scenarioId}`),
 };
+
+/* Shared UI helpers */
+
+// Show one <section> in <main> and mark its header-nav button active.
+function showView(viewId, navId) {
+    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
+    document.getElementById(viewId).classList.remove('hidden');
+    document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
+    if (navId) {
+        const navBtn = document.getElementById(navId);
+        if (navBtn) navBtn.classList.add('active');
+    }
+}
+
+// Stealth grade -> badge color, shared by the playground and UK-demo results.
+const STEALTH_GRADE_COLORS = { S: '#a855f7', A: '#22c55e', B: '#f59e0b', C: '#f97316', F: '#ef4444' };
+
+function stealthGradeColor(grade, fallback = '#888') {
+    return STEALTH_GRADE_COLORS[grade] || fallback;
+}

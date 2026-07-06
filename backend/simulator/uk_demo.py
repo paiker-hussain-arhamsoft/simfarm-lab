@@ -23,6 +23,37 @@ import random
 import uuid
 from dataclasses import dataclass, field
 
+from .common import bucket_by_thresholds, grade_by_thresholds
+
+# Shared stealth-grade / detection-timeline tables for UK farm scoring. Both the
+# pre-built demo metrics and the custom builder score off a combined risk value.
+_UK_STEALTH_TIERS = [
+    (0.08, ("S", "Ghost — Nearly Undetectable")),
+    (0.15, ("A", "Shadow — Very Hard to Detect")),
+    (0.25, ("B", "Covert — Moderate Risk")),
+    (0.40, ("C", "Exposed — High Risk")),
+]
+_UK_STEALTH_DEFAULT = ("F", "Busted — Easily Detectable")
+
+_UK_TIMELINE_TIERS = [
+    (0.5, "1-2 weeks"),
+    (0.3, "1-3 months"),
+    (0.15, "3-6 months"),
+    (0.08, "6-12 months"),
+]
+_UK_TIMELINE_DEFAULT = "12+ months"
+
+
+def _uk_stealth_and_timeline(combined_risk: float) -> tuple[str, str, str]:
+    """Return ``(stealth_grade, stealth_label, detection_timeline)`` for a risk."""
+    grade, label = grade_by_thresholds(
+        combined_risk, _UK_STEALTH_TIERS, _UK_STEALTH_DEFAULT
+    )
+    timeline = bucket_by_thresholds(
+        combined_risk, _UK_TIMELINE_TIERS, _UK_TIMELINE_DEFAULT
+    )
+    return grade, label, timeline
+
 
 # ── UK Telecom Constants ────────────────────────────────────────────
 
@@ -678,30 +709,9 @@ def calculate_uk_demo_metrics(scenario_id: str) -> dict:
     campaign_days = config["campaign_duration_weeks"] * 7
     total_impressions = daily_impressions * campaign_days
 
-    # Stealth grade
+    # Stealth grade & detection timeline
     combined_risk = (final_detection + platform_detection) / 2
-    if combined_risk <= 0.08:
-        stealth_grade, stealth_label = "S", "Ghost — Nearly Undetectable"
-    elif combined_risk <= 0.15:
-        stealth_grade, stealth_label = "A", "Shadow — Very Hard to Detect"
-    elif combined_risk <= 0.25:
-        stealth_grade, stealth_label = "B", "Covert — Moderate Risk"
-    elif combined_risk <= 0.40:
-        stealth_grade, stealth_label = "C", "Exposed — High Risk"
-    else:
-        stealth_grade, stealth_label = "F", "Busted — Easily Detectable"
-
-    # Detection timeline
-    if combined_risk > 0.5:
-        detection_timeline = "1-2 weeks"
-    elif combined_risk > 0.3:
-        detection_timeline = "1-3 months"
-    elif combined_risk > 0.15:
-        detection_timeline = "3-6 months"
-    elif combined_risk > 0.08:
-        detection_timeline = "6-12 months"
-    else:
-        detection_timeline = "12+ months"
+    stealth_grade, stealth_label, detection_timeline = _uk_stealth_and_timeline(combined_risk)
 
     return {
         "scenario_id": scenario_id,
@@ -998,27 +1008,7 @@ def build_uk_farm(config: dict) -> dict:
     total_setup = total_hardware_cost + total_sim_cost + opsec_cost
 
     combined_risk = (final_detection + platform_detection) / 2
-    if combined_risk <= 0.08:
-        stealth_grade, stealth_label = "S", "Ghost — Nearly Undetectable"
-    elif combined_risk <= 0.15:
-        stealth_grade, stealth_label = "A", "Shadow — Very Hard to Detect"
-    elif combined_risk <= 0.25:
-        stealth_grade, stealth_label = "B", "Covert — Moderate Risk"
-    elif combined_risk <= 0.40:
-        stealth_grade, stealth_label = "C", "Exposed — High Risk"
-    else:
-        stealth_grade, stealth_label = "F", "Busted — Easily Detectable"
-
-    if combined_risk > 0.5:
-        detection_timeline = "1-2 weeks"
-    elif combined_risk > 0.3:
-        detection_timeline = "1-3 months"
-    elif combined_risk > 0.15:
-        detection_timeline = "3-6 months"
-    elif combined_risk > 0.08:
-        detection_timeline = "6-12 months"
-    else:
-        detection_timeline = "12+ months"
+    stealth_grade, stealth_label, detection_timeline = _uk_stealth_and_timeline(combined_risk)
 
     warnings = []
     if actual_sims < target_sims:

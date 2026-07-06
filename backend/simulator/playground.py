@@ -28,6 +28,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+from .common import bucket_by_thresholds, grade_by_thresholds
+
 
 # ── Pakistani Telecom Constants ─────────────────────────────────────
 
@@ -416,33 +418,28 @@ def calculate_farm_metrics(config: FarmConfig) -> dict:
     monthly_cost = monthly_sms_cost + (opsec_cost * 0.1)  # recurring opsec costs
 
     # Detection timeline estimate
-    if final_detection > 0.7:
-        detection_timeline = "1-2 weeks"
-    elif final_detection > 0.5:
-        detection_timeline = "1-3 months"
-    elif final_detection > 0.3:
-        detection_timeline = "3-6 months"
-    elif final_detection > 0.15:
-        detection_timeline = "6-12 months"
-    else:
-        detection_timeline = "12+ months (very hard to detect)"
+    detection_timeline = bucket_by_thresholds(
+        final_detection,
+        [
+            (0.7, "1-2 weeks"),
+            (0.5, "1-3 months"),
+            (0.3, "3-6 months"),
+            (0.15, "6-12 months"),
+        ],
+        "12+ months (very hard to detect)",
+    )
 
     # Stealth grade
-    if final_detection <= 0.1:
-        stealth_grade = "S"
-        stealth_label = "Ghost — Nearly Undetectable"
-    elif final_detection <= 0.2:
-        stealth_grade = "A"
-        stealth_label = "Shadow — Very Hard to Detect"
-    elif final_detection <= 0.35:
-        stealth_grade = "B"
-        stealth_label = "Covert — Moderate Risk"
-    elif final_detection <= 0.5:
-        stealth_grade = "C"
-        stealth_label = "Risky — Likely to be Caught"
-    else:
-        stealth_grade = "F"
-        stealth_label = "Exposed — Will Be Caught Quickly"
+    stealth_grade, stealth_label = grade_by_thresholds(
+        final_detection,
+        [
+            (0.1, ("S", "Ghost — Nearly Undetectable")),
+            (0.2, ("A", "Shadow — Very Hard to Detect")),
+            (0.35, ("B", "Covert — Moderate Risk")),
+            (0.5, ("C", "Risky — Likely to be Caught")),
+        ],
+        ("F", "Exposed — Will Be Caught Quickly"),
+    )
 
     return {
         "farm_id": config.farm_id,

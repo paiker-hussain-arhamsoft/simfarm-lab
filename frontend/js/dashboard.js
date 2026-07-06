@@ -21,15 +21,9 @@ async function loadDashboard() {
 }
 
 function showDashboard() {
-    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
-    document.getElementById('view-dashboard').classList.remove('hidden');
-    document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('nav-dashboard').classList.add('active');
+    showView('view-dashboard', 'nav-dashboard');
 }
 
 function showLab() {
-    document.querySelectorAll('main > section').forEach(s => s.classList.add('hidden'));
-    document.getElementById('view-lab').classList.remove('hidden');
-    document.querySelectorAll('.header-nav button').forEach(b => b.classList.remove('active'));
-    document.getElementById('nav-lab').classList.add('active');
+    showView('view-lab', 'nav-lab');
 }
