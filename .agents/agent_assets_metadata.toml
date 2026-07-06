@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "jUKiUefNjpYfXWf5PRNlf"
+uri = "file://PROJECT_REPORT.md"
+type = "text"
+title = "OEADS Platform — Complete Project Report"
