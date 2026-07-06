@@ -1,16 +1,21 @@
-version: "3.8"
-
 services:
-  simfarm-lab:
+  strategic-brain:
     build: .
-    container_name: simfarm-lab
+    container_name: tier1-strategic-brain
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/levels"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+    volumes:
+      - brain-data:/app/data
+volumes:
+  brain-data:

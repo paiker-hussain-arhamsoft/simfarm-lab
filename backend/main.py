@@ -1,57 +1,29 @@
-"""SimFarm Security Lab — FastAPI Backend."""
+"""TIER 1 — Strategic Brain: Multi-Agent AI Orchestration Platform."""
 
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from backend.detection.engine import ANALYSIS_TOOLS
-from backend.detection.exercises import get_exercises, validate_flag
-from backend.phishing.game import (
-    GameState,
-    create_game_session,
-    get_company_directory,
-    get_game_status,
-    send_phishing_email,
-    submit_final_report,
+from backend.agents import ALL_AGENTS
+from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
+from backend.pipeline.orchestrator import (
+    cancel_pipeline,
+    is_llm_configured,
+    memory,
+    run_demo_pipeline,
+    run_pipeline,
 )
-from backend.simulator.beginner import generate_scenario as beginner_scenario
-from backend.simulator.easy import generate_scenario as easy_scenario
-from backend.simulator.legendary import generate_scenario as legendary_scenario
-from backend.simulator.models import Level
-from backend.simulator.playground import (
-    FarmConfig,
-    calculate_farm_metrics,
-    get_playground_options,
-)
-from backend.simulator.uk_demo import (
-    build_uk_farm,
-    calculate_uk_demo_metrics,
-    generate_simulation_events,
-    get_uk_demo_scenarios,
-    get_uk_playground_options,
-)
-from backend.legendary.ttp_database import (
-    get_all_ttps,
-    get_categories,
-    get_ttp_by_id,
-    get_ttps_by_category,
-)
-from backend.legendary.detection_scenarios import (
-    check_answer,
-    get_all_scenarios,
-    get_scenario_detail,
-)
+from backend.tools.analysis import get_all_tools, get_tools_for_agent
 
 app = FastAPI(
-    title="SimFarm Security Lab",
-    description="A cybersecurity training platform for SIM farm detection",
+    title="TIER 1 — Strategic Brain",
+    description="Multi-agent AI orchestration for cybersecurity analysis",
     version="1.0.0",
 )
 
@@ -62,419 +34,121 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory stores
-_scenarios: dict[str, dict] = {}
-_game_sessions: dict[str, GameState] = {}
+
+# ── Health ──────────────────────────────────────────────────────────
 
 
-# ── Scenario endpoints ──────────────────────────────────────────────
-
-
-@app.get("/api/levels")
-def list_levels():
+@app.get("/api/health")
+def health():
     return {
-        "levels": [
-            {
-                "id": "beginner",
-                "name": "The Obvious Farm",
-                "difficulty": "Beginner",
-                "description": "Blatant SIM farm with obvious indicators. Great for learning the basics.",
-                "color": "#22c55e",
-                "icon": "🟢",
-            },
-            {
-                "id": "easy",
-                "name": "The Hidden Network",
-                "difficulty": "Easy",
-                "description": "Sophisticated farm using VPNs, IMEI rotation, and distributed towers.",
-                "color": "#f59e0b",
-                "icon": "🟡",
-            },
-            {
-                "id": "legendary",
-                "name": "The Ghost Farm",
-                "difficulty": "Legendary",
-                "description": "Statistically invisible per line. Only relationship (contact-graph) forensics surfaces a lead — and only HUMINT confirms it.",
-                "color": "#ef4444",
-                "icon": "🔴",
-            },
-        ]
+        "status": "ok",
+        "service": "tier1-strategic-brain",
+        "llm_configured": is_llm_configured(),
+        "stats": memory.get_stats(),
     }
 
 
-@app.post("/api/scenario/{level}")
-def generate_scenario(level: str):
-    """Generate (or retrieve cached) scenario data for a level."""
-    if level not in ("beginner", "easy", "legendary"):
-        raise HTTPException(status_code=400, detail="Invalid level")
+# ── Agent metadata ─────────────────────────────────────────────────
 
-    if level not in _scenarios:
-        generators = {
-            "beginner": beginner_scenario,
-            "easy": easy_scenario,
-            "legendary": legendary_scenario,
-        }
-        _scenarios[level] = generators[level]()
 
-    scenario = _scenarios[level]
-    # Return metadata without full data arrays (those are fetched separately)
+@app.get("/api/agents")
+def list_agents():
     return {
-        "level": scenario["level"],
-        "name": scenario["name"],
-        "description": scenario["description"],
-        "briefing": scenario["briefing"],
-        "farm_sim_count": scenario["farm_sim_count"],
-        "legit_sim_count": scenario["legit_sim_count"],
-        "total_cdrs": scenario["total_cdrs"],
-        "cell_towers": scenario["cell_towers"],
-        "sim_count": len(scenario["sim_cards"]),
-        "cdr_count": len(scenario["cdrs"]),
+        "agents": [a.to_meta() for a in ALL_AGENTS],
+        "pipeline_order": [a.id for a in ALL_AGENTS],
     }
 
 
-@app.get("/api/scenario/{level}/sims")
-def get_sims(level: str, page: int = 1, per_page: int = 50):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-    sims = _scenarios[level]["sim_cards"]
-    start = (page - 1) * per_page
-    end = start + per_page
-    return {
-        "sims": sims[start:end],
-        "total": len(sims),
-        "page": page,
-        "per_page": per_page,
-    }
+@app.get("/api/agents/{agent_id}")
+def get_agent(agent_id: str):
+    for a in ALL_AGENTS:
+        if a.id == agent_id:
+            return {
+                **a.to_meta(),
+                "tools_detail": get_tools_for_agent(agent_id),
+            }
+    raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
 
 
-@app.get("/api/scenario/{level}/cdrs")
-def get_cdrs(level: str, page: int = 1, per_page: int = 100):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-    cdrs = _scenarios[level]["cdrs"]
-    start = (page - 1) * per_page
-    end = start + per_page
-    return {
-        "cdrs": cdrs[start:end],
-        "total": len(cdrs),
-        "page": page,
-        "per_page": per_page,
-    }
+# ── Tools ──────────────────────────────────────────────────────────
 
 
-@app.get("/api/scenario/{level}/network-logs")
-def get_network_logs(level: str, page: int = 1, per_page: int = 100):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-    logs = _scenarios[level]["network_logs"]
-    start = (page - 1) * per_page
-    end = start + per_page
-    return {
-        "logs": logs[start:end],
-        "total": len(logs),
-        "page": page,
-        "per_page": per_page,
-    }
+@app.get("/api/tools")
+def list_tools():
+    return {"tools": get_all_tools()}
 
 
-# ── Detection / Analysis endpoints ─────────────────────────────────
+# ── Pipeline execution ─────────────────────────────────────────────
 
 
-class AnalysisRequest(BaseModel):
-    tool: str
-    data_type: str = "sim_cards"  # sim_cards or cdrs
+class PipelineRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=4000)
+    session_id: str = Field(..., min_length=1)
 
 
-@app.post("/api/analyze/{level}")
-def run_analysis(level: str, req: AnalysisRequest):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-
-    tool_fn = ANALYSIS_TOOLS.get(req.tool)
-    if not tool_fn:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown tool: {req.tool}. Available: {list(ANALYSIS_TOOLS.keys())}",
-        )
-
-    scenario = _scenarios[level]
-    if req.tool in ("traffic_patterns", "temporal_patterns", "imei_changes", "contact_graph"):
-        data = scenario["cdrs"]
+@app.post("/api/pipeline/run")
+async def pipeline_run(req: PipelineRequest):
+    if is_llm_configured():
+        generator = run_pipeline(req.task, req.session_id)
     else:
-        data = scenario["sim_cards"]
+        generator = run_demo_pipeline(req.task, req.session_id)
 
-    result = tool_fn(data)
-    return {"tool": req.tool, "level": level, "result": result}
-
-
-@app.get("/api/analysis-tools")
-def list_analysis_tools():
-    return {
-        "tools": [
-            {"id": "tower_distribution", "name": "Tower Distribution Analysis",
-             "description": "Count SIMs per cell tower to spot concentration anomalies.",
-             "data_type": "sim_cards"},
-            {"id": "imei_patterns", "name": "IMEI Pattern Analysis",
-             "description": "Analyze IMEI prefixes and device model distribution.",
-             "data_type": "sim_cards"},
-            {"id": "activation_dates", "name": "Activation Date Analysis",
-             "description": "Identify mass activation events and date clusters.",
-             "data_type": "sim_cards"},
-            {"id": "ip_distribution", "name": "IP Distribution Analysis",
-             "description": "Find shared IPs and VPN exit nodes.",
-             "data_type": "sim_cards"},
-            {"id": "traffic_patterns", "name": "Traffic Pattern Analysis",
-             "description": "Analyze SMS-to-voice ratios per subscriber.",
-             "data_type": "cdrs"},
-            {"id": "temporal_patterns", "name": "Temporal Pattern Analysis",
-             "description": "Detect regular/automated sending intervals.",
-             "data_type": "cdrs"},
-            {"id": "imei_changes", "name": "IMEI Change Tracking",
-             "description": "Track devices that swap IMEI numbers over time.",
-             "data_type": "cdrs"},
-            {"id": "contact_graph", "name": "Contact-Graph Analysis",
-             "description": "Relationship forensics: find lines with low contact "
-                            "reciprocity and clustering (star-shaped ego-networks). "
-                            "The key lead against the Legendary 'Ghost Farm'.",
-             "data_type": "cdrs"},
-        ]
-    }
-
-
-# ── Exercise endpoints ──────────────────────────────────────────────
-
-
-@app.get("/api/exercises/{level}")
-def get_level_exercises(level: str):
-    try:
-        lvl = Level(level)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid level")
-    return {"exercises": get_exercises(lvl)}
-
-
-class FlagSubmission(BaseModel):
-    exercise_id: str
-    flag: str
-
-
-@app.post("/api/exercises/submit")
-def submit_exercise_flag(submission: FlagSubmission):
-    result = validate_flag(submission.exercise_id, submission.flag)
-    return result
-
-
-# ── Phishing Game endpoints (Legendary) ────────────────────────────
-
-
-@app.post("/api/phishing/new-game")
-def new_phishing_game():
-    state = create_game_session()
-    _game_sessions[state.session_id] = state
-    return {
-        "session_id": state.session_id,
-        "max_attempts": state.max_attempts,
-        "company_directory": get_company_directory(),
-    }
-
-
-@app.get("/api/phishing/directory")
-def phishing_directory():
-    return {"directory": get_company_directory()}
-
-
-class PhishingEmail(BaseModel):
-    session_id: str
-    target_email: str
-    subject: str
-    body: str
-    sender_alias: str = "Anonymous Researcher"
-    pretext: str = ""
-
-
-@app.post("/api/phishing/send")
-def send_phish(email: PhishingEmail):
-    state = _game_sessions.get(email.session_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Game session not found")
-
-    result = send_phishing_email(
-        state=state,
-        target_email=email.target_email,
-        subject=email.subject,
-        body=email.body,
-        sender_alias=email.sender_alias,
-        pretext=email.pretext,
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
-    result["game_status"] = get_game_status(state)
-    return result
 
 
-@app.get("/api/phishing/status/{session_id}")
-def phishing_status(session_id: str):
-    state = _game_sessions.get(session_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Game session not found")
-    return get_game_status(state)
+class CancelRequest(BaseModel):
+    run_id: str
 
 
-class ReportSubmission(BaseModel):
-    session_id: str
-    report_text: str
+@app.post("/api/pipeline/cancel")
+def pipeline_cancel(req: CancelRequest):
+    success = cancel_pipeline(req.run_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Pipeline run not found or already completed")
+    return {"cancelled": True, "run_id": req.run_id}
 
 
-@app.post("/api/phishing/submit-report")
-def submit_report(submission: ReportSubmission):
-    state = _game_sessions.get(submission.session_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Game session not found")
-    return submit_final_report(state, submission.report_text)
+# ── History ────────────────────────────────────────────────────────
 
 
-# ── Playground endpoints (Attack Mode) ─────────────────────────────
+@app.get("/api/history/{session_id}")
+def get_history(session_id: str):
+    runs = memory.get_runs(session_id)
+    return {"session_id": session_id, "runs": runs}
 
 
-@app.get("/api/playground/options")
-def playground_options():
-    """Return all available configuration options for the playground."""
-    return get_playground_options()
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str):
+    run = memory.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 
-class PlaygroundBuildRequest(BaseModel):
-    name: str = "My Farm"
-    city: str = "karachi"
-    carriers: list[str] = ["jazz"]
-    acquisition_method: str = "legitimate_cnic"
-    num_cnics: int = 1
-    hardware: list[dict] = []
-    automation_tool: str = "gammu"
-    opsec_measures: list[str] = []
-    target_sims: int = 10
-    purpose: str = "otp_harvesting"
-    monthly_budget_pkr: int = 50000
+# ── Scenarios / Exercises ──────────────────────────────────────────
 
 
-@app.post("/api/playground/build")
-def build_farm(req: PlaygroundBuildRequest):
-    """Calculate metrics for a SIM farm configuration."""
-    config = FarmConfig(
-        name=req.name,
-        city=req.city,
-        carriers=req.carriers,
-        acquisition_method=req.acquisition_method,
-        num_cnics=req.num_cnics,
-        hardware=req.hardware,
-        automation_tool=req.automation_tool,
-        opsec_measures=req.opsec_measures,
-        target_sims=req.target_sims,
-        purpose=req.purpose,
-        monthly_budget_pkr=req.monthly_budget_pkr,
-    )
-    return calculate_farm_metrics(config)
-
-
-# ── UK Demo endpoints (/uk-demo slug) ──────────────────────────────
-
-
-@app.get("/api/uk-demo/scenarios")
-def uk_demo_scenarios():
-    """Return available UK demo scenarios and UK telecom context."""
-    return get_uk_demo_scenarios()
-
-
-@app.get("/api/uk-demo/run/{scenario_id}")
-def uk_demo_run(scenario_id: str):
-    """Calculate full metrics for a UK demo scenario."""
-    result = calculate_uk_demo_metrics(scenario_id)
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
-
-
-@app.get("/api/uk-demo/options")
-def uk_demo_options():
-    """Return UK playground configuration options (carriers, cities, hardware, etc.)."""
-    return get_uk_playground_options()
-
-
-class UkBuildRequest(BaseModel):
-    name: str = "UK Operation"
-    city: str = "london"
-    carriers: list[str] = ["giffgaff"]
-    acquisition_method: str = "payg_walk_in"
-    hardware: list[dict] = []
-    automation_tool: str = "selenium_browser"
-    opsec_measures: list[str] = []
-    platforms: list[str] = ["x_twitter", "facebook"]
-    target_sims: int = 50
-
-
-@app.post("/api/uk-demo/build")
-def uk_build_farm(req: UkBuildRequest):
-    """Calculate metrics for a custom UK SIM farm configuration."""
-    return build_uk_farm(req.model_dump())
-
-
-@app.get("/api/uk-demo/simulate/{scenario_id}")
-def uk_simulate(scenario_id: str):
-    """Generate 200 simulation events for the live dashboard."""
-    events = generate_simulation_events(scenario_id)
-    if not events:
-        raise HTTPException(status_code=404, detail=f"Unknown scenario: {scenario_id}")
-    return {"events": events, "total": len(events)}
-
-
-# ── Legendary Detection Module endpoints ───────────────────────────
-
-
-@app.get("/api/legendary/ttps")
-def legendary_ttp_list(category: Optional[str] = None):
-    """List all TTPs, optionally filtered by category."""
-    if category:
-        return {"ttps": get_ttps_by_category(category)}
-    return {"ttps": get_all_ttps()}
-
-
-@app.get("/api/legendary/ttps/categories")
-def legendary_ttp_categories():
-    """List all TTP categories with counts."""
-    return {"categories": get_categories()}
-
-
-@app.get("/api/legendary/ttps/{ttp_id}")
-def legendary_ttp_detail(ttp_id: str):
-    """Get a single TTP entry by ID."""
-    ttp = get_ttp_by_id(ttp_id)
-    if not ttp:
-        raise HTTPException(status_code=404, detail=f"TTP not found: {ttp_id}")
-    return ttp
-
-
-@app.get("/api/legendary/scenarios")
-def legendary_scenario_list():
-    """List all detection scenarios."""
+@app.get("/api/scenarios")
+def list_scenarios(difficulty: str | None = None):
+    if difficulty:
+        return {"scenarios": get_scenarios_by_difficulty(difficulty)}
     return {"scenarios": get_all_scenarios()}
 
 
-@app.get("/api/legendary/scenarios/{scenario_id}")
-def legendary_scenario_detail(scenario_id: str):
-    """Get full scenario with evidence and questions."""
-    scenario = get_scenario_detail(scenario_id)
-    if not scenario:
+@app.get("/api/scenarios/{scenario_id}")
+def scenario_detail(scenario_id: str):
+    s = get_scenario(scenario_id)
+    if not s:
         raise HTTPException(status_code=404, detail=f"Scenario not found: {scenario_id}")
-    return scenario
-
-
-class LegendaryAnswerSubmission(BaseModel):
-    scenario_id: str
-    question_id: str
-    answer: str
-
-
-@app.post("/api/legendary/scenarios/check")
-def legendary_check_answer(submission: LegendaryAnswerSubmission):
-    """Check a student's answer for a scenario question."""
-    return check_answer(submission.scenario_id, submission.question_id, submission.answer)
+    return s
 
 
 # ── Static files (frontend) ────────────────────────────────────────
