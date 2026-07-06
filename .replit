@@ -55,3 +55,4 @@ externalPort = 3000
 
 [userenv.shared]
 SIMFARM_SIDECAR_URL = "http://localhost:8000"
+AUTH_USERNAME = "oeads_admin"
