@@ -745,3 +745,86 @@ body {
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--border-hover); }
+
+/* ── Framework Selector ─────────────────────── */
+
+.framework-selector {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.fw-group {
+  margin-bottom: 10px;
+}
+.fw-group:last-child {
+  margin-bottom: 0;
+}
+
+.fw-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.fw-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.fw-pill {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.fw-pill:hover {
+  border-color: var(--accent-blue);
+  color: var(--text-primary);
+}
+.fw-pill.active {
+  background: rgba(96,165,250,0.12);
+  border-color: var(--accent-blue);
+  color: var(--accent-blue);
+}
+
+/* ── LLM Status Badges ──────────────────────── */
+
+.llm-status {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  padding: 10px 20px;
+  flex-wrap: wrap;
+}
+
+.backend-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 20px;
+  background: rgba(52,211,153,0.08);
+  border: 1px solid rgba(52,211,153,0.2);
+  color: var(--accent-green);
+}
+.backend-pill.openai {
+  background: rgba(167,139,250,0.08);
+  border-color: rgba(167,139,250,0.2);
+  color: var(--accent-violet);
+}

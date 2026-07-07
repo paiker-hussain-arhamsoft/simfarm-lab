@@ -20,6 +20,11 @@ let currentRunId = null;
 let abortController = null;
 let isDemo = false;
 
+// Framework / backend selection
+let selectedFramework = localStorage.getItem('brain_framework') || '';
+let selectedBackend = localStorage.getItem('brain_backend') || '';
+let platformConfig = null;
+
 const EXAMPLE_TASKS = [
     "Analyze the SIM farming threat in Pakistan and design a detection framework",
     "Design a framework for detecting AI-generated deepfakes in political campaigns",
@@ -64,20 +69,38 @@ async function loadDashboard() {
         agents = agentData.agents;
         scenarios = scenarioData.scenarios;
 
-        // Demo banner
-        const slot = document.getElementById('demo-banner-slot');
-        if (!healthData.llm_configured) {
-            slot.innerHTML = '<div class="demo-banner">⚠ No OpenAI API key configured — running in <strong>demo mode</strong> with pre-recorded responses. Set <code>OPENAI_API_KEY</code> to enable live AI.</div>';
-            isDemo = true;
-        } else {
-            slot.innerHTML = '';
-            isDemo = false;
-        }
-
+        renderStatusBanner(healthData);
         renderAgentGrid();
         renderScenarioGrid();
     } catch (err) {
         console.error('Dashboard load error:', err);
+    }
+}
+
+function renderStatusBanner(healthData) {
+    const slot = document.getElementById('demo-banner-slot');
+    const backends = healthData.backends || [];
+    const ollamaBackend = backends.find(b => b.id === 'ollama');
+    const openaiBackend = backends.find(b => b.id === 'openai');
+
+    if (!healthData.llm_configured) {
+        const ollamaStatus = ollamaBackend ? ollamaBackend.status : 'unavailable';
+        if (ollamaStatus === 'pulling') {
+            slot.innerHTML = '<div class="demo-banner" style="border-color: rgba(96,165,250,0.2); background: rgba(96,165,250,0.08); color: var(--accent-blue)">⏳ Ollama model is downloading... Pipeline will use <strong>demo mode</strong> until ready. Refresh to check status.</div>';
+        } else {
+            slot.innerHTML = '<div class="demo-banner">⚠ No LLM configured — running in <strong>demo mode</strong> with pre-recorded responses. Ollama model will auto-download on first start.</div>';
+        }
+        isDemo = true;
+    } else {
+        const parts = [];
+        if (ollamaBackend && ollamaBackend.status === 'ready') {
+            parts.push(`<span class="backend-pill ollama">🟢 Ollama: ${ollamaBackend.model}</span>`);
+        }
+        if (openaiBackend) {
+            parts.push(`<span class="backend-pill openai">🟢 OpenAI: ${openaiBackend.model}</span>`);
+        }
+        slot.innerHTML = `<div class="llm-status">${parts.join(' ')}</div>`;
+        isDemo = false;
     }
 }
 
@@ -147,8 +170,20 @@ async function loadScenarioInPipeline(scenarioId) {
 
 /* ── Pipeline View ──────────────────────────────────── */
 
-function setupPipelineView() {
+async function setupPipelineView() {
+    if (!platformConfig) {
+        try {
+            platformConfig = await API.getConfig();
+            if (!selectedFramework) {
+                selectedFramework = platformConfig.default_framework || 'autogen';
+            }
+        } catch (err) {
+            console.error('Config load error:', err);
+        }
+    }
+
     renderPipelineAgents();
+    renderFrameworkSelector();
     document.getElementById('session-id-display').textContent = sessionId.slice(0, 16) + '…';
     renderExampleChips();
     renderOutputArea();
@@ -162,6 +197,52 @@ function setupPipelineView() {
     textarea.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runPipeline();
     });
+}
+
+function renderFrameworkSelector() {
+    const container = document.getElementById('framework-selector');
+    if (!container || !platformConfig) return;
+
+    const frameworks = platformConfig.frameworks || [];
+    const backends = platformConfig.backends || [];
+    const readyBackends = backends.filter(b => b.status === 'ready');
+
+    let html = '<div class="fw-group">';
+    html += '<label class="fw-label">Framework</label>';
+    html += '<div class="fw-pills">';
+    for (const fw of frameworks) {
+        const active = selectedFramework === fw.id ? 'active' : '';
+        html += `<button class="fw-pill ${active}" onclick="selectFramework('${fw.id}')" title="${fw.description}">${fw.name}</button>`;
+    }
+    html += '</div></div>';
+
+    if (readyBackends.length > 1) {
+        html += '<div class="fw-group">';
+        html += '<label class="fw-label">LLM Backend</label>';
+        html += '<div class="fw-pills">';
+        const autoActive = !selectedBackend ? 'active' : '';
+        html += `<button class="fw-pill ${autoActive}" onclick="selectBackend('')">Auto</button>`;
+        for (const be of readyBackends) {
+            const active = selectedBackend === be.id ? 'active' : '';
+            const label = be.id === 'ollama' ? `Ollama (${be.model})` : `OpenAI (${be.model})`;
+            html += `<button class="fw-pill ${active}" onclick="selectBackend('${be.id}')">${label}</button>`;
+        }
+        html += '</div></div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function selectFramework(fw) {
+    selectedFramework = fw;
+    localStorage.setItem('brain_framework', fw);
+    renderFrameworkSelector();
+}
+
+function selectBackend(be) {
+    selectedBackend = be;
+    localStorage.setItem('brain_backend', be);
+    renderFrameworkSelector();
 }
 
 function renderPipelineAgents() {
@@ -272,7 +353,10 @@ async function runPipeline() {
     abortController = new AbortController();
 
     try {
-        const reader = await API.runPipeline(task, sessionId, abortController.signal);
+        const reader = await API.runPipeline(
+            task, sessionId, abortController.signal,
+            selectedFramework, selectedBackend
+        );
         const decoder = new TextDecoder();
         let buffer = '';
 

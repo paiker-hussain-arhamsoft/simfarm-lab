@@ -1,10 +1,9 @@
-"""Pipeline orchestrator — runs the 4-agent sequence with SSE streaming."""
+"""Pipeline orchestrator — routes to the selected framework and LLM backend."""
 
 from __future__ import annotations
 
 import json
 import os
-import time
 import uuid
 from collections.abc import AsyncGenerator
 from typing import Optional
@@ -12,54 +11,126 @@ from typing import Optional
 from openai import AsyncOpenAI
 
 from backend.agents import ALL_AGENTS, AgentDef
+from backend.pipeline import autogen_orchestrator, langgraph_orchestrator
+from backend.pipeline.llm_config import (
+    LLMBackend,
+    detect_llm_backend,
+    get_available_backends,
+    get_default_framework,
+    get_openai_api_key,
+    get_openai_base_url,
+    get_openai_model,
+    is_ollama_model_ready,
+    is_openai_configured,
+)
 from backend.pipeline.memory import PipelineMemory
 
-# LLM client — configured via environment
+# Direct-mode LLM client (legacy fallback)
 _client: Optional[AsyncOpenAI] = None
+
+memory = PipelineMemory()
 
 
 def _get_client() -> AsyncOpenAI:
     global _client
     if _client is None:
-        api_key = os.environ.get("OPENAI_API_KEY", "")
-        base_url = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1")
-        _client = AsyncOpenAI(api_key=api_key, base_url=base_url)
+        _client = AsyncOpenAI(api_key=get_openai_api_key(), base_url=get_openai_base_url())
     return _client
 
 
-def get_model() -> str:
-    return os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-
-
 def is_llm_configured() -> bool:
-    key = os.environ.get("OPENAI_API_KEY", "")
-    return bool(key and key != "_DUMMY_API_KEY_")
-
-
-# In-memory store for active pipelines (allows cancellation)
-_active: dict[str, bool] = {}
-
-memory = PipelineMemory()
+    return is_openai_configured() or is_ollama_model_ready()
 
 
 def cancel_pipeline(run_id: str) -> bool:
+    """Cancel a running pipeline across all frameworks."""
+    if autogen_orchestrator.cancel(run_id):
+        return True
+    if langgraph_orchestrator.cancel(run_id):
+        return True
+    # Check direct-mode active set
     if run_id in _active:
         _active[run_id] = False
         return True
     return False
 
 
-async def run_pipeline(task: str, session_id: str) -> AsyncGenerator[str, None]:
-    """Execute the 4-agent pipeline, yielding SSE events."""
+def get_config() -> dict:
+    """Return current framework/backend configuration."""
+    return {
+        "default_framework": get_default_framework(),
+        "frameworks": [
+            {"id": "autogen", "name": "AutoGen", "description": "Microsoft multi-agent orchestration (RoundRobinGroupChat)"},
+            {"id": "langgraph", "name": "LangGraph", "description": "LangChain stateful workflows (StateGraph)"},
+            {"id": "direct", "name": "Direct", "description": "Simple sequential OpenAI calls (no framework)"},
+        ],
+        "backends": get_available_backends(),
+        "llm_configured": is_llm_configured(),
+    }
+
+
+async def route_pipeline(
+    task: str,
+    session_id: str,
+    framework: str = "",
+    backend: str = "",
+) -> AsyncGenerator[str, None]:
+    """Route pipeline execution to the selected framework and backend."""
+    if not framework:
+        framework = get_default_framework()
+
+    # Resolve backend
+    resolved_backend = None
+    if backend == "openai" and is_openai_configured():
+        resolved_backend = LLMBackend.OPENAI
+    elif backend == "ollama" and is_ollama_model_ready():
+        resolved_backend = LLMBackend.OLLAMA
+    else:
+        resolved_backend = detect_llm_backend()
+
+    # No LLM available → demo mode
+    if resolved_backend is None:
+        async for event in run_demo_pipeline(task, session_id):
+            yield event
+        return
+
+    # Route to framework
+    if framework == "autogen":
+        async for event in autogen_orchestrator.run(task, session_id, resolved_backend):
+            yield event
+    elif framework == "langgraph":
+        async for event in langgraph_orchestrator.run(task, session_id, resolved_backend):
+            yield event
+    else:
+        # Direct mode — use the legacy sequential OpenAI pipeline
+        async for event in run_direct_pipeline(task, session_id, resolved_backend):
+            yield event
+
+
+# ── Direct (legacy) pipeline ────────────────────────────────────────
+
+_active: dict[str, bool] = {}
+
+
+async def run_direct_pipeline(task: str, session_id: str, backend: LLMBackend) -> AsyncGenerator[str, None]:
+    """Execute the 4-agent pipeline using direct sequential LLM calls."""
     run_id = str(uuid.uuid4())
     _active[run_id] = True
     history: list[dict] = []
-    model = get_model()
 
     def sse(data: dict) -> str:
         return f"data: {json.dumps(data)}\n\n"
 
-    yield sse({"type": "pipeline_start", "run_id": run_id, "model": model})
+    # Build appropriate client
+    if backend == LLMBackend.OLLAMA:
+        from backend.pipeline.llm_config import get_ollama_host, get_ollama_model
+        client = AsyncOpenAI(api_key="ollama", base_url=f"{get_ollama_host()}/v1")
+        model = get_ollama_model()
+    else:
+        client = _get_client()
+        model = get_openai_model()
+
+    yield sse({"type": "pipeline_start", "run_id": run_id, "model": model, "framework": "direct"})
 
     try:
         for agent in ALL_AGENTS:
@@ -81,7 +152,6 @@ async def run_pipeline(task: str, session_id: str) -> AsyncGenerator[str, None]:
             full_content = ""
 
             try:
-                client = _get_client()
                 stream = await client.chat.completions.create(
                     model=model,
                     max_tokens=4096,
@@ -113,9 +183,7 @@ async def run_pipeline(task: str, session_id: str) -> AsyncGenerator[str, None]:
             })
             yield sse({"type": "agent_done", "agent": agent.id})
 
-        # Save to memory
         memory.save_run(session_id, run_id, task, history)
-
         yield sse({"type": "done", "run_id": run_id})
 
     except Exception as e:
@@ -124,7 +192,8 @@ async def run_pipeline(task: str, session_id: str) -> AsyncGenerator[str, None]:
         _active.pop(run_id, None)
 
 
-# Demo mode — pre-recorded responses for when no API key is available
+# ── Demo mode ───────────────────────────────────────────────────────
+
 DEMO_RESPONSES: dict[str, str] = {
     "director": """\
 ## Task Decomposition
@@ -254,21 +323,16 @@ This framework provides a multi-layered detection system for SIM farm operations
 
 
 async def run_demo_pipeline(task: str, session_id: str) -> AsyncGenerator[str, None]:
-    """Run a demo pipeline with pre-recorded responses (no API key needed)."""
+    """Run a demo pipeline with pre-recorded responses (no LLM needed)."""
     run_id = str(uuid.uuid4())
-    _active[run_id] = True
 
     def sse(data: dict) -> str:
         return f"data: {json.dumps(data)}\n\n"
 
-    yield sse({"type": "pipeline_start", "run_id": run_id, "model": "demo-mode", "demo": True})
+    yield sse({"type": "pipeline_start", "run_id": run_id, "model": "demo-mode", "demo": True, "framework": "demo"})
 
     history: list[dict] = []
     for agent in ALL_AGENTS:
-        if not _active.get(run_id, False):
-            yield sse({"type": "cancelled"})
-            return
-
         yield sse({
             "type": "agent_start",
             "agent": agent.id,
@@ -281,11 +345,7 @@ async def run_demo_pipeline(task: str, session_id: str) -> AsyncGenerator[str, N
 
         content = DEMO_RESPONSES.get(agent.id, f"[Demo response for {agent.role}]")
 
-        # Stream character by character with small delay for realism
         for i in range(0, len(content), 3):
-            if not _active.get(run_id, False):
-                yield sse({"type": "cancelled"})
-                return
             chunk = content[i:i + 3]
             yield sse({"type": "token", "agent": agent.id, "content": chunk})
 
@@ -294,4 +354,3 @@ async def run_demo_pipeline(task: str, session_id: str) -> AsyncGenerator[str, N
 
     memory.save_run(session_id, run_id, task, history)
     yield sse({"type": "done", "run_id": run_id, "demo": True})
-    _active.pop(run_id, None)

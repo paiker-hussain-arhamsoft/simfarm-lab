@@ -8,6 +8,11 @@ const API = {
         return res.json();
     },
 
+    async getConfig() {
+        const res = await fetch('/api/config');
+        return res.json();
+    },
+
     async getAgents() {
         const res = await fetch('/api/agents');
         return res.json();
@@ -44,13 +49,20 @@ const API = {
      * @param {string} task
      * @param {string} sessionId
      * @param {AbortSignal} signal
+     * @param {string} framework - autogen | langgraph | direct
+     * @param {string} backend - ollama | openai (auto if empty)
      * @returns {ReadableStreamDefaultReader}
      */
-    async runPipeline(task, sessionId, signal) {
+    async runPipeline(task, sessionId, signal, framework = '', backend = '') {
         const res = await fetch('/api/pipeline/run', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task, session_id: sessionId }),
+            body: JSON.stringify({
+                task,
+                session_id: sessionId,
+                framework,
+                backend,
+            }),
             signal,
         });
         if (!res.ok || !res.body) {

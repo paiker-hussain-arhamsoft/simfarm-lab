@@ -14,17 +14,17 @@ from backend.agents import ALL_AGENTS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
+    get_config,
     is_llm_configured,
     memory,
-    run_demo_pipeline,
-    run_pipeline,
+    route_pipeline,
 )
 from backend.tools.analysis import get_all_tools, get_tools_for_agent
 
 app = FastAPI(
     title="TIER 1 — Strategic Brain",
     description="Multi-agent AI orchestration for cybersecurity analysis",
-    version="1.0.0",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -40,12 +40,23 @@ app.add_middleware(
 
 @app.get("/api/health")
 def health():
+    config = get_config()
     return {
         "status": "ok",
         "service": "tier1-strategic-brain",
-        "llm_configured": is_llm_configured(),
+        "llm_configured": config["llm_configured"],
         "stats": memory.get_stats(),
+        "backends": config["backends"],
+        "default_framework": config["default_framework"],
     }
+
+
+# ── Config ─────────────────────────────────────────────────────────
+
+
+@app.get("/api/config")
+def config_endpoint():
+    return get_config()
 
 
 # ── Agent metadata ─────────────────────────────────────────────────
@@ -84,15 +95,18 @@ def list_tools():
 class PipelineRequest(BaseModel):
     task: str = Field(..., min_length=1, max_length=4000)
     session_id: str = Field(..., min_length=1)
+    framework: str = Field(default="", description="autogen | langgraph | direct")
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
 
 
 @app.post("/api/pipeline/run")
 async def pipeline_run(req: PipelineRequest):
-    if is_llm_configured():
-        generator = run_pipeline(req.task, req.session_id)
-    else:
-        generator = run_demo_pipeline(req.task, req.session_id)
-
+    generator = route_pipeline(
+        req.task,
+        req.session_id,
+        framework=req.framework,
+        backend=req.backend,
+    )
     return StreamingResponse(
         generator,
         media_type="text/event-stream",
