@@ -19,6 +19,8 @@ let doneAgents = new Set();
 let currentRunId = null;
 let abortController = null;
 let isDemo = false;
+let pendingToolActivity = {}; // worker id -> [activity items] (buffered before agent_start)
+let spawnedWorkers = [];
 
 // Framework / backend selection
 let selectedFramework = localStorage.getItem('brain_framework') || '';
@@ -345,6 +347,8 @@ async function runPipeline() {
     activeAgent = null;
     doneAgents = new Set();
     currentRunId = null;
+    pendingToolActivity = {};
+    spawnedWorkers = [];
     updateRunButton();
     renderPipelineAgents();
     renderExampleChips();
@@ -401,6 +405,26 @@ function handleSSE(event) {
             currentRunId = event.run_id;
             break;
 
+        case 'worker_spawn':
+            spawnedWorkers = event.workers || [];
+            renderOutputArea();
+            break;
+
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!pendingToolActivity[w]) pendingToolActivity[w] = [];
+            pendingToolActivity[w].push(event);
+            // If the worker's turn already exists, attach live.
+            const existing = turns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = pendingToolActivity[w];
+                renderOutputArea();
+            }
+            break;
+        }
+
         case 'agent_start': {
             const a = agents.find(ag => ag.id === event.agent);
             activeAgent = event.agent;
@@ -411,6 +435,7 @@ function handleSSE(event) {
                 icon: event.icon || (a ? a.icon : '🤖'),
                 content: '',
                 done: false,
+                toolActivity: pendingToolActivity[event.agent] || [],
             });
             renderPipelineAgents();
             renderOutputArea();
@@ -507,6 +532,13 @@ function renderOutputArea(errorMsg, warningMsg) {
         html += `<div class="error-banner" style="border-color: rgba(245,158,11,0.2); background: rgba(245,158,11,0.08); color: var(--accent-amber)">${warningMsg}</div>`;
     }
 
+    if (spawnedWorkers.length > 0) {
+        html += `<div class="worker-spawn-banner">
+            <span class="wsb-label">⚙ Spawned workers:</span>
+            ${spawnedWorkers.map(w => `<span class="wsb-pill" style="color: ${w.color}; border-color: ${w.color}40; background: ${w.color}10">${w.icon} ${w.role}</span>`).join('')}
+        </div>`;
+    }
+
     html += '<div class="output-log" id="output-log">';
     for (const turn of turns) {
         const cursorHtml = !turn.done
@@ -520,18 +552,49 @@ function renderOutputArea(errorMsg, warningMsg) {
                     ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
                     ${turn.done ? `<button class="am-copy" onclick="copyContent('${turn.agentId}')">📋</button>` : ''}
                 </div>
+                ${renderToolActivity(turn.toolActivity)}
                 <div class="am-content" id="content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
             </div>
         `;
     }
 
     if (runState === 'done') {
-        html += '<div class="pipeline-complete">Pipeline complete — all 4 agents contributed</div>';
+        html += '<div class="pipeline-complete">Pipeline complete</div>';
     }
     html += '</div>';
 
     area.innerHTML = html;
     scrollOutputToBottom();
+}
+
+function renderToolActivity(activity) {
+    if (!activity || activity.length === 0) return '';
+    let rows = '';
+    for (const ev of activity) {
+        if (ev.type === 'tool_call') {
+            const attempt = ev.attempt > 1 ? ` <span class="ta-retry">retry #${ev.attempt}</span>` : '';
+            rows += `<div class="ta-row ta-call">
+                <span class="ta-icon">🔧</span>
+                <span class="ta-tool">${ev.tool}</span>
+                <span class="ta-provider">${ev.provider || ''}</span>${attempt}
+            </div>`;
+        } else if (ev.type === 'tool_result') {
+            if (ev.ok) {
+                rows += `<div class="ta-row ta-ok"><span class="ta-icon">✓</span> <span class="ta-tool">${ev.tool}</span> <span class="ta-note">returned ${escapeHtml(summarizeResult(ev.result))}</span></div>`;
+            } else {
+                rows += `<div class="ta-row ta-fail"><span class="ta-icon">✕</span> <span class="ta-tool">${ev.tool}</span> <span class="ta-note">${escapeHtml(ev.error || 'failed')}</span></div>`;
+            }
+        } else if (ev.type === 'self_heal') {
+            rows += `<div class="ta-row ta-heal"><span class="ta-icon">♻</span> <span class="ta-note">Self-heal: ${escapeHtml(ev.note || ev.action)}</span></div>`;
+        }
+    }
+    return `<div class="tool-activity">${rows}</div>`;
+}
+
+function summarizeResult(result) {
+    if (!result || typeof result !== 'object') return String(result);
+    if (result.provider) return `${result.provider}${result.simulated ? ' (simulated)' : ''}`;
+    return 'ok';
 }
 
 function updateLastMessage(turn) {

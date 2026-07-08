@@ -828,3 +828,69 @@ body {
   border-color: rgba(167,139,250,0.2);
   color: var(--accent-violet);
 }
+
+/* ── Worker Spawn Banner ────────────────────────────── */
+
+.worker-spawn-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+.wsb-label {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.wsb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+}
+
+/* ── Tool Activity ──────────────────────────────────── */
+
+.tool-activity {
+  margin: 6px 0 4px;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.ta-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+}
+.ta-icon { width: 14px; text-align: center; }
+.ta-tool { color: var(--text-primary); font-weight: 500; }
+.ta-provider { color: var(--text-muted); }
+.ta-note { color: var(--text-muted); }
+.ta-ok .ta-icon { color: var(--accent-green); }
+.ta-fail .ta-icon { color: var(--accent-red); }
+.ta-fail .ta-note { color: var(--accent-red); }
+.ta-heal { color: var(--accent-amber); }
+.ta-heal .ta-icon { color: var(--accent-amber); }
+.ta-retry {
+  color: var(--accent-amber);
+  font-size: 10px;
+  padding: 1px 6px;
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 10px;
+}

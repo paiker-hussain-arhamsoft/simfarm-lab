@@ -25,7 +25,11 @@ services:
       - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
-      - DEFAULT_FRAMEWORK=${DEFAULT_FRAMEWORK:-autogen}
+      - DEFAULT_FRAMEWORK=${DEFAULT_FRAMEWORK:-supervisor}
+      # Optional per-role model overrides (default: OLLAMA_MODEL for all roles)
+      - OLLAMA_MODEL_SUPERVISOR=${OLLAMA_MODEL_SUPERVISOR:-}
+      - OLLAMA_MODEL_DIRECTOR=${OLLAMA_MODEL_DIRECTOR:-}
+      - OLLAMA_MODEL_WORKER=${OLLAMA_MODEL_WORKER:-}
     depends_on:
       ollama:
         condition: service_healthy

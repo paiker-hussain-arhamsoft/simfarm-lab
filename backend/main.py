@@ -11,7 +11,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend.agents import ALL_AGENTS
+from backend.agents.workers import ALL_WORKERS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
+from backend.tools import registry
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
     get_config,
@@ -87,6 +89,17 @@ def get_agent(agent_id: str):
 @app.get("/api/tools")
 def list_tools():
     return {"tools": get_all_tools()}
+
+
+# ── Tool registry (executable, extensible per-tier) ────────────────
+
+
+@app.get("/api/registry")
+def registry_endpoint():
+    return {
+        "tools": [t.to_meta() for t in registry.all_tools()],
+        "workers": [w.to_meta() for w in ALL_WORKERS],
+    }
 
 
 # ── Pipeline execution ─────────────────────────────────────────────

@@ -11,7 +11,7 @@ from typing import Optional
 from openai import AsyncOpenAI
 
 from backend.agents import ALL_AGENTS, AgentDef
-from backend.pipeline import autogen_orchestrator, langgraph_orchestrator
+from backend.pipeline import autogen_orchestrator, langgraph_orchestrator, supervisor
 from backend.pipeline.llm_config import (
     LLMBackend,
     detect_llm_backend,
@@ -44,6 +44,8 @@ def is_llm_configured() -> bool:
 
 def cancel_pipeline(run_id: str) -> bool:
     """Cancel a running pipeline across all frameworks."""
+    if supervisor.cancel(run_id):
+        return True
     if autogen_orchestrator.cancel(run_id):
         return True
     if langgraph_orchestrator.cancel(run_id):
@@ -60,6 +62,7 @@ def get_config() -> dict:
     return {
         "default_framework": get_default_framework(),
         "frameworks": [
+            {"id": "supervisor", "name": "Supervisor", "description": "Self-refining control layer: dynamic worker spawning + tool calling + error-recovery loop"},
             {"id": "autogen", "name": "AutoGen", "description": "Microsoft multi-agent orchestration (RoundRobinGroupChat)"},
             {"id": "langgraph", "name": "LangGraph", "description": "LangChain stateful workflows (StateGraph)"},
             {"id": "direct", "name": "Direct", "description": "Simple sequential OpenAI calls (no framework)"},
@@ -95,7 +98,10 @@ async def route_pipeline(
         return
 
     # Route to framework
-    if framework == "autogen":
+    if framework == "supervisor":
+        async for event in supervisor.run(task, session_id, resolved_backend):
+            yield event
+    elif framework == "autogen":
         async for event in autogen_orchestrator.run(task, session_id, resolved_backend):
             yield event
     elif framework == "langgraph":
