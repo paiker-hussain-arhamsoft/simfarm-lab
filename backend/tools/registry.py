@@ -15,6 +15,7 @@ the orchestrators.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -34,6 +35,7 @@ class ToolSpec:
     run: Callable[..., Awaitable[dict]]
     parameters: dict[str, str] = field(default_factory=dict)
     status: str = "stub"  # stub | live
+    requires_internet: bool = False  # offline-first: online tools opt in explicitly
 
     def to_meta(self) -> dict:
         return {
@@ -44,6 +46,7 @@ class ToolSpec:
             "provider": self.provider,
             "parameters": self.parameters,
             "status": self.status,
+            "requires_internet": self.requires_internet,
         }
 
 
@@ -200,6 +203,83 @@ async def _playwright_stealth_check(endpoint: str = "", **_: Any) -> dict:
     }
 
 
+# ── Media Crew stubs (offline-first; online providers opt in) ───────
+
+_VOICE_PROVIDERS = {
+    "chatterbox": {"provider": "Chatterbox", "license": "MIT", "online": False, "langs": 23},
+    "coqui": {"provider": "Coqui XTTS-v2", "license": "MPL-2.0", "online": False, "langs": 17},
+    "bark": {"provider": "Bark", "license": "MIT", "online": False, "langs": 13},
+    "elevenlabs": {"provider": "ElevenLabs", "license": "commercial", "online": True, "langs": 29},
+}
+
+_VIDEO_PROVIDERS = {
+    "wan2": {"provider": "Wan2.1", "license": "Apache-2.0", "online": False, "params": "14B"},
+    "cogvideo": {"provider": "CogVideoX", "license": "open", "online": False, "params": "5B"},
+    "opensora": {"provider": "Open-Sora 2.0", "license": "open", "online": False, "params": "11B"},
+    "heygen": {"provider": "HeyGen", "license": "commercial", "online": True, "params": "cloud"},
+}
+
+_AVATAR_PROVIDERS = {
+    "duix": {"provider": "Duix-Avatar", "license": "open", "online": False},
+    "wav2lip": {"provider": "Wav2Lip", "license": "open", "online": False},
+    "roop": {"provider": "Roop", "license": "open", "online": False},
+}
+
+
+async def _clone_voice(tool: str = "chatterbox", language: str = "en",
+                       script: str = "", **_: Any) -> dict:
+    p = _VOICE_PROVIDERS.get(tool, _VOICE_PROVIDERS["chatterbox"])
+    if p["online"] and not _online_available():
+        raise ToolError(f"{p['provider']} requires internet; fall back to an offline voice tool.")
+    return {
+        "simulated": True,
+        "provider": p["provider"],
+        "license": p["license"],
+        "requires_internet": p["online"],
+        "language": language,
+        "reference_audio_sec": 5,
+        "artifact": "/artifacts/media/voice_stub.wav",
+        "note": f"Stub — wire to {p['provider']} for real voice cloning ({'online' if p['online'] else 'offline/local'}).",
+    }
+
+
+async def _generate_video(tool: str = "wan2", script: str = "", duration: str = "60s",
+                          **_: Any) -> dict:
+    p = _VIDEO_PROVIDERS.get(tool, _VIDEO_PROVIDERS["wan2"])
+    if p["online"] and not _online_available():
+        raise ToolError(f"{p['provider']} requires internet; fall back to an offline video model.")
+    return {
+        "simulated": True,
+        "provider": p["provider"],
+        "license": p["license"],
+        "requires_internet": p["online"],
+        "params": p["params"],
+        "resolution": "720p",
+        "duration": duration,
+        "artifact": "/artifacts/media/clip_stub.mp4",
+        "note": f"Stub — wire to {p['provider']} for real text-to-video ({'online' if p['online'] else 'offline/local'}).",
+    }
+
+
+async def _render_avatar(tool: str = "duix", photo: str = "", script: str = "",
+                         **_: Any) -> dict:
+    p = _AVATAR_PROVIDERS.get(tool, _AVATAR_PROVIDERS["duix"])
+    return {
+        "simulated": True,
+        "provider": p["provider"],
+        "license": p["license"],
+        "requires_internet": p["online"],
+        "lip_sync_fps": 24,
+        "artifact": "/artifacts/media/avatar_stub.mp4",
+        "note": f"Stub — wire to {p['provider']} for photo+script lip-sync (offline/local).",
+    }
+
+
+def _online_available() -> bool:
+    """Online tools are only usable when explicitly enabled (offline-first default)."""
+    return os.environ.get("ALLOW_ONLINE_TOOLS", "").lower() in ("1", "true", "yes")
+
+
 def _register_defaults() -> None:
     if _REGISTRY:
         return
@@ -256,6 +336,24 @@ def _register_defaults() -> None:
         description="Estimate reach/sentiment and platform targeting for a region.",
         category="media", provider="social-intel", run=_social_targeting,
         parameters={"platform": "platform", "region": "target region"},
+    ))
+    register(ToolSpec(
+        id="clone_voice", name="Voice Cloner",
+        description="Zero-shot voice cloning / TTS (Chatterbox, Coqui, Bark offline; ElevenLabs online).",
+        category="media", provider="Chatterbox / Coqui / Bark", run=_clone_voice,
+        parameters={"tool": "chatterbox|coqui|bark|elevenlabs", "language": "lang", "script": "text"},
+    ))
+    register(ToolSpec(
+        id="generate_video", name="Video Generator",
+        description="Text-to-video generation (Wan2.1, CogVideoX, Open-Sora offline; HeyGen online).",
+        category="media", provider="Wan2.1 / CogVideoX / Open-Sora", run=_generate_video,
+        parameters={"tool": "wan2|cogvideo|opensora|heygen", "script": "text", "duration": "e.g. 60s"},
+    ))
+    register(ToolSpec(
+        id="render_avatar", name="Digital Human Renderer",
+        description="Photo+script lip-synced digital human (Duix-Avatar, Wav2Lip, Roop).",
+        category="media", provider="Duix-Avatar / Wav2Lip / Roop", run=_render_avatar,
+        parameters={"tool": "duix|wav2lip|roop", "photo": "ref photo", "script": "text"},
     ))
     register(ToolSpec(
         id="playwright_stealth_check", name="Automation Posture Check",

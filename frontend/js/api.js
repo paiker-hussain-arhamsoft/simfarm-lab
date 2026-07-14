@@ -101,6 +101,42 @@ const API = {
         return res.body.getReader();
     },
 
+    async getMediaConfig() {
+        const res = await fetch('/api/media/config');
+        return res.json();
+    },
+
+    /**
+     * Run the TIER 2 Media Crew (Duix-Avatar Pipeline) and return an SSE reader.
+     * @param {object} opts - topic, tone, language, languageCode, duration, audience, voiceTool, videoTool, avatarTool, sessionId, backend
+     * @param {AbortSignal} signal
+     * @returns {ReadableStreamDefaultReader}
+     */
+    async runMediaProduce(opts, signal) {
+        const res = await fetch('/api/media/produce', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                topic: opts.topic,
+                tone: opts.tone,
+                language: opts.language,
+                language_code: opts.languageCode,
+                duration: opts.duration,
+                audience: opts.audience || 'General public',
+                voice_tool: opts.voiceTool,
+                video_tool: opts.videoTool,
+                avatar_tool: opts.avatarTool,
+                session_id: opts.sessionId,
+                backend: opts.backend || '',
+            }),
+            signal,
+        });
+        if (!res.ok || !res.body) {
+            throw new Error(`API error: ${res.status}`);
+        }
+        return res.body.getReader();
+    },
+
     async cancelPipeline(runId) {
         const res = await fetch('/api/pipeline/cancel', {
             method: 'POST',

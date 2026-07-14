@@ -13,9 +13,18 @@ from pydantic import BaseModel, Field
 from backend.agents import ALL_AGENTS
 from backend.agents.workers import ALL_WORKERS
 from backend.agents.intelligence_crew import INTELLIGENCE_CREW, LANGUAGES, REGIONS
+from backend.agents.media_crew import (
+    AVATAR_TOOLS,
+    DURATIONS,
+    MEDIA_CREW,
+    TONES,
+    VIDEO_TOOLS,
+    VOICE_TOOLS,
+)
+from backend.agents.media_crew import LANGUAGES as MEDIA_LANGUAGES
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
-from backend.pipeline import intelligence_crew
+from backend.pipeline import intelligence_crew, media_crew
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
     get_config,
@@ -163,6 +172,62 @@ async def intelligence_plan(req: IntelligenceRequest):
         req.session_id,
         backend=req.backend,
     )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 2 — Media Crew (Duix-Avatar Pipeline) ─────────────────────
+
+
+@app.get("/api/media/config")
+def media_config():
+    return {
+        "agents": [a.to_meta() for a in MEDIA_CREW],
+        "tones": TONES,
+        "durations": DURATIONS,
+        "languages": MEDIA_LANGUAGES,
+        "voice_tools": VOICE_TOOLS,
+        "video_tools": VIDEO_TOOLS,
+        "avatar_tools": AVATAR_TOOLS,
+        "config": get_config(),
+    }
+
+
+class MediaRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=2000)
+    tone: str = Field(default="Professional")
+    language: str = Field(default="English")
+    language_code: str = Field(default="en")
+    duration: str = Field(default="60 seconds")
+    audience: str = Field(default="General public")
+    voice_tool: str = Field(default="chatterbox")
+    video_tool: str = Field(default="wan2")
+    avatar_tool: str = Field(default="duix")
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/media/produce")
+async def media_produce(req: MediaRequest):
+    inp = {
+        "topic": req.topic,
+        "tone": req.tone,
+        "language": req.language,
+        "language_code": req.language_code,
+        "duration": req.duration,
+        "audience": req.audience,
+        "voice_tool": req.voice_tool,
+        "video_tool": req.video_tool,
+        "avatar_tool": req.avatar_tool,
+    }
+    generator = media_crew.route(inp, req.session_id, backend=req.backend)
     return StreamingResponse(
         generator,
         media_type="text/event-stream",

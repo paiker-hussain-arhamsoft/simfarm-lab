@@ -426,6 +426,35 @@ body {
   font-size: 13px;
 }
 
+.media-tool-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.media-tool-group label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.media-online-tag {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--accent-amber, #f59e0b);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.1);
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: 4px;
+}
+
 /* Session info box */
 .session-box {
   border-radius: var(--radius-sm);

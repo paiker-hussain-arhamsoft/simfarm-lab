@@ -25,6 +25,7 @@
         <button id="nav-dashboard" class="active" onclick="showDashboard()">Dashboard</button>
         <button id="nav-pipeline" onclick="showPipeline()">Pipeline</button>
         <button id="nav-tier2" onclick="showTier2()">TIER 2 · Intelligence</button>
+        <button id="nav-media" onclick="showMedia()">TIER 2 · Media</button>
         <button id="nav-scenarios" onclick="showScenarios()">Scenarios</button>
     </nav>
 </header>
@@ -129,6 +130,73 @@
                     </div>
                 </div>
                 <div id="tier2-output-area"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ TIER 2 · Media Crew view ═══ -->
+    <section id="view-media" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Media Crew · Duix-Avatar</div>
+                    <div id="media-agent-list"></div>
+                </div>
+                <div id="media-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="media-session-display"></span>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Media Crew</h2>
+                    <p>The Duix-Avatar Pipeline: Script Writer → Voice Architect → Video Director → Production Lead. Offline-first digital-human production (Duix-Avatar + Chatterbox/Coqui/Bark + Wan2.1/CogVideoX/Open-Sora), with optional online tools (ElevenLabs, HeyGen).</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Tone</label>
+                            <select id="media-tone"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Language</label>
+                            <select id="media-language"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Duration</label>
+                            <select id="media-duration"></select>
+                        </div>
+                    </div>
+                    <label>Topic / Brief</label>
+                    <textarea id="media-topic" rows="2" placeholder="e.g. A public-service explainer on protecting your CNIC from SIM fraud..." maxlength="2000"></textarea>
+                    <div class="media-tool-groups">
+                        <div class="media-tool-group">
+                            <label>Voice Tool</label>
+                            <div class="fw-pills" id="media-voice-tools"></div>
+                        </div>
+                        <div class="media-tool-group">
+                            <label>Video Model</label>
+                            <div class="fw-pills" id="media-video-tools"></div>
+                        </div>
+                        <div class="media-tool-group">
+                            <label>Avatar Engine</label>
+                            <div class="fw-pills" id="media-avatar-tools"></div>
+                        </div>
+                    </div>
+                    <div class="example-tasks" id="media-examples-area">
+                        <p>Example topics:</p>
+                        <div class="chips" id="media-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="media-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="media-btn-reset" onclick="resetMedia()">↻ New Production</button>
+                            <button class="btn btn-danger hidden" id="media-btn-stop" onclick="stopMedia()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="media-btn-run" onclick="runMedia()" disabled>▶ Produce</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="media-output-area"></div>
             </div>
         </div>
     </section>

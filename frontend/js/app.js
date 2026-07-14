@@ -1016,6 +1016,426 @@ function copyTier2Content(agentId) {
     if (turn) navigator.clipboard.writeText(turn.content);
 }
 
+/* ── TIER 2 · Media Crew (Duix-Avatar Pipeline) ─────── */
+
+let mediaConfig = null;
+let mediaState = 'idle';
+let mediaTurns = [];
+let mediaActive = null;
+let mediaDone = new Set();
+let mediaRunId = null;
+let mediaAbort = null;
+let mediaPending = {};
+let mediaVoiceTool = 'chatterbox';
+let mediaVideoTool = 'wan2';
+let mediaAvatarTool = 'duix';
+
+const MEDIA_EXAMPLES = [
+    "A public-service explainer on protecting your CNIC from SIM fraud",
+    "A 60-second training clip on spotting phishing messages",
+    "An awareness reel on OTP-sharing scams for rural audiences",
+    "A short authoritative brief on new PTA SIM registration rules",
+];
+
+async function showMedia() {
+    setView('media');
+    await setupMediaView();
+}
+
+async function setupMediaView() {
+    if (!mediaConfig) {
+        try {
+            mediaConfig = await API.getMediaConfig();
+        } catch (err) {
+            console.error('Media config load error:', err);
+            return;
+        }
+    }
+
+    renderMediaAgents();
+    renderMediaBackend();
+    renderMediaSelectors();
+    renderMediaToolPickers();
+    renderMediaExamples();
+    document.getElementById('media-session-display').textContent = sessionId.slice(0, 16) + '…';
+    renderMediaOutput();
+    updateMediaButton();
+
+    const textarea = document.getElementById('media-topic');
+    if (!textarea.dataset.bound) {
+        textarea.dataset.bound = '1';
+        textarea.addEventListener('input', () => {
+            updateMediaCharCount();
+            updateMediaButton();
+        });
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runMedia();
+        });
+    }
+}
+
+function renderMediaSelectors() {
+    document.getElementById('media-tone').innerHTML =
+        (mediaConfig.tones || []).map(t => `<option value="${t}">${t}</option>`).join('');
+    document.getElementById('media-language').innerHTML =
+        (mediaConfig.languages || []).map(l => `<option value="${l.code}" data-label="${l.label}">${l.label} · ${l.native}</option>`).join('');
+    document.getElementById('media-duration').innerHTML =
+        (mediaConfig.durations || []).map(d => `<option value="${d}">${d}</option>`).join('');
+}
+
+function renderMediaToolPickers() {
+    renderMediaPills('media-voice-tools', mediaConfig.voice_tools || [], mediaVoiceTool, 'selectMediaVoice');
+    renderMediaPills('media-video-tools', mediaConfig.video_tools || [], mediaVideoTool, 'selectMediaVideo');
+    renderMediaPills('media-avatar-tools', mediaConfig.avatar_tools || [], mediaAvatarTool, 'selectMediaAvatar');
+}
+
+function renderMediaPills(containerId, tools, selected, handler) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = tools.map(t => {
+        const active = selected === t.id ? 'active' : '';
+        const online = t.online ? '<span class="media-online-tag">online</span>' : '';
+        return `<button class="fw-pill ${active}" title="${t.note}" onclick="${handler}('${t.id}')">${t.label} ${online}</button>`;
+    }).join('');
+}
+
+function selectMediaVoice(id) { mediaVoiceTool = id; renderMediaToolPickers(); }
+function selectMediaVideo(id) { mediaVideoTool = id; renderMediaToolPickers(); }
+function selectMediaAvatar(id) { mediaAvatarTool = id; renderMediaToolPickers(); }
+
+function renderMediaAgents() {
+    const list = document.getElementById('media-agent-list');
+    const crew = mediaConfig.agents || [];
+    list.innerHTML = crew.map((a, i) => {
+        const isActive = mediaActive === a.id;
+        const isDone = mediaDone.has(a.id);
+        let statusHtml = '';
+        if (isActive) {
+            statusHtml = `<span class="pa-status" style="color: ${a.color}"><span class="spinner" style="border-top-color: ${a.color}"></span> Running</span>`;
+        } else if (isDone) {
+            statusHtml = '<span class="pa-status" style="color: var(--accent-green)">✓</span>';
+        }
+        let bgStyle = '';
+        let borderStyle = 'border-color: var(--border)';
+        if (isActive) {
+            bgStyle = `background: ${a.color}08`;
+            borderStyle = `border-color: ${a.color}30`;
+        } else if (isDone) {
+            bgStyle = 'background: var(--bg-card); opacity: 0.7';
+        }
+        const arrow = i < crew.length - 1 ? '<div class="pa-arrow">▼</div>' : '';
+        return `
+            <div class="pa-agent ${isActive ? 'active' : ''}" style="${bgStyle}; ${borderStyle}">
+                <div class="pa-row">
+                    <div class="pa-icon" style="background: ${a.color}15; border: 1px solid ${a.color}30">${a.icon}</div>
+                    <span class="pa-role">${a.role}</span>
+                    ${statusHtml}
+                </div>
+                <div class="pa-desc">${a.description}</div>
+                <div class="pa-fw" style="color: ${a.color}">${a.framework}</div>
+            </div>
+            ${arrow}
+        `;
+    }).join('');
+}
+
+function renderMediaBackend() {
+    const container = document.getElementById('media-backend');
+    const cfg = mediaConfig.config || {};
+    const backends = cfg.backends || [];
+    const readyBackends = backends.filter(b => b.status === 'ready');
+    if (readyBackends.length === 0) {
+        container.innerHTML = '<div class="fw-group"><label class="fw-label">Backend</label><div class="fw-pills"><span class="backend-pill">Demo mode</span></div></div>';
+        return;
+    }
+    let html = '<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills">';
+    const autoActive = !selectedBackend ? 'active' : '';
+    html += `<button class="fw-pill ${autoActive}" onclick="selectMediaBackend('')">Auto</button>`;
+    for (const be of readyBackends) {
+        const active = selectedBackend === be.id ? 'active' : '';
+        const label = be.id === 'ollama' ? `Ollama (${be.model})` : `OpenAI (${be.model})`;
+        html += `<button class="fw-pill ${active}" onclick="selectMediaBackend('${be.id}')">${label}</button>`;
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+function selectMediaBackend(be) {
+    selectedBackend = be;
+    localStorage.setItem('brain_backend', be);
+    renderMediaBackend();
+}
+
+function renderMediaExamples() {
+    const area = document.getElementById('media-examples-area');
+    const chips = document.getElementById('media-example-chips');
+    if (mediaState !== 'idle' || mediaTurns.length > 0) {
+        area.classList.add('hidden');
+        return;
+    }
+    area.classList.remove('hidden');
+    chips.innerHTML = MEDIA_EXAMPLES.map(t => {
+        const display = t.length > 60 ? t.slice(0, 60) + '…' : t;
+        return `<button class="example-chip" onclick="setMediaTopic('${t.replace(/'/g, "\\'")}')">${display}</button>`;
+    }).join('');
+}
+
+function setMediaTopic(text) {
+    const textarea = document.getElementById('media-topic');
+    textarea.value = text;
+    updateMediaCharCount();
+    updateMediaButton();
+}
+
+function updateMediaCharCount() {
+    const textarea = document.getElementById('media-topic');
+    document.getElementById('media-char-count').textContent = `${textarea.value.length}/2000 · Ctrl+Enter to run`;
+}
+
+function updateMediaButton() {
+    const textarea = document.getElementById('media-topic');
+    const btnRun = document.getElementById('media-btn-run');
+    const btnStop = document.getElementById('media-btn-stop');
+    const btnReset = document.getElementById('media-btn-reset');
+
+    btnRun.disabled = !textarea.value.trim() || mediaState === 'running' || mediaState === 'done';
+
+    if (mediaState === 'running') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.remove('hidden');
+        btnReset.classList.add('hidden');
+    } else if (mediaState === 'done' || mediaState === 'error') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.remove('hidden');
+    } else {
+        btnRun.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.add('hidden');
+    }
+    textarea.disabled = mediaState === 'running';
+}
+
+async function runMedia() {
+    const textarea = document.getElementById('media-topic');
+    const topic = textarea.value.trim();
+    if (!topic || mediaState === 'running') return;
+
+    const tone = document.getElementById('media-tone').value;
+    const langSel = document.getElementById('media-language');
+    const languageCode = langSel.value;
+    const language = langSel.selectedOptions[0].dataset.label || 'English';
+    const duration = document.getElementById('media-duration').value;
+
+    mediaState = 'running';
+    mediaTurns = [];
+    mediaActive = null;
+    mediaDone = new Set();
+    mediaRunId = null;
+    mediaPending = {};
+    updateMediaButton();
+    renderMediaAgents();
+    renderMediaExamples();
+    renderMediaOutput();
+
+    mediaAbort = new AbortController();
+
+    try {
+        const reader = await API.runMediaProduce({
+            topic, tone, language, languageCode, duration,
+            voiceTool: mediaVoiceTool, videoTool: mediaVideoTool, avatarTool: mediaAvatarTool,
+            sessionId, backend: selectedBackend,
+        }, mediaAbort.signal);
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                let event;
+                try { event = JSON.parse(raw); } catch { continue; }
+                handleMediaSSE(event);
+            }
+        }
+        if (mediaState === 'running') mediaState = 'done';
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            mediaState = 'error';
+            renderMediaOutput(`Media Crew interrupted: ${err.message}`);
+        } else {
+            mediaState = 'idle';
+        }
+    }
+
+    updateMediaButton();
+    renderMediaAgents();
+}
+
+function handleMediaSSE(event) {
+    switch (event.type) {
+        case 'pipeline_start':
+            mediaRunId = event.run_id;
+            break;
+
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!mediaPending[w]) mediaPending[w] = [];
+            mediaPending[w].push(event);
+            const existing = mediaTurns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = mediaPending[w];
+                renderMediaOutput();
+            }
+            break;
+        }
+
+        case 'agent_start': {
+            mediaActive = event.agent;
+            mediaTurns.push({
+                agentId: event.agent,
+                role: event.role,
+                color: event.color,
+                icon: event.icon || '🎬',
+                content: '',
+                done: false,
+                toolActivity: mediaPending[event.agent] || [],
+            });
+            renderMediaAgents();
+            renderMediaOutput();
+            break;
+        }
+
+        case 'token': {
+            const turn = mediaTurns.find(t => t.agentId === event.agent && !t.done);
+            if (turn) {
+                turn.content += event.content;
+                const el = document.getElementById(`media-content-${turn.agentId}`);
+                if (el) {
+                    el.innerHTML = escapeHtml(turn.content) + `<span class="am-cursor" style="background: ${turn.color}"></span>`;
+                    scrollMediaToBottom();
+                }
+            }
+            break;
+        }
+
+        case 'agent_done': {
+            const turn = mediaTurns.find(t => t.agentId === event.agent);
+            if (turn) turn.done = true;
+            mediaDone.add(event.agent);
+            mediaActive = null;
+            renderMediaAgents();
+            renderMediaOutput();
+            break;
+        }
+
+        case 'done':
+            mediaState = 'done';
+            updateMediaButton();
+            renderMediaAgents();
+            renderMediaOutput();
+            break;
+
+        case 'error':
+            mediaState = 'error';
+            updateMediaButton();
+            renderMediaOutput(event.message);
+            break;
+
+        case 'cancelled':
+            mediaState = 'idle';
+            updateMediaButton();
+            break;
+    }
+}
+
+function stopMedia() {
+    if (mediaAbort) mediaAbort.abort();
+    mediaState = 'idle';
+    mediaActive = null;
+    updateMediaButton();
+    renderMediaAgents();
+}
+
+function resetMedia() {
+    mediaTurns = [];
+    mediaActive = null;
+    mediaDone = new Set();
+    mediaRunId = null;
+    mediaState = 'idle';
+    updateMediaButton();
+    renderMediaAgents();
+    renderMediaExamples();
+    renderMediaOutput();
+}
+
+function renderMediaOutput(errorMsg) {
+    const area = document.getElementById('media-output-area');
+    const crew = mediaConfig ? (mediaConfig.agents || []) : [];
+
+    if (mediaTurns.length === 0 && !errorMsg) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🎬</div>
+                <h3>Ready to produce</h3>
+                <p>Pick tone, language, duration and your offline-first tool chain, enter a topic, and the Media Crew will produce a full digital-human production plan.</p>
+                <div class="agent-dots">
+                    ${crew.map(a => `<span class="dot"><span class="dot-circle" style="background: ${a.color}"></span> ${a.role}</span>`).join('')}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    if (errorMsg) {
+        html += `<div class="error-banner">${errorMsg}</div>`;
+    }
+
+    html += '<div class="output-log" id="media-output-log">';
+    for (const turn of mediaTurns) {
+        const cursorHtml = !turn.done
+            ? `<span class="am-cursor" style="background: ${turn.color}"></span>`
+            : '';
+        html += `
+            <div class="agent-message" id="media-msg-${turn.agentId}">
+                <div class="am-header">
+                    <div class="am-icon" style="background: ${turn.color}15; border: 1px solid ${turn.color}30">${turn.icon}</div>
+                    <span class="am-role" style="color: ${turn.color}">${turn.role}</span>
+                    ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
+                    ${turn.done ? `<button class="am-copy" onclick="copyMediaContent('${turn.agentId}')">📋</button>` : ''}
+                </div>
+                ${renderToolActivity(turn.toolActivity)}
+                <div class="am-content" id="media-content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
+            </div>
+        `;
+    }
+    if (mediaState === 'done') {
+        html += '<div class="pipeline-complete">Production plan complete</div>';
+    }
+    html += '</div>';
+
+    area.innerHTML = html;
+    scrollMediaToBottom();
+}
+
+function scrollMediaToBottom() {
+    const log = document.getElementById('media-output-log');
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+function copyMediaContent(agentId) {
+    const turn = mediaTurns.find(t => t.agentId === agentId);
+    if (turn) navigator.clipboard.writeText(turn.content);
+}
+
 /* ── Init ───────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
