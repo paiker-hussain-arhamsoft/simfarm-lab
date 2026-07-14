@@ -387,6 +387,45 @@ body {
   margin: 2px 0;
 }
 
+/* TIER 2 — Intelligence Crew */
+.pa-agent .pa-fw {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  margin-top: 4px;
+  opacity: 0.85;
+}
+
+.tier2-fields {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.t2-field {
+  flex: 1;
+}
+
+.t2-field label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+
+.t2-field select {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(30, 30, 46, 0.6);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
 /* Session info box */
 .session-box {
   border-radius: var(--radius-sm);

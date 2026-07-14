@@ -24,6 +24,7 @@
     <nav class="header-nav">
         <button id="nav-dashboard" class="active" onclick="showDashboard()">Dashboard</button>
         <button id="nav-pipeline" onclick="showPipeline()">Pipeline</button>
+        <button id="nav-tier2" onclick="showTier2()">TIER 2 · Intelligence</button>
         <button id="nav-scenarios" onclick="showScenarios()">Scenarios</button>
     </nav>
 </header>
@@ -79,6 +80,55 @@
                     </div>
                 </div>
                 <div id="output-area"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ TIER 2 · Intelligence Crew view ═══ -->
+    <section id="view-tier2" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Intelligence Crew</div>
+                    <div id="tier2-agent-list"></div>
+                </div>
+                <div id="tier2-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="tier2-session-display"></span>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Intelligence Crew</h2>
+                    <p>LlamaIndex retrieval + LightGBM forecasting + Meta-Llama-3.1-8B dialect analysis (Punjabi Shahmukhi / Saraiki). Four agents fuse open-source research, behavior forecasting, and social-channel strategy into a cross-channel intelligence brief.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Region</label>
+                            <select id="tier2-region"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Language / Dialect</label>
+                            <select id="tier2-language"></select>
+                        </div>
+                    </div>
+                    <label>Analysis Query</label>
+                    <textarea id="tier2-query" rows="3" placeholder="e.g. Analyze voter sentiment and turnout likelihood among swing voter segments..." maxlength="4000"></textarea>
+                    <div class="example-tasks" id="tier2-examples-area">
+                        <p>Example queries:</p>
+                        <div class="chips" id="tier2-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="tier2-char-count">0/4000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="tier2-btn-reset" onclick="resetTier2()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="tier2-btn-stop" onclick="stopTier2()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="tier2-btn-run" onclick="runTier2()" disabled>▶ Run Crew</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="tier2-output-area"></div>
             </div>
         </div>
     </section>

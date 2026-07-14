@@ -623,6 +623,399 @@ function escapeHtml(str) {
     return div.innerHTML;
 }
 
+/* ── TIER 2 · Intelligence Crew ─────────────────────── */
+
+let tier2Config = null;
+let tier2State = 'idle'; // idle | running | done | error
+let tier2Turns = [];
+let tier2Active = null;
+let tier2Done = new Set();
+let tier2RunId = null;
+let tier2Abort = null;
+let tier2Pending = {}; // agent id -> [tool activity]
+
+const TIER2_EXAMPLES = [
+    "Analyze voter sentiment and turnout likelihood among swing voter segments",
+    "Profile rural vs urban voting behavior and economic grievances",
+    "Assess party loyalty shifts driven by inflation and load-shedding",
+    "Forecast youth turnout and identify persuadable demographic clusters",
+];
+
+async function showTier2() {
+    setView('tier2');
+    await setupTier2View();
+}
+
+async function setupTier2View() {
+    if (!tier2Config) {
+        try {
+            tier2Config = await API.getIntelligenceConfig();
+        } catch (err) {
+            console.error('Tier2 config load error:', err);
+            return;
+        }
+    }
+
+    renderTier2Agents();
+    renderTier2Backend();
+    renderTier2Selectors();
+    renderTier2Examples();
+    document.getElementById('tier2-session-display').textContent = sessionId.slice(0, 16) + '…';
+    renderTier2Output();
+    updateTier2Button();
+
+    const textarea = document.getElementById('tier2-query');
+    if (!textarea.dataset.bound) {
+        textarea.dataset.bound = '1';
+        textarea.addEventListener('input', () => {
+            updateTier2CharCount();
+            updateTier2Button();
+        });
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runTier2();
+        });
+    }
+}
+
+function renderTier2Selectors() {
+    const regionSel = document.getElementById('tier2-region');
+    const langSel = document.getElementById('tier2-language');
+    regionSel.innerHTML = (tier2Config.regions || [])
+        .map(r => `<option value="${r}">${r}</option>`).join('');
+    langSel.innerHTML = (tier2Config.languages || [])
+        .map(l => `<option value="${l.code}">${l.label} · ${l.native}</option>`).join('');
+}
+
+function renderTier2Agents() {
+    const list = document.getElementById('tier2-agent-list');
+    const crew = tier2Config.agents || [];
+    list.innerHTML = crew.map((a, i) => {
+        const isActive = tier2Active === a.id;
+        const isDone = tier2Done.has(a.id);
+        let statusHtml = '';
+        if (isActive) {
+            statusHtml = `<span class="pa-status" style="color: ${a.color}"><span class="spinner" style="border-top-color: ${a.color}"></span> Running</span>`;
+        } else if (isDone) {
+            statusHtml = '<span class="pa-status" style="color: var(--accent-green)">✓</span>';
+        }
+        let bgStyle = '';
+        let borderStyle = 'border-color: var(--border)';
+        if (isActive) {
+            bgStyle = `background: ${a.color}08`;
+            borderStyle = `border-color: ${a.color}30`;
+        } else if (isDone) {
+            bgStyle = 'background: var(--bg-card); opacity: 0.7';
+        }
+        const arrow = i < crew.length - 1 ? '<div class="pa-arrow">▼</div>' : '';
+        return `
+            <div class="pa-agent ${isActive ? 'active' : ''}" style="${bgStyle}; ${borderStyle}">
+                <div class="pa-row">
+                    <div class="pa-icon" style="background: ${a.color}15; border: 1px solid ${a.color}30">${a.icon}</div>
+                    <span class="pa-role">${a.role}</span>
+                    ${statusHtml}
+                </div>
+                <div class="pa-desc">${a.description}</div>
+                <div class="pa-fw" style="color: ${a.color}">${a.framework}</div>
+            </div>
+            ${arrow}
+        `;
+    }).join('');
+}
+
+function renderTier2Backend() {
+    const container = document.getElementById('tier2-backend');
+    const cfg = tier2Config.config || {};
+    const backends = cfg.backends || [];
+    const readyBackends = backends.filter(b => b.status === 'ready');
+    if (readyBackends.length === 0) {
+        container.innerHTML = '<div class="fw-group"><label class="fw-label">Backend</label><div class="fw-pills"><span class="backend-pill">Demo mode</span></div></div>';
+        return;
+    }
+    let html = '<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills">';
+    const autoActive = !selectedBackend ? 'active' : '';
+    html += `<button class="fw-pill ${autoActive}" onclick="selectBackend('')">Auto</button>`;
+    for (const be of readyBackends) {
+        const active = selectedBackend === be.id ? 'active' : '';
+        const label = be.id === 'ollama' ? `Ollama (${be.model})` : `OpenAI (${be.model})`;
+        html += `<button class="fw-pill ${active}" onclick="selectTier2Backend('${be.id}')">${label}</button>`;
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+function selectTier2Backend(be) {
+    selectedBackend = be;
+    localStorage.setItem('brain_backend', be);
+    renderTier2Backend();
+}
+
+function renderTier2Examples() {
+    const area = document.getElementById('tier2-examples-area');
+    const chips = document.getElementById('tier2-example-chips');
+    if (tier2State !== 'idle' || tier2Turns.length > 0) {
+        area.classList.add('hidden');
+        return;
+    }
+    area.classList.remove('hidden');
+    chips.innerHTML = TIER2_EXAMPLES.map(t => {
+        const display = t.length > 60 ? t.slice(0, 60) + '…' : t;
+        return `<button class="example-chip" onclick="setTier2Query('${t.replace(/'/g, "\\'")}')">${display}</button>`;
+    }).join('');
+}
+
+function setTier2Query(text) {
+    const textarea = document.getElementById('tier2-query');
+    textarea.value = text;
+    updateTier2CharCount();
+    updateTier2Button();
+}
+
+function updateTier2CharCount() {
+    const textarea = document.getElementById('tier2-query');
+    document.getElementById('tier2-char-count').textContent = `${textarea.value.length}/4000 · Ctrl+Enter to run`;
+}
+
+function updateTier2Button() {
+    const textarea = document.getElementById('tier2-query');
+    const btnRun = document.getElementById('tier2-btn-run');
+    const btnStop = document.getElementById('tier2-btn-stop');
+    const btnReset = document.getElementById('tier2-btn-reset');
+
+    btnRun.disabled = !textarea.value.trim() || tier2State === 'running' || tier2State === 'done';
+
+    if (tier2State === 'running') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.remove('hidden');
+        btnReset.classList.add('hidden');
+    } else if (tier2State === 'done' || tier2State === 'error') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.remove('hidden');
+    } else {
+        btnRun.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.add('hidden');
+    }
+    textarea.disabled = tier2State === 'running';
+}
+
+async function runTier2() {
+    const textarea = document.getElementById('tier2-query');
+    const query = textarea.value.trim();
+    if (!query || tier2State === 'running') return;
+
+    const region = document.getElementById('tier2-region').value;
+    const language = document.getElementById('tier2-language').value;
+
+    tier2State = 'running';
+    tier2Turns = [];
+    tier2Active = null;
+    tier2Done = new Set();
+    tier2RunId = null;
+    tier2Pending = {};
+    updateTier2Button();
+    renderTier2Agents();
+    renderTier2Examples();
+    renderTier2Output();
+
+    tier2Abort = new AbortController();
+
+    try {
+        const reader = await API.runIntelligencePlan(
+            { query, region, language, sessionId, backend: selectedBackend },
+            tier2Abort.signal
+        );
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                let event;
+                try { event = JSON.parse(raw); } catch { continue; }
+                handleTier2SSE(event);
+            }
+        }
+        if (tier2State === 'running') tier2State = 'done';
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            tier2State = 'error';
+            renderTier2Output(`Intelligence Crew interrupted: ${err.message}`);
+        } else {
+            tier2State = 'idle';
+        }
+    }
+
+    updateTier2Button();
+    renderTier2Agents();
+}
+
+function handleTier2SSE(event) {
+    switch (event.type) {
+        case 'pipeline_start':
+            tier2RunId = event.run_id;
+            break;
+
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!tier2Pending[w]) tier2Pending[w] = [];
+            tier2Pending[w].push(event);
+            const existing = tier2Turns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = tier2Pending[w];
+                renderTier2Output();
+            }
+            break;
+        }
+
+        case 'agent_start': {
+            tier2Active = event.agent;
+            tier2Turns.push({
+                agentId: event.agent,
+                role: event.role,
+                color: event.color,
+                icon: event.icon || '🤖',
+                content: '',
+                done: false,
+                toolActivity: tier2Pending[event.agent] || [],
+            });
+            renderTier2Agents();
+            renderTier2Output();
+            break;
+        }
+
+        case 'token': {
+            const turn = tier2Turns.find(t => t.agentId === event.agent && !t.done);
+            if (turn) {
+                turn.content += event.content;
+                const el = document.getElementById(`t2-content-${turn.agentId}`);
+                if (el) {
+                    el.innerHTML = escapeHtml(turn.content) + `<span class="am-cursor" style="background: ${turn.color}"></span>`;
+                    scrollTier2ToBottom();
+                }
+            }
+            break;
+        }
+
+        case 'agent_done': {
+            const turn = tier2Turns.find(t => t.agentId === event.agent);
+            if (turn) turn.done = true;
+            tier2Done.add(event.agent);
+            tier2Active = null;
+            renderTier2Agents();
+            renderTier2Output();
+            break;
+        }
+
+        case 'done':
+            tier2State = 'done';
+            updateTier2Button();
+            renderTier2Agents();
+            renderTier2Output();
+            break;
+
+        case 'error':
+            tier2State = 'error';
+            updateTier2Button();
+            renderTier2Output(event.message);
+            break;
+
+        case 'cancelled':
+            tier2State = 'idle';
+            updateTier2Button();
+            break;
+    }
+}
+
+function stopTier2() {
+    if (tier2Abort) tier2Abort.abort();
+    tier2State = 'idle';
+    tier2Active = null;
+    updateTier2Button();
+    renderTier2Agents();
+}
+
+function resetTier2() {
+    tier2Turns = [];
+    tier2Active = null;
+    tier2Done = new Set();
+    tier2RunId = null;
+    tier2State = 'idle';
+    updateTier2Button();
+    renderTier2Agents();
+    renderTier2Examples();
+    renderTier2Output();
+}
+
+function renderTier2Output(errorMsg) {
+    const area = document.getElementById('tier2-output-area');
+    const crew = tier2Config ? (tier2Config.agents || []) : [];
+
+    if (tier2Turns.length === 0 && !errorMsg) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🛰️</div>
+                <h3>Ready for intelligence analysis</h3>
+                <p>Pick a region and language, enter an analysis query, and the Intelligence Crew will fuse open-source research, behavior forecasting, and social strategy into a cross-channel brief.</p>
+                <div class="agent-dots">
+                    ${crew.map(a => `<span class="dot"><span class="dot-circle" style="background: ${a.color}"></span> ${a.role}</span>`).join('')}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = '';
+    if (errorMsg) {
+        html += `<div class="error-banner">${errorMsg}</div>`;
+    }
+
+    html += '<div class="output-log" id="tier2-output-log">';
+    for (const turn of tier2Turns) {
+        const cursorHtml = !turn.done
+            ? `<span class="am-cursor" style="background: ${turn.color}"></span>`
+            : '';
+        html += `
+            <div class="agent-message" id="t2-msg-${turn.agentId}">
+                <div class="am-header">
+                    <div class="am-icon" style="background: ${turn.color}15; border: 1px solid ${turn.color}30">${turn.icon}</div>
+                    <span class="am-role" style="color: ${turn.color}">${turn.role}</span>
+                    ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
+                    ${turn.done ? `<button class="am-copy" onclick="copyTier2Content('${turn.agentId}')">📋</button>` : ''}
+                </div>
+                ${renderToolActivity(turn.toolActivity)}
+                <div class="am-content" id="t2-content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
+            </div>
+        `;
+    }
+    if (tier2State === 'done') {
+        html += '<div class="pipeline-complete">Intelligence brief complete</div>';
+    }
+    html += '</div>';
+
+    area.innerHTML = html;
+    scrollTier2ToBottom();
+}
+
+function scrollTier2ToBottom() {
+    const log = document.getElementById('tier2-output-log');
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+function copyTier2Content(agentId) {
+    const turn = tier2Turns.find(t => t.agentId === agentId);
+    if (turn) navigator.clipboard.writeText(turn.content);
+}
+
 /* ── Init ───────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {

@@ -145,6 +145,50 @@ async def _update_persona(persona_id: str = "default", traits: str = "", **_: An
     }
 
 
+async def _behavior_forecast(region: str = "", segments: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "LightGBM",
+        "region": region,
+        "model": "gradient_boosted_trees",
+        "feature_importance": [
+            {"feature": "economic_grievance", "weight": 0.28},
+            {"feature": "incumbent_fatigue", "weight": 0.21},
+            {"feature": "biradari_affiliation", "weight": 0.17},
+            {"feature": "youth_turnout", "weight": 0.14},
+            {"feature": "development_spend", "weight": 0.11},
+        ],
+        "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
+        "projected_turnout": 0.52,
+        "note": "Stub — wire to a trained LightGBM model in the intelligence tier.",
+    }
+
+
+async def _dialect_analysis(region: str = "", language: str = "en", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "Meta-Llama-3.1-8B",
+        "region": region,
+        "language": language,
+        "dialects": ["Punjabi (Shahmukhi)", "Saraiki"],
+        "samples": {"pa": "پنجابی ثقافتی اشارے", "skr": "سرائیکی برادری دے مسئلے"},
+        "note": "Stub — wire to Meta-Llama-3.1-8B (native Punjabi/Saraiki) for real dialect analysis.",
+    }
+
+
+async def _social_targeting(platform: str = "facebook", region: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "social-intel",
+        "platform": platform,
+        "region": region,
+        "reach_estimate": 184000,
+        "sentiment": {"positive": 0.29, "neutral": 0.41, "negative": 0.30},
+        "top_channels": ["Facebook groups", "WhatsApp broadcast", "TikTok"],
+        "note": "Stub — wire to real platform-targeting / sentiment analysis.",
+    }
+
+
 async def _playwright_stealth_check(endpoint: str = "", **_: Any) -> dict:
     return {
         "simulated": True,
@@ -194,6 +238,24 @@ def _register_defaults() -> None:
         description="Adjust agent/character persona logic.",
         category="persona", provider="ElizaOS", run=_update_persona,
         parameters={"persona_id": "persona id", "traits": "trait adjustments"},
+    ))
+    register(ToolSpec(
+        id="behavior_forecast", name="Voter Behavior Forecaster",
+        description="Predict voter segments/turnout with a gradient-boosted model.",
+        category="analysis", provider="LightGBM", run=_behavior_forecast,
+        parameters={"region": "target region", "segments": "segments to score"},
+    ))
+    register(ToolSpec(
+        id="dialect_analysis", name="Dialect & Culture Analyzer",
+        description="Analyze Punjabi (Shahmukhi) / Saraiki cultural & linguistic signals.",
+        category="analysis", provider="Meta-Llama-3.1-8B", run=_dialect_analysis,
+        parameters={"region": "target region", "language": "language code"},
+    ))
+    register(ToolSpec(
+        id="social_targeting", name="Social Platform Targeter",
+        description="Estimate reach/sentiment and platform targeting for a region.",
+        category="media", provider="social-intel", run=_social_targeting,
+        parameters={"platform": "platform", "region": "target region"},
     ))
     register(ToolSpec(
         id="playwright_stealth_check", name="Automation Posture Check",

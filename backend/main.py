@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 
 from backend.agents import ALL_AGENTS
 from backend.agents.workers import ALL_WORKERS
+from backend.agents.intelligence_crew import INTELLIGENCE_CREW, LANGUAGES, REGIONS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
+from backend.pipeline import intelligence_crew
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
     get_config,
@@ -118,6 +120,47 @@ async def pipeline_run(req: PipelineRequest):
         req.task,
         req.session_id,
         framework=req.framework,
+        backend=req.backend,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 2 — Intelligence Crew ─────────────────────────────────────
+
+
+@app.get("/api/intelligence/config")
+def intelligence_config():
+    return {
+        "agents": [a.to_meta() for a in INTELLIGENCE_CREW],
+        "regions": REGIONS,
+        "languages": LANGUAGES,
+        "config": get_config(),
+    }
+
+
+class IntelligenceRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=4000)
+    region: str = Field(..., min_length=1)
+    language: str = Field(default="en")
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/intelligence/plan")
+async def intelligence_plan(req: IntelligenceRequest):
+    generator = intelligence_crew.route(
+        req.query,
+        req.region,
+        req.language,
+        req.session_id,
         backend=req.backend,
     )
     return StreamingResponse(

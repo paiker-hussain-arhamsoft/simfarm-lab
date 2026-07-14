@@ -71,6 +71,36 @@ const API = {
         return res.body.getReader();
     },
 
+    async getIntelligenceConfig() {
+        const res = await fetch('/api/intelligence/config');
+        return res.json();
+    },
+
+    /**
+     * Run the TIER 2 Intelligence Crew and return an SSE reader.
+     * @param {{query: string, region: string, language: string, sessionId: string, backend?: string}} opts
+     * @param {AbortSignal} signal
+     * @returns {ReadableStreamDefaultReader}
+     */
+    async runIntelligencePlan(opts, signal) {
+        const res = await fetch('/api/intelligence/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                query: opts.query,
+                region: opts.region,
+                language: opts.language,
+                session_id: opts.sessionId,
+                backend: opts.backend || '',
+            }),
+            signal,
+        });
+        if (!res.ok || !res.body) {
+            throw new Error(`API error: ${res.status}`);
+        }
+        return res.body.getReader();
+    },
+
     async cancelPipeline(runId) {
         const res = await fetch('/api/pipeline/cancel', {
             method: 'POST',
