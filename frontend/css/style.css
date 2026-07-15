@@ -455,6 +455,118 @@ body {
   margin-left: 4px;
 }
 
+.consent-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 10px 0;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.consent-check input {
+  margin-top: 2px;
+}
+
+.compliance-box {
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(30, 30, 46, 0.4);
+  padding: 12px 14px;
+  margin-top: 12px;
+}
+
+.compliance-box .cb-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.compliance-box .cb-line {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+
+.compliance-box .cb-stats {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.btn-sm {
+  font-size: 11px;
+  padding: 5px 10px;
+}
+
+.compliance-banner {
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.compliance-banner.ok {
+  border: 1px solid rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.08);
+  color: var(--text-primary);
+}
+
+.compliance-banner.flagged {
+  border: 1px solid rgba(245, 158, 11, 0.45);
+  background: rgba(245, 158, 11, 0.1);
+  color: var(--text-primary);
+}
+
+.compliance-banner .cb-audit {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.7;
+  margin-top: 4px;
+}
+
+.audit-row {
+  display: flex;
+  gap: 8px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-row.flagged .audit-verdict {
+  color: var(--accent-amber, #f59e0b);
+}
+
+.audit-row.ok .audit-verdict {
+  color: var(--accent-green);
+}
+
+.audit-when {
+  opacity: 0.6;
+  white-space: nowrap;
+}
+
+.audit-empty {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 8px 0;
+}
+
+#video-audit-log {
+  margin-top: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
 /* Session info box */
 .session-box {
   border-radius: var(--radius-sm);

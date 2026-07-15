@@ -1436,6 +1436,482 @@ function copyMediaContent(agentId) {
     if (turn) navigator.clipboard.writeText(turn.content);
 }
 
+/* ── TIER 2 · Video Stack (face-swap / lip-sync) ────── */
+
+let videoConfig = null;
+let videoState = 'idle';
+let videoTurns = [];
+let videoActive = null;
+let videoDone = new Set();
+let videoRunId = null;
+let videoAbort = null;
+let videoPending = {};
+let videoSwapTool = 'deepfacelab';
+let videoLipsyncTool = 'wav2lip';
+let videoCompliance = null;
+
+const VIDEO_EXAMPLES = [
+    "A consented training video with a spokesperson explaining SIM-registration rules",
+    "An internal onboarding clip using a licensed avatar presenter",
+    "A public-awareness anchor segment on OTP scams (synthetic, watermarked)",
+    "A dubbed explainer re-voiced into Saraiki with lip-sync",
+];
+
+async function showVideo() {
+    setView('video');
+    await setupVideoView();
+}
+
+async function setupVideoView() {
+    if (!videoConfig) {
+        try {
+            videoConfig = await API.getVideoConfig();
+        } catch (err) {
+            console.error('Video config load error:', err);
+            return;
+        }
+    }
+
+    renderVideoAgents();
+    renderVideoBackend();
+    renderVideoSelectors();
+    renderVideoToolPickers();
+    renderVideoExamples();
+    document.getElementById('video-session-display').textContent = sessionId.slice(0, 16) + '…';
+    renderVideoOutput();
+    updateVideoButton();
+    refreshAuditStats();
+
+    const textarea = document.getElementById('video-topic');
+    if (!textarea.dataset.bound) {
+        textarea.dataset.bound = '1';
+        textarea.addEventListener('input', () => {
+            updateVideoCharCount();
+            updateVideoButton();
+        });
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runVideo();
+        });
+    }
+}
+
+function renderVideoSelectors() {
+    document.getElementById('video-style').innerHTML =
+        (videoConfig.styles || []).map(s => `<option value="${s}">${s}</option>`).join('');
+    document.getElementById('video-duration').innerHTML =
+        (videoConfig.durations || []).map(d => `<option value="${d}">${d}</option>`).join('');
+}
+
+function renderVideoToolPickers() {
+    renderMediaPills('video-swap-tools', videoConfig.swap_tools || [], videoSwapTool, 'selectVideoSwap');
+    renderMediaPills('video-lipsync-tools', videoConfig.lipsync_tools || [], videoLipsyncTool, 'selectVideoLipsync');
+}
+
+function selectVideoSwap(id) { videoSwapTool = id; renderVideoToolPickers(); }
+function selectVideoLipsync(id) { videoLipsyncTool = id; renderVideoToolPickers(); }
+
+function renderVideoAgents() {
+    const list = document.getElementById('video-agent-list');
+    const crew = videoConfig.agents || [];
+    list.innerHTML = crew.map((a, i) => {
+        const isActive = videoActive === a.id;
+        const isDone = videoDone.has(a.id);
+        let statusHtml = '';
+        if (isActive) {
+            statusHtml = `<span class="pa-status" style="color: ${a.color}"><span class="spinner" style="border-top-color: ${a.color}"></span> Running</span>`;
+        } else if (isDone) {
+            statusHtml = '<span class="pa-status" style="color: var(--accent-green)">✓</span>';
+        }
+        let bgStyle = '';
+        let borderStyle = 'border-color: var(--border)';
+        if (isActive) {
+            bgStyle = `background: ${a.color}08`;
+            borderStyle = `border-color: ${a.color}30`;
+        } else if (isDone) {
+            bgStyle = 'background: var(--bg-card); opacity: 0.7';
+        }
+        const arrow = i < crew.length - 1 ? '<div class="pa-arrow">▼</div>' : '';
+        return `
+            <div class="pa-agent ${isActive ? 'active' : ''}" style="${bgStyle}; ${borderStyle}">
+                <div class="pa-row">
+                    <div class="pa-icon" style="background: ${a.color}15; border: 1px solid ${a.color}30">${a.icon}</div>
+                    <span class="pa-role">${a.role}</span>
+                    ${statusHtml}
+                </div>
+                <div class="pa-desc">${a.description}</div>
+                <div class="pa-fw" style="color: ${a.color}">${a.framework}</div>
+            </div>
+            ${arrow}
+        `;
+    }).join('');
+}
+
+function renderVideoBackend() {
+    const container = document.getElementById('video-backend');
+    const cfg = videoConfig.config || {};
+    const backends = cfg.backends || [];
+    const readyBackends = backends.filter(b => b.status === 'ready');
+    if (readyBackends.length === 0) {
+        container.innerHTML = '<div class="fw-group"><label class="fw-label">Backend</label><div class="fw-pills"><span class="backend-pill">Demo mode</span></div></div>';
+        return;
+    }
+    let html = '<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills">';
+    const autoActive = !selectedBackend ? 'active' : '';
+    html += `<button class="fw-pill ${autoActive}" onclick="selectVideoBackend('')">Auto</button>`;
+    for (const be of readyBackends) {
+        const active = selectedBackend === be.id ? 'active' : '';
+        const label = be.id === 'ollama' ? `Ollama (${be.model})` : `OpenAI (${be.model})`;
+        html += `<button class="fw-pill ${active}" onclick="selectVideoBackend('${be.id}')">${label}</button>`;
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+function selectVideoBackend(be) {
+    selectedBackend = be;
+    localStorage.setItem('brain_backend', be);
+    renderVideoBackend();
+}
+
+function renderVideoExamples() {
+    const area = document.getElementById('video-examples-area');
+    const chips = document.getElementById('video-example-chips');
+    if (videoState !== 'idle' || videoTurns.length > 0) {
+        area.classList.add('hidden');
+        return;
+    }
+    area.classList.remove('hidden');
+    chips.innerHTML = VIDEO_EXAMPLES.map(t => {
+        const display = t.length > 60 ? t.slice(0, 60) + '…' : t;
+        return `<button class="example-chip" onclick="setVideoTopic('${t.replace(/'/g, "\\'")}')">${display}</button>`;
+    }).join('');
+}
+
+function setVideoTopic(text) {
+    const textarea = document.getElementById('video-topic');
+    textarea.value = text;
+    updateVideoCharCount();
+    updateVideoButton();
+}
+
+function updateVideoCharCount() {
+    const textarea = document.getElementById('video-topic');
+    document.getElementById('video-char-count').textContent = `${textarea.value.length}/2000 · Ctrl+Enter to run`;
+}
+
+function updateVideoButton() {
+    const textarea = document.getElementById('video-topic');
+    const btnRun = document.getElementById('video-btn-run');
+    const btnStop = document.getElementById('video-btn-stop');
+    const btnReset = document.getElementById('video-btn-reset');
+
+    btnRun.disabled = !textarea.value.trim() || videoState === 'running' || videoState === 'done';
+
+    if (videoState === 'running') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.remove('hidden');
+        btnReset.classList.add('hidden');
+    } else if (videoState === 'done' || videoState === 'error') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.remove('hidden');
+    } else {
+        btnRun.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.add('hidden');
+    }
+    textarea.disabled = videoState === 'running';
+}
+
+async function runVideo() {
+    const textarea = document.getElementById('video-topic');
+    const topic = textarea.value.trim();
+    if (!topic || videoState === 'running') return;
+
+    const style = document.getElementById('video-style').value;
+    const duration = document.getElementById('video-duration').value;
+    const consent = document.getElementById('video-consent').checked;
+
+    videoState = 'running';
+    videoTurns = [];
+    videoActive = null;
+    videoDone = new Set();
+    videoRunId = null;
+    videoPending = {};
+    videoCompliance = null;
+    updateVideoButton();
+    renderVideoAgents();
+    renderVideoExamples();
+    renderVideoOutput();
+
+    videoAbort = new AbortController();
+
+    try {
+        const reader = await API.runVideoPlan({
+            topic, style, duration,
+            swapTool: videoSwapTool, lipsyncTool: videoLipsyncTool, consent,
+            sessionId, backend: selectedBackend,
+        }, videoAbort.signal);
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                let event;
+                try { event = JSON.parse(raw); } catch { continue; }
+                handleVideoSSE(event);
+            }
+        }
+        if (videoState === 'running') videoState = 'done';
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            videoState = 'error';
+            renderVideoOutput(`Video Stack interrupted: ${err.message}`);
+        } else {
+            videoState = 'idle';
+        }
+    }
+
+    updateVideoButton();
+    renderVideoAgents();
+    refreshAuditStats();
+}
+
+function handleVideoSSE(event) {
+    switch (event.type) {
+        case 'pipeline_start':
+            videoRunId = event.run_id;
+            break;
+
+        case 'compliance':
+            videoCompliance = event;
+            renderVideoOutput();
+            break;
+
+        case 'compliance_block':
+            videoCompliance = Object.assign({}, videoCompliance, { blocked: true, message: event.message });
+            videoState = 'error';
+            renderVideoOutput();
+            break;
+
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!videoPending[w]) videoPending[w] = [];
+            videoPending[w].push(event);
+            const existing = videoTurns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = videoPending[w];
+                renderVideoOutput();
+            }
+            break;
+        }
+
+        case 'agent_start': {
+            videoActive = event.agent;
+            videoTurns.push({
+                agentId: event.agent,
+                role: event.role,
+                color: event.color,
+                icon: event.icon || '🎬',
+                content: '',
+                done: false,
+                toolActivity: videoPending[event.agent] || [],
+            });
+            renderVideoAgents();
+            renderVideoOutput();
+            break;
+        }
+
+        case 'token': {
+            const turn = videoTurns.find(t => t.agentId === event.agent && !t.done);
+            if (turn) {
+                turn.content += event.content;
+                const el = document.getElementById(`video-content-${turn.agentId}`);
+                if (el) {
+                    el.innerHTML = escapeHtml(turn.content) + `<span class="am-cursor" style="background: ${turn.color}"></span>`;
+                    scrollVideoToBottom();
+                }
+            }
+            break;
+        }
+
+        case 'agent_done': {
+            const turn = videoTurns.find(t => t.agentId === event.agent);
+            if (turn) turn.done = true;
+            videoDone.add(event.agent);
+            videoActive = null;
+            renderVideoAgents();
+            renderVideoOutput();
+            break;
+        }
+
+        case 'done':
+            videoState = event.blocked ? 'error' : 'done';
+            updateVideoButton();
+            renderVideoAgents();
+            renderVideoOutput();
+            break;
+
+        case 'error':
+            videoState = 'error';
+            updateVideoButton();
+            renderVideoOutput(event.message);
+            break;
+
+        case 'cancelled':
+            videoState = 'idle';
+            updateVideoButton();
+            break;
+    }
+}
+
+function stopVideo() {
+    if (videoAbort) videoAbort.abort();
+    videoState = 'idle';
+    videoActive = null;
+    updateVideoButton();
+    renderVideoAgents();
+}
+
+function resetVideo() {
+    videoTurns = [];
+    videoActive = null;
+    videoDone = new Set();
+    videoRunId = null;
+    videoState = 'idle';
+    videoCompliance = null;
+    updateVideoButton();
+    renderVideoAgents();
+    renderVideoExamples();
+    renderVideoOutput();
+}
+
+function renderComplianceBanner() {
+    if (!videoCompliance) return '';
+    if (videoCompliance.blocked) {
+        return `<div class="compliance-banner flagged">
+            <strong>⛔ Flagged — access limited.</strong> ${escapeHtml(videoCompliance.message || '')}
+            <div class="cb-audit">Audit ID: ${videoCompliance.audit_id}</div>
+        </div>`;
+    }
+    if (videoCompliance.flagged) {
+        return `<div class="compliance-banner flagged">
+            <strong>⚠ Flagged for review.</strong> ${escapeHtml((videoCompliance.reasons || []).join('; '))}
+            <div class="cb-audit">Audit ID: ${videoCompliance.audit_id}</div>
+        </div>`;
+    }
+    return `<div class="compliance-banner ok">
+        <strong>✓ Cleared &amp; logged.</strong> Recorded for legal review — audit ID ${videoCompliance.audit_id}.
+    </div>`;
+}
+
+function renderVideoOutput(errorMsg) {
+    const area = document.getElementById('video-output-area');
+    const crew = videoConfig ? (videoConfig.agents || []) : [];
+    const banner = renderComplianceBanner();
+
+    if (videoTurns.length === 0 && !errorMsg && !banner) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🎬</div>
+                <h3>Ready to plan a production</h3>
+                <p>Pick a style, duration and offline tool chain, describe your (consented) project, and the Video Stack produces a full, audit-logged face-swap + lip-sync production plan.</p>
+                <div class="agent-dots">
+                    ${crew.map(a => `<span class="dot"><span class="dot-circle" style="background: ${a.color}"></span> ${a.role}</span>`).join('')}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = banner;
+    if (errorMsg) {
+        html += `<div class="error-banner">${errorMsg}</div>`;
+    }
+
+    html += '<div class="output-log" id="video-output-log">';
+    for (const turn of videoTurns) {
+        const cursorHtml = !turn.done
+            ? `<span class="am-cursor" style="background: ${turn.color}"></span>`
+            : '';
+        html += `
+            <div class="agent-message" id="video-msg-${turn.agentId}">
+                <div class="am-header">
+                    <div class="am-icon" style="background: ${turn.color}15; border: 1px solid ${turn.color}30">${turn.icon}</div>
+                    <span class="am-role" style="color: ${turn.color}">${turn.role}</span>
+                    ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
+                    ${turn.done ? `<button class="am-copy" onclick="copyVideoContent('${turn.agentId}')">📋</button>` : ''}
+                </div>
+                ${renderToolActivity(turn.toolActivity)}
+                <div class="am-content" id="video-content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
+            </div>
+        `;
+    }
+    if (videoState === 'done') {
+        html += '<div class="pipeline-complete">Production plan complete</div>';
+    }
+    html += '</div>';
+
+    area.innerHTML = html;
+    scrollVideoToBottom();
+}
+
+function scrollVideoToBottom() {
+    const log = document.getElementById('video-output-log');
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+function copyVideoContent(agentId) {
+    const turn = videoTurns.find(t => t.agentId === agentId);
+    if (turn) navigator.clipboard.writeText(turn.content);
+}
+
+async function refreshAuditStats() {
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const el = document.getElementById('video-audit-stats');
+        if (el && data.stats) {
+            el.textContent = `${data.stats.total_events} events logged · ${data.stats.flagged_events} flagged`;
+        }
+    } catch (err) {
+        console.error('Audit stats error:', err);
+    }
+}
+
+async function loadAuditLog() {
+    const container = document.getElementById('video-audit-log');
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const events = data.events || [];
+        if (events.length === 0) {
+            container.innerHTML = '<div class="audit-empty">No recorded activity yet.</div>';
+            return;
+        }
+        container.innerHTML = events.map(e => {
+            const when = new Date(e.created_at * 1000).toLocaleTimeString();
+            const cls = e.verdict === 'flagged' ? 'flagged' : 'ok';
+            const reasons = e.reasons && e.reasons.length ? ` — ${escapeHtml(e.reasons.join('; '))}` : '';
+            return `<div class="audit-row ${cls}">
+                <span class="audit-when">${when}</span>
+                <span class="audit-action">${escapeHtml(e.action)}</span>
+                <span class="audit-verdict">${e.verdict}${reasons}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="audit-empty">Failed to load audit log: ${err.message}</div>`;
+    }
+}
+
 /* ── Init ───────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {

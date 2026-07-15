@@ -22,9 +22,17 @@ from backend.agents.media_crew import (
     VOICE_TOOLS,
 )
 from backend.agents.media_crew import LANGUAGES as MEDIA_LANGUAGES
+from backend.agents.video_stack import (
+    LIPSYNC_TOOLS,
+    STYLES,
+    SWAP_TOOLS,
+    VIDEO_STACK,
+)
+from backend.agents.video_stack import DURATIONS as VIDEO_DURATIONS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
-from backend.pipeline import intelligence_crew, media_crew
+from backend.pipeline import intelligence_crew, media_crew, video_stack
+from backend.pipeline.compliance import ComplianceRecorder
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
     get_config,
@@ -33,6 +41,8 @@ from backend.pipeline.orchestrator import (
     route_pipeline,
 )
 from backend.tools.analysis import get_all_tools, get_tools_for_agent
+
+compliance_recorder = ComplianceRecorder()
 
 app = FastAPI(
     title="TIER 1 — Strategic Brain",
@@ -237,6 +247,65 @@ async def media_produce(req: MediaRequest):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ── TIER 2 — Video Stack (face-swap / lip-sync) ────────────────────
+
+
+@app.get("/api/video/config")
+def video_config():
+    return {
+        "agents": [a.to_meta() for a in VIDEO_STACK],
+        "styles": STYLES,
+        "durations": VIDEO_DURATIONS,
+        "swap_tools": SWAP_TOOLS,
+        "lipsync_tools": LIPSYNC_TOOLS,
+        "config": get_config(),
+    }
+
+
+class VideoRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=2000)
+    style: str = Field(default="Documentary")
+    duration: str = Field(default="60 seconds")
+    swap_tool: str = Field(default="deepfacelab")
+    lipsync_tool: str = Field(default="wav2lip")
+    consent: bool = Field(default=False, description="Lawful consent attested for any real likeness")
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/video/plan")
+async def video_plan(req: VideoRequest):
+    inp = {
+        "topic": req.topic,
+        "style": req.style,
+        "duration": req.duration,
+        "swap_tool": req.swap_tool,
+        "lipsync_tool": req.lipsync_tool,
+        "consent": req.consent,
+    }
+    generator = video_stack.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── Compliance & audit ──────────────────────────────────────────────
+
+
+@app.get("/api/compliance/audit")
+def compliance_audit(session_id: str = "", limit: int = 100):
+    return {
+        "events": compliance_recorder.get_log(session_id or None, limit),
+        "stats": compliance_recorder.get_stats(),
+    }
 
 
 class CancelRequest(BaseModel):

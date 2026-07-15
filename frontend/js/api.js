@@ -137,6 +137,45 @@ const API = {
         return res.body.getReader();
     },
 
+    async getVideoConfig() {
+        const res = await fetch('/api/video/config');
+        return res.json();
+    },
+
+    /**
+     * Run the TIER 2 Video Stack and return an SSE reader.
+     * @param {object} opts - topic, style, duration, swapTool, lipsyncTool, consent, sessionId, backend
+     * @param {AbortSignal} signal
+     * @returns {ReadableStreamDefaultReader}
+     */
+    async runVideoPlan(opts, signal) {
+        const res = await fetch('/api/video/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                topic: opts.topic,
+                style: opts.style,
+                duration: opts.duration,
+                swap_tool: opts.swapTool,
+                lipsync_tool: opts.lipsyncTool,
+                consent: !!opts.consent,
+                session_id: opts.sessionId,
+                backend: opts.backend || '',
+            }),
+            signal,
+        });
+        if (!res.ok || !res.body) {
+            throw new Error(`API error: ${res.status}`);
+        }
+        return res.body.getReader();
+    },
+
+    async getComplianceAudit(sessionId) {
+        const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
+        const res = await fetch(`/api/compliance/audit${q}`);
+        return res.json();
+    },
+
     async cancelPipeline(runId) {
         const res = await fetch('/api/pipeline/cancel', {
             method: 'POST',

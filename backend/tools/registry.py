@@ -280,6 +280,70 @@ def _online_available() -> bool:
     return os.environ.get("ALLOW_ONLINE_TOOLS", "").lower() in ("1", "true", "yes")
 
 
+# ── Video Stack stubs (face-swap / lip-sync / restore; offline, simulated) ──
+
+_FACESWAP_PROVIDERS = {
+    "deepfacelab": {"provider": "DeepFaceLab", "mode": "batch", "note": "professional face-swap, CLI automation"},
+    "faceswap": {"provider": "FaceSwap", "mode": "batch", "note": "TensorFlow, cross-platform"},
+    "deeplivecam": {"provider": "Deep-Live-Cam", "mode": "realtime", "note": "real-time single-image swap"},
+}
+
+_LIPSYNC_PROVIDERS = {
+    "wav2lip": {"provider": "Wav2Lip", "note": "audio-driven lip-sync"},
+    "videoretalking": {"provider": "VideoRetalking", "note": "expression-aware retalking"},
+}
+
+
+async def _face_swap(tool: str = "deepfacelab", source: str = "", target: str = "",
+                     **_: Any) -> dict:
+    p = _FACESWAP_PROVIDERS.get(tool, _FACESWAP_PROVIDERS["deepfacelab"])
+    return {
+        "simulated": True,
+        "provider": p["provider"],
+        "mode": p["mode"],
+        "requires_internet": False,
+        "resolution": "1080p",
+        "artifact": "/artifacts/video/swap_stub.mp4",
+        "note": f"Stub — {p['note']}. Simulated only; no real face-swap is performed. "
+                "Real integration is consent-gated and audit-logged.",
+    }
+
+
+async def _lip_sync(tool: str = "wav2lip", video: str = "", audio: str = "",
+                    **_: Any) -> dict:
+    p = _LIPSYNC_PROVIDERS.get(tool, _LIPSYNC_PROVIDERS["wav2lip"])
+    return {
+        "simulated": True,
+        "provider": p["provider"],
+        "requires_internet": False,
+        "fps": 25,
+        "artifact": "/artifacts/video/lipsync_stub.mp4",
+        "note": f"Stub — {p['note']}. Simulated only.",
+    }
+
+
+async def _gfpgan_upscale(input_path: str = "", scale: int = 2, **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "GFPGAN",
+        "requires_internet": False,
+        "scale": scale,
+        "artifact": "/artifacts/video/restored_stub.mp4",
+        "note": "Stub — wire to GFPGAN for face restoration / upscaling (offline/local).",
+    }
+
+
+async def _ffmpeg_pipeline(steps: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "FFmpeg",
+        "requires_internet": False,
+        "steps": steps or "trim,concat,scale,mux",
+        "artifact": "/artifacts/video/final_stub.mp4",
+        "note": "Stub — deterministic FFmpeg compositing/mux pipeline (offline/local).",
+    }
+
+
 def _register_defaults() -> None:
     if _REGISTRY:
         return
@@ -354,6 +418,30 @@ def _register_defaults() -> None:
         description="Photo+script lip-synced digital human (Duix-Avatar, Wav2Lip, Roop).",
         category="media", provider="Duix-Avatar / Wav2Lip / Roop", run=_render_avatar,
         parameters={"tool": "duix|wav2lip|roop", "photo": "ref photo", "script": "text"},
+    ))
+    register(ToolSpec(
+        id="face_swap", name="Face-Swap Engine",
+        description="Face-swap / video synthesis (DeepFaceLab, FaceSwap, Deep-Live-Cam). Consent-gated, simulated.",
+        category="media", provider="DeepFaceLab / FaceSwap / Deep-Live-Cam", run=_face_swap,
+        parameters={"tool": "deepfacelab|faceswap|deeplivecam", "source": "source", "target": "target"},
+    ))
+    register(ToolSpec(
+        id="lip_sync", name="Lip-Sync Engine",
+        description="Lip-sync deepfake anchors (Wav2Lip, VideoRetalking). Simulated.",
+        category="media", provider="Wav2Lip / VideoRetalking", run=_lip_sync,
+        parameters={"tool": "wav2lip|videoretalking", "video": "video", "audio": "audio"},
+    ))
+    register(ToolSpec(
+        id="gfpgan_upscale", name="Face Restore / Upscale",
+        description="GFPGAN face restoration and upscaling.",
+        category="media", provider="GFPGAN", run=_gfpgan_upscale,
+        parameters={"input_path": "input", "scale": "upscale factor"},
+    ))
+    register(ToolSpec(
+        id="ffmpeg_pipeline", name="FFmpeg Pipeline",
+        description="Deterministic FFmpeg compositing / muxing pipeline.",
+        category="media", provider="FFmpeg", run=_ffmpeg_pipeline,
+        parameters={"steps": "comma-separated steps"},
     ))
     register(ToolSpec(
         id="playwright_stealth_check", name="Automation Posture Check",

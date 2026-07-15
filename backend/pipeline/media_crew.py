@@ -25,10 +25,12 @@ from backend.pipeline.llm_config import (
     is_ollama_model_ready,
     is_openai_configured,
 )
+from backend.pipeline.compliance import ComplianceRecorder
 from backend.pipeline.memory import PipelineMemory
 from backend.tools import registry
 
 memory = PipelineMemory()
+compliance = ComplianceRecorder()
 
 _active: dict[str, bool] = {}
 
@@ -154,6 +156,14 @@ async def run(inp: dict, session_id: str,
 
 async def route(inp: dict, session_id: str, backend: str = "") -> AsyncGenerator[str, None]:
     """Resolve the backend and run the crew, falling back to demo mode."""
+    result = compliance.record(
+        session_id, "media.produce",
+        f"[media] {inp.get('topic', '')} | tone={inp.get('tone', '')} lang={inp.get('language', '')}",
+        {k: inp.get(k) for k in ("tone", "language", "duration", "voice_tool", "video_tool", "avatar_tool")},
+        consent_attested=True,
+    )
+    yield f"data: {json.dumps({'type': 'compliance', 'audit_id': result.audit_id, 'allowed': result.allowed, 'flagged': result.flagged, 'reasons': result.reasons})}\n\n"
+
     if backend == "openai" and is_openai_configured():
         resolved = LLMBackend.OPENAI
     elif backend == "ollama" and is_ollama_model_ready():
