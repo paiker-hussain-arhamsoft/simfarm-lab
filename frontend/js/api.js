@@ -159,6 +159,8 @@ const API = {
                 swap_tool: opts.swapTool,
                 lipsync_tool: opts.lipsyncTool,
                 consent: !!opts.consent,
+                authorization_ref: opts.authorizationRef || '',
+                approver: opts.approver || '',
                 session_id: opts.sessionId,
                 backend: opts.backend || '',
             }),

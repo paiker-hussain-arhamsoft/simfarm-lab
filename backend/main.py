@@ -32,7 +32,7 @@ from backend.agents.video_stack import DURATIONS as VIDEO_DURATIONS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import intelligence_crew, media_crew, video_stack
-from backend.pipeline.compliance import ComplianceRecorder
+from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
     get_config,
@@ -260,6 +260,7 @@ def video_config():
         "durations": VIDEO_DURATIONS,
         "swap_tools": SWAP_TOOLS,
         "lipsync_tools": LIPSYNC_TOOLS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
         "config": get_config(),
     }
 
@@ -271,6 +272,14 @@ class VideoRequest(BaseModel):
     swap_tool: str = Field(default="deepfacelab")
     lipsync_tool: str = Field(default="wav2lip")
     consent: bool = Field(default=False, description="Lawful consent attested for any real likeness")
+    authorization_ref: str = Field(
+        default="", max_length=200,
+        description="Legal-proxy authorization reference (case no. / signed-release ID / court order)",
+    )
+    approver: str = Field(
+        default="", max_length=200,
+        description="Identity of the approving legal-proxy reviewer",
+    )
     session_id: str = Field(..., min_length=1)
     backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
 
@@ -284,6 +293,8 @@ async def video_plan(req: VideoRequest):
         "swap_tool": req.swap_tool,
         "lipsync_tool": req.lipsync_tool,
         "consent": req.consent,
+        "authorization_ref": req.authorization_ref,
+        "approver": req.approver,
     }
     generator = video_stack.route(inp, req.session_id, backend=req.backend)
     return StreamingResponse(

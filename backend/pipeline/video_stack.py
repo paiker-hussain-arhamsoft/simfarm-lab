@@ -137,7 +137,11 @@ async def run(inp: dict, session_id: str,
 async def route(inp: dict, session_id: str, backend: str = "") -> AsyncGenerator[str, None]:
     """Compliance-screen and audit-log, then run the crew (allow-by-default)."""
     summary = f"[video] {inp.get('topic', '')} | style={inp.get('style', '')}"
-    result = compliance.record(session_id, "video.plan", summary, inp, inp.get("consent", False))
+    result = compliance.record(
+        session_id, "video.plan", summary, inp, inp.get("consent", False),
+        authorization_ref=inp.get("authorization_ref", ""),
+        approver=inp.get("approver", ""),
+    )
 
     yield _sse({
         "type": "compliance",
@@ -145,6 +149,9 @@ async def route(inp: dict, session_id: str, backend: str = "") -> AsyncGenerator
         "allowed": result.allowed,
         "flagged": result.flagged,
         "reasons": result.reasons,
+        "verdict": result.verdict,
+        "sensitivity": result.sensitivity,
+        "override": result.override,
     })
 
     if not result.allowed:

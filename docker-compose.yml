@@ -26,6 +26,10 @@ services:
       - OLLAMA_HOST=http://ollama:11434
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
       - DEFAULT_FRAMEWORK=${DEFAULT_FRAMEWORK:-supervisor}
+      - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
+      # Privileged legal-proxy override role (default OFF). Even when enabled,
+      # a flagged request is only cleared with a real authorization ref + approver.
+      - LEGAL_PROXY_ENABLED=${LEGAL_PROXY_ENABLED:-}
       # Optional per-role model overrides (default: OLLAMA_MODEL for all roles)
       - OLLAMA_MODEL_SUPERVISOR=${OLLAMA_MODEL_SUPERVISOR:-}
       - OLLAMA_MODEL_DIRECTOR=${OLLAMA_MODEL_DIRECTOR:-}

@@ -254,6 +254,12 @@
                         <input type="checkbox" id="video-consent">
                         I attest lawful, documented consent for any real person's likeness or voice used in this production.
                     </label>
+                    <div id="video-legal-proxy" class="legal-proxy-box hidden">
+                        <div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div>
+                        <div class="lp-note">Only for authorized legal users. A flagged request can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Consent is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review.</div>
+                        <input type="text" id="video-approver" placeholder="Approver identity (name / role)">
+                        <input type="text" id="video-auth-ref" placeholder="Authorization reference (case no. / signed-release ID / court order)">
+                    </div>
                     <div class="example-tasks" id="video-examples-area">
                         <p>Example projects:</p>
                         <div class="chips" id="video-example-chips"></div>

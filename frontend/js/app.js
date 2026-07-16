@@ -1477,6 +1477,8 @@ async function setupVideoView() {
     renderVideoSelectors();
     renderVideoToolPickers();
     renderVideoExamples();
+    const lpBox = document.getElementById('video-legal-proxy');
+    if (lpBox) lpBox.classList.toggle('hidden', !videoConfig.legal_proxy_enabled);
     document.getElementById('video-session-display').textContent = sessionId.slice(0, 16) + '…';
     renderVideoOutput();
     updateVideoButton();
@@ -1631,6 +1633,10 @@ async function runVideo() {
     const style = document.getElementById('video-style').value;
     const duration = document.getElementById('video-duration').value;
     const consent = document.getElementById('video-consent').checked;
+    const approverEl = document.getElementById('video-approver');
+    const authRefEl = document.getElementById('video-auth-ref');
+    const approver = approverEl ? approverEl.value.trim() : '';
+    const authorizationRef = authRefEl ? authRefEl.value.trim() : '';
 
     videoState = 'running';
     videoTurns = [];
@@ -1650,6 +1656,7 @@ async function runVideo() {
         const reader = await API.runVideoPlan({
             topic, style, duration,
             swapTool: videoSwapTool, lipsyncTool: videoLipsyncTool, consent,
+            approver, authorizationRef,
             sessionId, backend: selectedBackend,
         }, videoAbort.signal);
         const decoder = new TextDecoder();
@@ -1798,6 +1805,12 @@ function resetVideo() {
 
 function renderComplianceBanner() {
     if (!videoCompliance) return '';
+    if (videoCompliance.override) {
+        return `<div class="compliance-banner sensitive">
+            <strong>🔴 PRE-CLEARED LEGAL PROXY — SENSITIVE.</strong> Flagged content was cleared under an elevated override and logged in red for legal review. ${escapeHtml((videoCompliance.reasons || []).join('; '))}
+            <div class="cb-audit">Audit ID: ${videoCompliance.audit_id}</div>
+        </div>`;
+    }
     if (videoCompliance.blocked) {
         return `<div class="compliance-banner flagged">
             <strong>⛔ Flagged — access limited.</strong> ${escapeHtml(videoCompliance.message || '')}
@@ -1899,12 +1912,15 @@ async function loadAuditLog() {
         }
         container.innerHTML = events.map(e => {
             const when = new Date(e.created_at * 1000).toLocaleTimeString();
-            const cls = e.verdict === 'flagged' ? 'flagged' : 'ok';
+            let cls = 'ok';
+            if (e.sensitivity === 'red' || e.verdict === 'pre_cleared_legal_proxy') cls = 'sensitive';
+            else if (e.verdict === 'flagged') cls = 'flagged';
             const reasons = e.reasons && e.reasons.length ? ` — ${escapeHtml(e.reasons.join('; '))}` : '';
+            const approver = e.approver ? ` [approver: ${escapeHtml(e.approver)}]` : '';
             return `<div class="audit-row ${cls}">
                 <span class="audit-when">${when}</span>
                 <span class="audit-action">${escapeHtml(e.action)}</span>
-                <span class="audit-verdict">${e.verdict}${reasons}</span>
+                <span class="audit-verdict">${e.verdict}${approver}${reasons}</span>
             </div>`;
         }).join('');
     } catch (err) {
