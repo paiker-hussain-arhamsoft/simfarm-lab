@@ -265,11 +265,11 @@
                             <div class="ledger-actions">
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
                                 <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
-                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload CSV
-                                    <input type="file" id="ledger-upload" accept=".csv" onchange="uploadLedger(event)" hidden>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload signed CSV
+                                    <input type="file" id="ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden>
                                 </label>
                             </div>
-                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite. It never auto-clears a request. SSH credentials are entered per-fetch and never stored.</div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite — it never auto-clears a request. When an official public key is configured, a ledger is accepted only with a valid detached signature (<code>index.csv</code> + <code>index.csv.sig</code>), so a renamed file can't pass as official. SSH credentials are entered per-fetch and never stored.</div>
                         </div>
                     </div>
                     <div class="example-tasks" id="video-examples-area">

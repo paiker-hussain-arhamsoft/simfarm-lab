@@ -200,6 +200,7 @@ const API = {
                 username: opts.username || '',
                 password: opts.password || '',
                 csv: opts.csv || '',
+                signature_b64: opts.signatureB64 || '',
             }),
         });
         const data = await res.json().catch(() => ({}));

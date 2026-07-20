@@ -33,6 +33,11 @@ import os
 import time
 
 import httpx
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import ec, ed25519, padding, rsa
+from cryptography.hazmat.primitives.serialization import load_pem_public_key
+from cryptography.x509 import load_pem_x509_certificate
 
 DATA_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data"
@@ -59,7 +64,65 @@ def config() -> dict:
         "ssh_path": _env("LEGAL_LEDGER_SSH_PATH"),
         "verify_tls": _env("LEGAL_LEDGER_VERIFY_TLS", "true").lower()
         not in ("0", "false", "no"),
+        "signature_required": bool(_public_key_pem()),
     }
+
+
+# ── Signature verification (public key only) ────────────────────────
+
+
+def _public_key_pem() -> str:
+    """Return the configured official public key PEM, or '' if not set.
+
+    Only a PUBLIC key (or an X.509 certificate) is ever loaded — a private key
+    must never be provided to or used by this service.
+    """
+    pem = _env("LEGAL_LEDGER_PUBLIC_KEY")
+    path = _env("LEGAL_LEDGER_PUBLIC_KEY_PATH")
+    if not pem and path and os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            pem = fh.read()
+    return pem
+
+
+def signing_required() -> bool:
+    """True when an official public key is configured; then signatures are enforced."""
+    return bool(_public_key_pem())
+
+
+def _load_public_key():
+    pem = _public_key_pem().encode("utf-8")
+    if not pem.strip():
+        return None
+    if b"PRIVATE KEY" in pem:
+        raise ValueError(
+            "a PRIVATE key was supplied to LEGAL_LEDGER_PUBLIC_KEY — refuse. "
+            "Provide only the public key / certificate."
+        )
+    try:
+        return load_pem_public_key(pem)
+    except ValueError:
+        # Maybe it's an X.509 certificate PEM — extract its public key.
+        return load_pem_x509_certificate(pem).public_key()
+
+
+def verify_signature(data: bytes, signature: bytes) -> bool:
+    """Verify a detached SHA256 signature against the configured public key."""
+    pubkey = _load_public_key()
+    if pubkey is None:
+        return False
+    try:
+        if isinstance(pubkey, rsa.RSAPublicKey):
+            pubkey.verify(signature, data, padding.PKCS1v15(), hashes.SHA256())
+        elif isinstance(pubkey, ec.EllipticCurvePublicKey):
+            pubkey.verify(signature, data, ec.ECDSA(hashes.SHA256()))
+        elif isinstance(pubkey, ed25519.Ed25519PublicKey):
+            pubkey.verify(signature, data)
+        else:
+            return False
+        return True
+    except InvalidSignature:
+        return False
 
 
 # ── Parsing / validation ────────────────────────────────────────────
@@ -85,9 +148,29 @@ def parse_ledger(text: str) -> list[dict]:
     return rows
 
 
-def _save(text: str, source: str) -> dict:
-    """Validate and persist a freshly-fetched ledger. Returns status."""
-    rows = parse_ledger(text)  # validate before persisting
+def _save(text: str, source: str, signature: bytes | None = None) -> dict:
+    """Validate, verify signature, and persist a freshly-fetched ledger.
+
+    When an official public key is configured, a valid detached signature is
+    REQUIRED — an unsigned or badly-signed file is rejected so a renamed/forged
+    CSV can never be accepted as the official ledger.
+    """
+    data = text.encode("utf-8")
+    verified = False
+    if signing_required():
+        if not signature:
+            raise ValueError(
+                "official public key is configured but no signature was provided — "
+                "refusing to accept an unsigned ledger"
+            )
+        if not verify_signature(data, signature):
+            raise ValueError(
+                "signature verification FAILED — the ledger is unsigned, modified, "
+                "or forged; refusing to accept it"
+            )
+        verified = True
+
+    rows = parse_ledger(text)  # validate structure before persisting
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(LEDGER_PATH, "w", encoding="utf-8") as fh:
         fh.write(text)
@@ -95,7 +178,8 @@ def _save(text: str, source: str) -> dict:
         "source": source,
         "fetched_at": time.time(),
         "count": len(rows),
-        "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest(),
+        "sha256": hashlib.sha256(data).hexdigest(),
+        "verified": verified,
     }
     _write_meta(meta)
     return meta
@@ -108,7 +192,8 @@ def _write_meta(meta: dict) -> None:
     os.makedirs(DATA_DIR, exist_ok=True)
     with open(_META_PATH, "w", encoding="utf-8") as fh:
         fh.write(
-            f"{meta['source']}\n{meta['fetched_at']}\n{meta['count']}\n{meta['sha256']}\n"
+            f"{meta['source']}\n{meta['fetched_at']}\n{meta['count']}\n"
+            f"{meta['sha256']}\n{int(bool(meta.get('verified')))}\n"
         )
 
 
@@ -117,14 +202,15 @@ def _read_meta() -> dict | None:
         return None
     try:
         with open(_META_PATH, encoding="utf-8") as fh:
-            source, fetched_at, count, sha256 = [
-                ln.strip() for ln in fh.readlines()[:4]
-            ]
+            lines = [ln.strip() for ln in fh.readlines()]
+        source, fetched_at, count, sha256 = lines[:4]
+        verified = bool(int(lines[4])) if len(lines) > 4 else False
         return {
             "source": source,
             "fetched_at": float(fetched_at),
             "count": int(count),
             "sha256": sha256,
+            "verified": verified,
         }
     except (ValueError, IndexError):
         return None
@@ -159,6 +245,7 @@ def status() -> dict:
         "fetched_at": meta["fetched_at"],
         "count": meta["count"],
         "sha256": meta["sha256"][:16],
+        "verified": meta.get("verified", False),
         "stale": stale,
         "config": cfg,
     }
@@ -212,7 +299,12 @@ def fetch_https() -> dict:
     with httpx.Client(timeout=15.0, verify=verify) as client:
         resp = client.get(url, headers=headers)
         resp.raise_for_status()
-        return _save(resp.text, "https")
+        signature: bytes | None = None
+        if signing_required():
+            sig_resp = client.get(url + ".sig", headers=headers)
+            sig_resp.raise_for_status()
+            signature = sig_resp.content
+        return _save(resp.text, "https", signature)
 
 
 class _PinnedHostKeyPolicy:
@@ -277,16 +369,20 @@ def fetch_ssh(username: str, password: str) -> dict:
         try:
             with sftp.open(path, "r") as remote:
                 text = remote.read().decode("utf-8")
+            signature: bytes | None = None
+            if signing_required():
+                with sftp.open(path + ".sig", "rb") as remote_sig:
+                    signature = remote_sig.read()
         finally:
             sftp.close()
     finally:
         client.close()
         # Do not retain credentials in memory beyond this call.
         del password
-    return _save(text, "ssh")
+    return _save(text, "ssh", signature)
 
 
-def load_from_upload(content: bytes) -> dict:
-    """Last-resort admin CSV upload."""
+def load_from_upload(content: bytes, signature: bytes | None = None) -> dict:
+    """Last-resort admin CSV upload (must include a valid .sig when a key is set)."""
     text = content.decode("utf-8")
-    return _save(text, "upload")
+    return _save(text, "upload", signature)

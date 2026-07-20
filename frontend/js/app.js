@@ -1942,8 +1942,9 @@ async function refreshLedgerStatus() {
             return;
         }
         const when = new Date(s.fetched_at * 1000).toLocaleString();
-        el.textContent = `${s.count} authorizations · via ${s.source} · ${when}` + (s.stale ? ' · STALE' : '');
-        el.className = 'ledger-status' + (s.stale ? ' stale' : ' ok');
+        const sig = s.verified ? ' · ✓ signed' : (s.config && s.config.signature_required ? ' · UNVERIFIED' : '');
+        el.textContent = `${s.count} authorizations · via ${s.source} · ${when}${sig}` + (s.stale ? ' · STALE' : '');
+        el.className = 'ledger-status' + ((s.stale || (s.config && s.config.signature_required && !s.verified)) ? ' stale' : ' ok');
     } catch (err) {
         el.textContent = `Ledger status unavailable: ${err.message}`;
         el.className = 'ledger-status stale';
@@ -1981,14 +1982,28 @@ async function fetchLedgerSSH() {
 }
 
 async function uploadLedger(event) {
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
     const approver = (document.getElementById('video-approver') || {}).value || '';
     const el = document.getElementById('ledger-status');
+    const csvFile = files.find(f => f.name.toLowerCase().endsWith('.csv'));
+    const sigFile = files.find(f => f.name.toLowerCase().endsWith('.sig'));
+    if (!csvFile) {
+        if (el) { el.textContent = 'Select the .csv file (and its .sig when signing is required).'; el.className = 'ledger-status stale'; }
+        event.target.value = '';
+        return;
+    }
     try {
-        const csv = await file.text();
+        const csv = await csvFile.text();
+        let signatureB64 = '';
+        if (sigFile) {
+            const buf = new Uint8Array(await sigFile.arrayBuffer());
+            let binary = '';
+            buf.forEach(b => { binary += String.fromCharCode(b); });
+            signatureB64 = btoa(binary);
+        }
         if (el) el.textContent = 'Uploading…';
-        await API.fetchLedger({ source: 'upload', sessionId, approver, csv });
+        await API.fetchLedger({ source: 'upload', sessionId, approver, csv, signatureB64 });
         await refreshLedgerStatus();
         refreshAuditStats();
     } catch (err) {

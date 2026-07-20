@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 
 from fastapi import FastAPI, HTTPException
@@ -352,6 +353,10 @@ class LedgerFetchRequest(BaseModel):
     password: str = Field(default="", max_length=400)
     # upload-only:
     csv: str = Field(default="", max_length=5_000_000)
+    signature_b64: str = Field(
+        default="", max_length=100_000,
+        description="Base64 detached signature of the CSV (required when a key is set)",
+    )
 
 
 @app.post("/api/compliance/ledger/fetch")
@@ -364,7 +369,8 @@ def ledger_fetch(req: LedgerFetchRequest):
         elif req.source == "ssh":
             meta = legal_ledger.fetch_ssh(req.username, req.password)
         elif req.source == "upload":
-            meta = legal_ledger.load_from_upload(req.csv.encode("utf-8"))
+            sig = base64.b64decode(req.signature_b64) if req.signature_b64 else None
+            meta = legal_ledger.load_from_upload(req.csv.encode("utf-8"), sig)
         else:
             raise HTTPException(status_code=400, detail=f"unknown source '{req.source}'")
     except HTTPException:

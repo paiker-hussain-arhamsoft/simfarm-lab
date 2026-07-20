@@ -40,6 +40,11 @@ services:
       - LEGAL_LEDGER_SSH_PORT=${LEGAL_LEDGER_SSH_PORT:-22}
       - LEGAL_LEDGER_SSH_PATH=${LEGAL_LEDGER_SSH_PATH:-}
       - LEGAL_LEDGER_SSH_HOSTKEY=${LEGAL_LEDGER_SSH_HOSTKEY:-}
+      # Official PUBLIC key (or cert) for detached-signature verification of the
+      # ledger. When set, every ledger MUST carry a valid .sig or it is rejected.
+      # Provide the PUBLIC key only — never the private key.
+      - LEGAL_LEDGER_PUBLIC_KEY=${LEGAL_LEDGER_PUBLIC_KEY:-}
+      - LEGAL_LEDGER_PUBLIC_KEY_PATH=${LEGAL_LEDGER_PUBLIC_KEY_PATH:-}
       # Optional per-role model overrides (default: OLLAMA_MODEL for all roles)
       - OLLAMA_MODEL_SUPERVISOR=${OLLAMA_MODEL_SUPERVISOR:-}
       - OLLAMA_MODEL_DIRECTOR=${OLLAMA_MODEL_DIRECTOR:-}
