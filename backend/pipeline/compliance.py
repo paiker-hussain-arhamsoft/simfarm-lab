@@ -50,7 +50,7 @@ def legal_proxy_enabled() -> bool:
 
 # Named-real-person deepfakes require an explicit consent attestation.
 _TITLE_PATTERNS = [
-    r"\b(?:president|prime minister|pm|premier|chief minister|senator|minister|mp|mna|mpa|cm|governor|chancellor|celebrity|actor|actress|singer)\b",
+    r"\b(?:president|prime minister|senator|minister|mp|mna|mpa|cm|governor|celebrity|actor|actress|singer)\b",
 ]
 
 
