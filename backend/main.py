@@ -36,6 +36,12 @@ from backend.agents.cyber_crew import (
     ENGAGEMENTS,
     SCAN_TOOLS,
 )
+from backend.agents.persona_crew import (
+    PERSONA_CREW,
+    PLATFORMS,
+    REGIONS as PERSONA_REGIONS,
+    SCENARIOS as PERSONA_SCENARIOS,
+)
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import (
@@ -44,6 +50,7 @@ from backend.pipeline import (
     ledger_scheduler,
     legal_ledger,
     media_crew,
+    persona_crew,
     video_stack,
 )
 from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
@@ -372,6 +379,64 @@ async def cyber_plan(req: CyberRequest):
         "approver": req.approver,
     }
     generator = cyber_crew.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 3 — Persona Orchestration (simulated) ─────────────
+
+
+@app.get("/api/persona/config")
+def persona_config():
+    return {
+        "agents": [a.to_meta() for a in PERSONA_CREW],
+        "scenarios": PERSONA_SCENARIOS,
+        "platforms": PLATFORMS,
+        "regions": PERSONA_REGIONS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
+        "config": get_config(),
+    }
+
+
+class PersonaRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = Field(default="Detection Research (blue-team)")
+    platform: str = Field(default="lab-dashboard")
+    region: str = Field(default="pk-urdu")
+    authorized: bool = Field(
+        default=False, description="Authorized research/training context attested (lab-only)"
+    )
+    authorization_ref: str = Field(
+        default="", max_length=200,
+        description="Legal-proxy authorization reference (case no. / signed authorization / order ID)",
+    )
+    approver: str = Field(
+        default="", max_length=200,
+        description="Identity of the approving legal-proxy reviewer",
+    )
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/persona/plan")
+async def persona_plan(req: PersonaRequest):
+    inp = {
+        "objective": req.objective,
+        "scenario": req.scenario,
+        "platform": req.platform,
+        "region": req.region,
+        "authorized": req.authorized,
+        "authorization_ref": req.authorization_ref,
+        "approver": req.approver,
+    }
+    generator = persona_crew.route(inp, req.session_id, backend=req.backend)
     return StreamingResponse(
         generator,
         media_type="text/event-stream",

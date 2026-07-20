@@ -1942,6 +1942,10 @@ function setLedgerStatus(text, cls) {
 }
 
 function activeApprover() {
+    const personaView = document.getElementById('view-persona');
+    if (personaView && !personaView.classList.contains('hidden')) {
+        return (document.getElementById('persona-approver') || {}).value || '';
+    }
     const cyberView = document.getElementById('view-cyber');
     if (cyberView && !cyberView.classList.contains('hidden')) {
         return (document.getElementById('cyber-approver') || {}).value || '';
@@ -2483,6 +2487,485 @@ async function refreshCyberAuditStats() {
 
 async function loadCyberAuditLog() {
     const container = document.getElementById('cyber-audit-log');
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const events = data.events || [];
+        if (events.length === 0) {
+            container.innerHTML = '<div class="audit-empty">No recorded activity yet.</div>';
+            return;
+        }
+        container.innerHTML = events.map(e => {
+            const when = new Date(e.created_at * 1000).toLocaleTimeString();
+            let cls = 'ok';
+            if (e.sensitivity === 'red' || e.verdict === 'pre_cleared_legal_proxy') cls = 'sensitive';
+            else if (e.verdict === 'flagged') cls = 'flagged';
+            const reasons = e.reasons && e.reasons.length ? ` — ${escapeHtml(e.reasons.join('; '))}` : '';
+            const approver = e.approver ? ` [approver: ${escapeHtml(e.approver)}]` : '';
+            return `<div class="audit-row ${cls}">
+                <span class="audit-when">${when}</span>
+                <span class="audit-action">${escapeHtml(e.action)}</span>
+                <span class="audit-verdict">${e.verdict}${approver}${reasons}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="audit-empty">Failed to load audit log: ${err.message}</div>`;
+    }
+}
+
+/* ── TIER 3 · Persona Orchestration ─────────────────── */
+
+let personaConfig = null;
+let personaState = 'idle';
+let personaTurns = [];
+let personaActive = null;
+let personaDone = new Set();
+let personaRunId = null;
+let personaAbort = null;
+let personaPending = {};
+let personaCompliance = null;
+
+const PERSONA_EXAMPLES = [
+    "Model a synthetic-persona fleet to build detection signatures for coordinated inauthentic behavior",
+    "Blue-team tabletop: map how a bot fleet would coordinate so we can detect it",
+    "Design lab personas with regional dialects to test our authenticity classifier",
+    "Study platform-integrity signals for a simulated multi-account campaign",
+];
+
+async function showPersona() {
+    setView('persona');
+    await setupPersonaView();
+}
+
+async function setupPersonaView() {
+    if (!personaConfig) {
+        try {
+            personaConfig = await API.getPersonaConfig();
+        } catch (err) {
+            console.error('Persona config load error:', err);
+            return;
+        }
+    }
+
+    renderPersonaAgents();
+    renderPersonaBackend();
+    renderPersonaSelectors();
+    renderPersonaExamples();
+    document.getElementById('persona-session-display').textContent = sessionId.slice(0, 16) + '…';
+    renderPersonaOutput();
+    updatePersonaButton();
+    refreshPersonaAuditStats();
+
+    const lpBox = document.getElementById('persona-legal-proxy');
+    if (lpBox) lpBox.classList.toggle('hidden', !personaConfig.legal_proxy_enabled);
+    if (personaConfig.legal_proxy_enabled) refreshLedgerStatus();
+
+    const textarea = document.getElementById('persona-objective');
+    if (!textarea.dataset.bound) {
+        textarea.dataset.bound = '1';
+        textarea.addEventListener('input', () => {
+            updatePersonaCharCount();
+            updatePersonaButton();
+        });
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runPersona();
+        });
+    }
+}
+
+function renderPersonaSelectors() {
+    document.getElementById('persona-scenario').innerHTML =
+        (personaConfig.scenarios || []).map(s => `<option value="${s}">${s}</option>`).join('');
+    document.getElementById('persona-platform').innerHTML =
+        (personaConfig.platforms || []).map(p => `<option value="${p.id}">${p.label}</option>`).join('');
+    document.getElementById('persona-region').innerHTML =
+        (personaConfig.regions || []).map(r => `<option value="${r.id}">${r.label}</option>`).join('');
+}
+
+function renderPersonaAgents() {
+    const list = document.getElementById('persona-agent-list');
+    const crew = personaConfig.agents || [];
+    list.innerHTML = crew.map((a, i) => {
+        const isActive = personaActive === a.id;
+        const isDone = personaDone.has(a.id);
+        let statusHtml = '';
+        if (isActive) {
+            statusHtml = `<span class="pa-status" style="color: ${a.color}"><span class="spinner" style="border-top-color: ${a.color}"></span> Running</span>`;
+        } else if (isDone) {
+            statusHtml = '<span class="pa-status" style="color: var(--accent-green)">✓</span>';
+        }
+        let bgStyle = '';
+        let borderStyle = 'border-color: var(--border)';
+        if (isActive) {
+            bgStyle = `background: ${a.color}08`;
+            borderStyle = `border-color: ${a.color}30`;
+        } else if (isDone) {
+            bgStyle = 'background: var(--bg-card); opacity: 0.7';
+        }
+        const arrow = i < crew.length - 1 ? '<div class="pa-arrow">▼</div>' : '';
+        return `
+            <div class="pa-agent ${isActive ? 'active' : ''}" style="${bgStyle}; ${borderStyle}">
+                <div class="pa-row">
+                    <div class="pa-icon" style="background: ${a.color}15; border: 1px solid ${a.color}30">${a.icon}</div>
+                    <span class="pa-role">${a.role}</span>
+                    ${statusHtml}
+                </div>
+                <div class="pa-desc">${a.description}</div>
+                <div class="pa-fw" style="color: ${a.color}">${a.framework}</div>
+            </div>
+            ${arrow}
+        `;
+    }).join('');
+}
+
+function renderPersonaBackend() {
+    const container = document.getElementById('persona-backend');
+    const cfg = personaConfig.config || {};
+    const backends = cfg.backends || [];
+    const readyBackends = backends.filter(b => b.status === 'ready');
+    if (readyBackends.length === 0) {
+        container.innerHTML = '<div class="fw-group"><label class="fw-label">Backend</label><div class="fw-pills"><span class="backend-pill">Demo mode</span></div></div>';
+        return;
+    }
+    let html = '<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills">';
+    const autoActive = !selectedBackend ? 'active' : '';
+    html += `<button class="fw-pill ${autoActive}" onclick="selectPersonaBackend('')">Auto</button>`;
+    for (const be of readyBackends) {
+        const active = selectedBackend === be.id ? 'active' : '';
+        const label = be.id === 'ollama' ? `Ollama (${be.model})` : `OpenAI (${be.model})`;
+        html += `<button class="fw-pill ${active}" onclick="selectPersonaBackend('${be.id}')">${label}</button>`;
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+function selectPersonaBackend(be) {
+    selectedBackend = be;
+    localStorage.setItem('brain_backend', be);
+    renderPersonaBackend();
+}
+
+function renderPersonaExamples() {
+    const area = document.getElementById('persona-examples-area');
+    const chips = document.getElementById('persona-example-chips');
+    if (personaState !== 'idle' || personaTurns.length > 0) {
+        area.classList.add('hidden');
+        return;
+    }
+    area.classList.remove('hidden');
+    chips.innerHTML = PERSONA_EXAMPLES.map(t => {
+        const display = t.length > 60 ? t.slice(0, 60) + '…' : t;
+        return `<button class="example-chip" onclick="setPersonaObjective('${t.replace(/'/g, "\\'")}')">${display}</button>`;
+    }).join('');
+}
+
+function setPersonaObjective(text) {
+    const textarea = document.getElementById('persona-objective');
+    textarea.value = text;
+    updatePersonaCharCount();
+    updatePersonaButton();
+}
+
+function updatePersonaCharCount() {
+    const textarea = document.getElementById('persona-objective');
+    document.getElementById('persona-char-count').textContent = `${textarea.value.length}/2000 · Ctrl+Enter to run`;
+}
+
+function updatePersonaButton() {
+    const textarea = document.getElementById('persona-objective');
+    const btnRun = document.getElementById('persona-btn-run');
+    const btnStop = document.getElementById('persona-btn-stop');
+    const btnReset = document.getElementById('persona-btn-reset');
+
+    btnRun.disabled = !textarea.value.trim() || personaState === 'running' || personaState === 'done';
+
+    if (personaState === 'running') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.remove('hidden');
+        btnReset.classList.add('hidden');
+    } else if (personaState === 'done' || personaState === 'error') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.remove('hidden');
+    } else {
+        btnRun.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.add('hidden');
+    }
+    textarea.disabled = personaState === 'running';
+}
+
+async function runPersona() {
+    const textarea = document.getElementById('persona-objective');
+    const objective = textarea.value.trim();
+    if (!objective || personaState === 'running') return;
+
+    const scenario = document.getElementById('persona-scenario').value;
+    const platform = document.getElementById('persona-platform').value;
+    const region = document.getElementById('persona-region').value;
+    const authorized = document.getElementById('persona-authorized').checked;
+    const approverEl = document.getElementById('persona-approver');
+    const authRefEl = document.getElementById('persona-auth-ref');
+    const approver = approverEl ? approverEl.value.trim() : '';
+    const authorizationRef = authRefEl ? authRefEl.value.trim() : '';
+
+    personaState = 'running';
+    personaTurns = [];
+    personaActive = null;
+    personaDone = new Set();
+    personaRunId = null;
+    personaPending = {};
+    personaCompliance = null;
+    updatePersonaButton();
+    renderPersonaAgents();
+    renderPersonaExamples();
+    renderPersonaOutput();
+
+    personaAbort = new AbortController();
+
+    try {
+        const reader = await API.runPersonaPlan({
+            objective, scenario, platform, region, authorized,
+            approver, authorizationRef,
+            sessionId, backend: selectedBackend,
+        }, personaAbort.signal);
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                let event;
+                try { event = JSON.parse(raw); } catch { continue; }
+                handlePersonaSSE(event);
+            }
+        }
+        if (personaState === 'running') personaState = 'done';
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            personaState = 'error';
+            renderPersonaOutput(`Persona Orchestration interrupted: ${err.message}`);
+        } else {
+            personaState = 'idle';
+        }
+    }
+
+    updatePersonaButton();
+    renderPersonaAgents();
+    refreshPersonaAuditStats();
+}
+
+function handlePersonaSSE(event) {
+    switch (event.type) {
+        case 'pipeline_start':
+            personaRunId = event.run_id;
+            break;
+
+        case 'compliance':
+            personaCompliance = event;
+            renderPersonaOutput();
+            break;
+
+        case 'compliance_block':
+            personaCompliance = Object.assign({}, personaCompliance, { blocked: true, message: event.message });
+            personaState = 'error';
+            renderPersonaOutput();
+            break;
+
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!personaPending[w]) personaPending[w] = [];
+            personaPending[w].push(event);
+            const existing = personaTurns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = personaPending[w];
+                renderPersonaOutput();
+            }
+            break;
+        }
+
+        case 'agent_start': {
+            personaActive = event.agent;
+            personaTurns.push({
+                agentId: event.agent,
+                role: event.role,
+                color: event.color,
+                icon: event.icon || '🪪',
+                content: '',
+                done: false,
+                toolActivity: personaPending[event.agent] || [],
+            });
+            renderPersonaAgents();
+            renderPersonaOutput();
+            break;
+        }
+
+        case 'token': {
+            const turn = personaTurns.find(t => t.agentId === event.agent && !t.done);
+            if (turn) {
+                turn.content += event.content;
+                const el = document.getElementById(`persona-content-${turn.agentId}`);
+                if (el) {
+                    el.innerHTML = escapeHtml(turn.content) + `<span class="am-cursor" style="background: ${turn.color}"></span>`;
+                    scrollPersonaToBottom();
+                }
+            }
+            break;
+        }
+
+        case 'agent_done': {
+            const turn = personaTurns.find(t => t.agentId === event.agent);
+            if (turn) turn.done = true;
+            personaDone.add(event.agent);
+            personaActive = null;
+            renderPersonaAgents();
+            renderPersonaOutput();
+            break;
+        }
+
+        case 'done':
+            personaState = event.blocked ? 'error' : 'done';
+            updatePersonaButton();
+            renderPersonaAgents();
+            renderPersonaOutput();
+            break;
+
+        case 'error':
+            personaState = 'error';
+            updatePersonaButton();
+            renderPersonaOutput(event.message);
+            break;
+
+        case 'cancelled':
+            personaState = 'idle';
+            updatePersonaButton();
+            break;
+    }
+}
+
+function stopPersona() {
+    if (personaAbort) personaAbort.abort();
+    personaState = 'idle';
+    personaActive = null;
+    updatePersonaButton();
+    renderPersonaAgents();
+}
+
+function resetPersona() {
+    personaTurns = [];
+    personaActive = null;
+    personaDone = new Set();
+    personaRunId = null;
+    personaState = 'idle';
+    personaCompliance = null;
+    updatePersonaButton();
+    renderPersonaAgents();
+    renderPersonaExamples();
+    renderPersonaOutput();
+}
+
+function renderPersonaComplianceBanner() {
+    if (!personaCompliance) return '';
+    if (personaCompliance.blocked) {
+        return `<div class="compliance-banner flagged">
+            <strong>⛔ Flagged — access limited.</strong> ${escapeHtml(personaCompliance.message || '')}
+            <div class="cb-audit">Audit ID: ${personaCompliance.audit_id}</div>
+        </div>`;
+    }
+    if (personaCompliance.flagged) {
+        return `<div class="compliance-banner flagged">
+            <strong>⚠ Flagged for review.</strong> ${escapeHtml((personaCompliance.reasons || []).join('; '))}
+            <div class="cb-audit">Audit ID: ${personaCompliance.audit_id}</div>
+        </div>`;
+    }
+    return `<div class="compliance-banner ok">
+        <strong>✓ Cleared &amp; logged.</strong> Recorded for legal review — audit ID ${personaCompliance.audit_id}.
+    </div>`;
+}
+
+function renderPersonaOutput(errorMsg) {
+    const area = document.getElementById('persona-output-area');
+    const crew = personaConfig ? (personaConfig.agents || []) : [];
+    const banner = renderPersonaComplianceBanner();
+
+    if (personaTurns.length === 0 && !errorMsg && !banner) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🪪</div>
+                <h3>Ready to plan an orchestration</h3>
+                <p>Pick a scenario, sandbox platform and region, describe the authorized lab-only objective, and the Persona Crew produces a full, audit-logged synthetic-persona design &amp; detection plan.</p>
+                <div class="agent-dots">
+                    ${crew.map(a => `<span class="dot"><span class="dot-circle" style="background: ${a.color}"></span> ${a.role}</span>`).join('')}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = banner;
+    if (errorMsg) {
+        html += `<div class="error-banner">${errorMsg}</div>`;
+    }
+
+    html += '<div class="output-log" id="persona-output-log">';
+    for (const turn of personaTurns) {
+        const cursorHtml = !turn.done
+            ? `<span class="am-cursor" style="background: ${turn.color}"></span>`
+            : '';
+        html += `
+            <div class="agent-message" id="persona-msg-${turn.agentId}">
+                <div class="am-header">
+                    <div class="am-icon" style="background: ${turn.color}15; border: 1px solid ${turn.color}30">${turn.icon}</div>
+                    <span class="am-role" style="color: ${turn.color}">${turn.role}</span>
+                    ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
+                    ${turn.done ? `<button class="am-copy" onclick="copyPersonaContent('${turn.agentId}')">📋</button>` : ''}
+                </div>
+                ${renderToolActivity(turn.toolActivity)}
+                <div class="am-content" id="persona-content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
+            </div>
+        `;
+    }
+    if (personaState === 'done') {
+        html += '<div class="pipeline-complete">Orchestration plan complete</div>';
+    }
+    html += '</div>';
+
+    area.innerHTML = html;
+    scrollPersonaToBottom();
+}
+
+function scrollPersonaToBottom() {
+    const log = document.getElementById('persona-output-log');
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+function copyPersonaContent(agentId) {
+    const turn = personaTurns.find(t => t.agentId === agentId);
+    if (turn) navigator.clipboard.writeText(turn.content);
+}
+
+async function refreshPersonaAuditStats() {
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const el = document.getElementById('persona-audit-stats');
+        if (el && data.stats) {
+            el.textContent = `${data.stats.total_events} events logged · ${data.stats.flagged_events} flagged`;
+        }
+    } catch (err) {
+        console.error('Audit stats error:', err);
+    }
+}
+
+async function loadPersonaAuditLog() {
+    const container = document.getElementById('persona-audit-log');
     try {
         const data = await API.getComplianceAudit(sessionId);
         const events = data.events || [];

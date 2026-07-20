@@ -205,6 +205,40 @@ const API = {
         return res.body.getReader();
     },
 
+    async getPersonaConfig() {
+        const res = await fetch('/api/persona/config');
+        return res.json();
+    },
+
+    /**
+     * Run the TIER 3 Persona Orchestration crew and return an SSE reader.
+     * @param {object} opts - objective, scenario, platform, region, authorized, approver, authorizationRef, sessionId, backend
+     * @param {AbortSignal} signal
+     * @returns {ReadableStreamDefaultReader}
+     */
+    async runPersonaPlan(opts, signal) {
+        const res = await fetch('/api/persona/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                objective: opts.objective,
+                scenario: opts.scenario,
+                platform: opts.platform,
+                region: opts.region,
+                authorized: !!opts.authorized,
+                authorization_ref: opts.authorizationRef || '',
+                approver: opts.approver || '',
+                session_id: opts.sessionId,
+                backend: opts.backend || '',
+            }),
+            signal,
+        });
+        if (!res.ok || !res.body) {
+            throw new Error(`API error: ${res.status}`);
+        }
+        return res.body.getReader();
+    },
+
     async getComplianceAudit(sessionId) {
         const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
         const res = await fetch(`/api/compliance/audit${q}`);

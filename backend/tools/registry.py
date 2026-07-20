@@ -435,6 +435,83 @@ async def _cai_redteam(scope: str = "", **_: Any) -> dict:
     }
 
 
+# ── TIER 3 · Persona Orchestration stubs (simulated, offline) ───────
+# Stand-ins for ElizaOS / Botpress / LangGraph / Socioboard / Playwright. Every
+# result is SIMULATED and stays inside the platform — no real synthetic accounts
+# are created, no real social posting is performed, and no stealth / fingerprint-
+# evasion against live platforms is done. Framed for authorized research,
+# red/blue-team training, and detection of coordinated inauthentic behavior.
+
+async def _persona_design(archetype: str = "", region: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "ElizaOS",
+        "requires_internet": False,
+        "persona_id": "sim-persona-0001 (in-lab only)",
+        "layers": ["identity", "backstory", "demographics", "psychographics",
+                   "digital-footprint", "voice", "goals"],
+        "archetype": archetype or "generic-lab-persona",
+        "note": "Stub — 7-layer synthetic-identity design concept. Simulated only; no real "
+                "identity, account, or digital footprint is created. Authorized research/"
+                "training and detection use only.",
+    }
+
+
+async def _behavior_model(persona_id: str = "", goal: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "Botpress / LangGraph",
+        "requires_internet": False,
+        "persona_id": persona_id or "sim-persona-0001",
+        "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                     "interaction style (modeled)"],
+        "note": "Stub — behavioral modeling / interaction scripting concept. Simulated only; "
+                "no live agents are deployed and no real interactions are sent. For modeling "
+                "and detection of inauthentic behavior in a lab.",
+    }
+
+
+async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "Coqui / Chatterbox (offline) · ElevenLabs (online, optional)",
+        "requires_internet": False,
+        "language": language or "ur",
+        "dialect": dialect or "standard",
+        "calibration": {"pitch": "modeled", "cadence": "modeled", "register": "modeled"},
+        "note": "Stub — regional dialect calibration & voice-engine mapping concept. "
+                "Simulated only; no audio is synthesized here. Offline engines preferred.",
+    }
+
+
+async def _browser_automation_plan(target: str = "", tool: str = "playwright", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "Playwright / Puppeteer / Selenium",
+        "requires_internet": False,
+        "tool": tool or "playwright",
+        "capabilities": ["headless session (concept)", "auto-waiting (concept)",
+                         "multi-browser (concept)"],
+        "note": "Stub — headless-automation PLAN only. Simulated; no browser is launched, no "
+                "site is visited, and NO stealth / anti-detection / fingerprint-evasion is "
+                "performed. Any real automation must respect site terms and platform integrity.",
+    }
+
+
+async def _fleet_orchestrate(count: int = 0, platform: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "ElizaOS / Socioboard",
+        "requires_internet": False,
+        "fleet_size": "modeled (not deployed)",
+        "platform": platform or "lab-dashboard",
+        "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+        "note": "Stub — multi-persona fleet coordination / lifecycle concept. Simulated only; "
+                "no accounts are provisioned and nothing is deployed to real platforms. "
+                "Intended for scale modeling and detection research.",
+    }
+
+
 def _register_defaults() -> None:
     if _REGISTRY:
         return
@@ -575,6 +652,36 @@ def _register_defaults() -> None:
         description="Check automated-session detection posture for an endpoint.",
         category="stealth", provider="Playwright", run=_playwright_stealth_check,
         parameters={"endpoint": "target endpoint"},
+    ))
+    register(ToolSpec(
+        id="persona_design", name="Synthetic Persona Designer",
+        description="7-layer synthetic-identity design concept (ElizaOS). Simulated; no real identity created.",
+        category="persona", provider="ElizaOS", run=_persona_design,
+        parameters={"archetype": "persona archetype", "region": "target region"},
+    ))
+    register(ToolSpec(
+        id="behavior_model", name="Behavior Modeler",
+        description="Behavioral modeling / interaction scripting concept (Botpress/LangGraph). Simulated.",
+        category="persona", provider="Botpress / LangGraph", run=_behavior_model,
+        parameters={"persona_id": "persona id", "goal": "objective"},
+    ))
+    register(ToolSpec(
+        id="voice_dialect_map", name="Voice & Dialect Mapper",
+        description="Regional dialect calibration & voice-engine mapping (offline TTS; ElevenLabs optional). Simulated.",
+        category="persona", provider="Coqui / Chatterbox / ElevenLabs", run=_voice_dialect_map,
+        parameters={"language": "language code", "dialect": "regional dialect"},
+    ))
+    register(ToolSpec(
+        id="browser_automation_plan", name="Browser Automation Planner",
+        description="Headless-automation plan concept (Playwright/Puppeteer/Selenium). Simulated; no stealth/evasion.",
+        category="persona", provider="Playwright / Puppeteer / Selenium", run=_browser_automation_plan,
+        parameters={"target": "authorized target", "tool": "playwright|puppeteer|selenium"},
+    ))
+    register(ToolSpec(
+        id="fleet_orchestrate", name="Persona Fleet Orchestrator",
+        description="Multi-persona coordination / lifecycle concept (ElizaOS/Socioboard). Simulated; nothing deployed.",
+        category="persona", provider="ElizaOS / Socioboard", run=_fleet_orchestrate,
+        parameters={"count": "fleet size (modeled)", "platform": "platform"},
     ))
 
 

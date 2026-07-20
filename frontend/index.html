@@ -28,6 +28,7 @@
         <button id="nav-media" onclick="showMedia()">TIER 2 · Media</button>
         <button id="nav-video" onclick="showVideo()">TIER 2 · Video</button>
         <button id="nav-cyber" onclick="showCyber()">TIER 2 · Cyber</button>
+        <button id="nav-persona" onclick="showPersona()">TIER 3 · Persona</button>
         <button id="nav-scenarios" onclick="showScenarios()">Scenarios</button>
     </nav>
 </header>
@@ -365,6 +366,88 @@
                     </div>
                 </div>
                 <div id="cyber-output-area"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ TIER 3 · Persona Orchestration view ═══ -->
+    <section id="view-persona" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Persona Crew</div>
+                    <div id="persona-agent-list"></div>
+                </div>
+                <div id="persona-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="persona-session-display"></span>
+                </div>
+                <div class="compliance-box" id="persona-compliance-box">
+                    <div class="cb-title">Compliance & Audit</div>
+                    <div class="cb-line">All activity is recorded for legal review. Access is open until an activity is flagged.</div>
+                    <div class="cb-stats" id="persona-audit-stats"></div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadPersonaAuditLog()">View audit log</button>
+                    <div id="persona-audit-log"></div>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 3 — Persona Orchestration</h2>
+                    <p>Synthetic-persona design &amp; orchestration: Persona Architect (ElizaOS 7-layer) → Behavior Architect (Botpress/LangGraph) → Voice &amp; Dialect Specialist (offline TTS · ElevenLabs) → Orchestration Engineer (Socioboard · Playwright · lifecycle). Offline-first &amp; simulated — no real accounts are created, nothing is deployed to live platforms, and no stealth/fingerprint-evasion is performed. Built for authorized research, red/blue-team training, and detection of coordinated inauthentic behavior. Every run is compliance-screened and audit-logged.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Scenario</label>
+                            <select id="persona-scenario"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Platform (sandbox)</label>
+                            <select id="persona-platform"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Region / Dialect</label>
+                            <select id="persona-region"></select>
+                        </div>
+                    </div>
+                    <label>Objective / Brief</label>
+                    <textarea id="persona-objective" rows="2" placeholder="e.g. Model a synthetic-persona fleet to build detection signatures for coordinated inauthentic behavior (lab-only)..." maxlength="2000"></textarea>
+                    <label class="consent-check">
+                        <input type="checkbox" id="persona-authorized">
+                        I attest this is an authorized, lab-only research/training exercise — no real accounts, deployment, or platform evasion.
+                    </label>
+                    <div id="persona-legal-proxy" class="legal-proxy-box hidden">
+                        <div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div>
+                        <div class="lp-note">Only for authorized legal users. A flagged objective can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Authorization is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review. A claimed origin alone is not sufficient: when an official public key is configured, the cited reference must appear in a cryptographically-signed authorization ledger.</div>
+                        <input type="text" id="persona-approver" placeholder="Approver identity (name / role)">
+                        <input type="text" id="persona-auth-ref" placeholder="Authorization reference (order ID / signed authorization / case no.)">
+                        <div class="ledger-panel">
+                            <div class="lp-subtitle">Authorization Ledger</div>
+                            <div class="ledger-status" id="persona-ledger-status">Ledger not loaded.</div>
+                            <div class="ledger-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload signed CSV
+                                    <input type="file" id="persona-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden>
+                                </label>
+                            </div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite — it never auto-clears a request. When an official public key is configured, a ledger is accepted only with a valid detached signature, so a renamed or self-asserted file can't pass as official. SSH credentials are entered per-fetch and never stored.</div>
+                        </div>
+                    </div>
+                    <div class="example-tasks" id="persona-examples-area">
+                        <p>Example objectives:</p>
+                        <div class="chips" id="persona-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="persona-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="persona-btn-reset" onclick="resetPersona()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="persona-btn-stop" onclick="stopPersona()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="persona-btn-run" onclick="runPersona()" disabled>▶ Plan Orchestration</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="persona-output-area"></div>
             </div>
         </div>
     </section>
