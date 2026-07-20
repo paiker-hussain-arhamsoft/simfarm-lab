@@ -19,6 +19,8 @@ import sqlite3
 import time
 import uuid
 
+from backend.pipeline import legal_ledger
+
 DB_PATH = os.environ.get("BRAIN_DB_PATH", os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "brain.db"
 ))
@@ -146,17 +148,33 @@ class ComplianceRecorder:
 
         # Accountable legal-proxy override: a flagged request can only be cleared
         # when (a) this deployment authorises the role, AND (b) a real per-request
-        # authorization reference and approver identity are supplied. We NEVER
-        # fabricate consent — we only record who authorised it and on what basis.
+        # authorization reference and approver identity are supplied, AND (c) if a
+        # legal-authorization ledger is loaded, the reference validates against it.
+        # We NEVER fabricate consent — we only record who authorised it and on what
+        # basis, and (when available) that the reference matched the issued ledger.
         if flagged and legal_proxy_enabled() and authorization_ref and approver:
-            allowed = True
-            override = True
-            verdict = "pre_cleared_legal_proxy"
-            sensitivity = "red"
-            reasons = reasons + [
-                f"elevated override by '{approver}' under authorization ref "
-                f"'{authorization_ref}' — SENSITIVE, subject to legal review"
-            ]
+            ledger_ok = True
+            ledger_detail = "no ledger configured (manual approver + reference)"
+            if legal_ledger.ledger_configured():
+                ledger_ok, ledger_detail = legal_ledger.is_authorized(authorization_ref)
+
+            if ledger_ok:
+                allowed = True
+                override = True
+                verdict = "pre_cleared_legal_proxy"
+                sensitivity = "red"
+                reasons = reasons + [
+                    f"elevated override by '{approver}' under authorization ref "
+                    f"'{authorization_ref}' — {ledger_detail} — SENSITIVE, subject "
+                    "to legal review"
+                ]
+            else:
+                # Ledger is loaded but the reference is invalid/expired/unknown →
+                # stays blocked. The rejected override attempt is still recorded.
+                reasons = reasons + [
+                    f"legal-proxy override REJECTED for approver '{approver}': "
+                    f"{ledger_detail}"
+                ]
 
         audit_id = str(uuid.uuid4())
         with self._conn() as conn:

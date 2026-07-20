@@ -30,6 +30,16 @@ services:
       # Privileged legal-proxy override role (default OFF). Even when enabled,
       # a flagged request is only cleared with a real authorization ref + approver.
       - LEGAL_PROXY_ENABLED=${LEGAL_PROXY_ENABLED:-}
+      # Legal-authorization ledger sync (all optional; nothing hard-coded).
+      # Provide LEGAL_LEDGER_TOKEN via a secret/.env file — never commit it.
+      - LEGAL_LEDGER_URL=${LEGAL_LEDGER_URL:-}
+      - LEGAL_LEDGER_TOKEN=${LEGAL_LEDGER_TOKEN:-}
+      - LEGAL_LEDGER_VERIFY_TLS=${LEGAL_LEDGER_VERIFY_TLS:-true}
+      # SSH fallback (manual only). Host key MUST be pinned or the fetch is refused.
+      - LEGAL_LEDGER_SSH_HOST=${LEGAL_LEDGER_SSH_HOST:-}
+      - LEGAL_LEDGER_SSH_PORT=${LEGAL_LEDGER_SSH_PORT:-22}
+      - LEGAL_LEDGER_SSH_PATH=${LEGAL_LEDGER_SSH_PATH:-}
+      - LEGAL_LEDGER_SSH_HOSTKEY=${LEGAL_LEDGER_SSH_HOSTKEY:-}
       # Optional per-role model overrides (default: OLLAMA_MODEL for all roles)
       - OLLAMA_MODEL_SUPERVISOR=${OLLAMA_MODEL_SUPERVISOR:-}
       - OLLAMA_MODEL_DIRECTOR=${OLLAMA_MODEL_DIRECTOR:-}

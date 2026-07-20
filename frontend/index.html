@@ -259,6 +259,18 @@
                         <div class="lp-note">Only for authorized legal users. A flagged request can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Consent is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review.</div>
                         <input type="text" id="video-approver" placeholder="Approver identity (name / role)">
                         <input type="text" id="video-auth-ref" placeholder="Authorization reference (case no. / signed-release ID / court order)">
+                        <div class="ledger-panel">
+                            <div class="lp-subtitle">Authorization Ledger</div>
+                            <div class="ledger-status" id="ledger-status">Ledger not loaded.</div>
+                            <div class="ledger-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload CSV
+                                    <input type="file" id="ledger-upload" accept=".csv" onchange="uploadLedger(event)" hidden>
+                                </label>
+                            </div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite. It never auto-clears a request. SSH credentials are entered per-fetch and never stored.</div>
+                        </div>
                     </div>
                     <div class="example-tasks" id="video-examples-area">
                         <p>Example projects:</p>

@@ -1479,6 +1479,7 @@ async function setupVideoView() {
     renderVideoExamples();
     const lpBox = document.getElementById('video-legal-proxy');
     if (lpBox) lpBox.classList.toggle('hidden', !videoConfig.legal_proxy_enabled);
+    if (videoConfig.legal_proxy_enabled) refreshLedgerStatus();
     document.getElementById('video-session-display').textContent = sessionId.slice(0, 16) + '…';
     renderVideoOutput();
     updateVideoButton();
@@ -1925,6 +1926,75 @@ async function loadAuditLog() {
         }).join('');
     } catch (err) {
         container.innerHTML = `<div class="audit-empty">Failed to load audit log: ${err.message}</div>`;
+    }
+}
+
+/* ── Legal-authorization ledger ─────────────────────── */
+
+async function refreshLedgerStatus() {
+    const el = document.getElementById('ledger-status');
+    if (!el) return;
+    try {
+        const s = await API.getLedgerStatus();
+        if (!s.loaded) {
+            el.textContent = 'Ledger not loaded.';
+            el.className = 'ledger-status';
+            return;
+        }
+        const when = new Date(s.fetched_at * 1000).toLocaleString();
+        el.textContent = `${s.count} authorizations · via ${s.source} · ${when}` + (s.stale ? ' · STALE' : '');
+        el.className = 'ledger-status' + (s.stale ? ' stale' : ' ok');
+    } catch (err) {
+        el.textContent = `Ledger status unavailable: ${err.message}`;
+        el.className = 'ledger-status stale';
+    }
+}
+
+async function fetchLedger(source) {
+    const approver = (document.getElementById('video-approver') || {}).value || '';
+    const el = document.getElementById('ledger-status');
+    if (el) el.textContent = `Fetching via ${source}…`;
+    try {
+        await API.fetchLedger({ source, sessionId, approver });
+        await refreshLedgerStatus();
+        refreshAuditStats();
+    } catch (err) {
+        if (el) { el.textContent = `Fetch failed: ${err.message}`; el.className = 'ledger-status stale'; }
+    }
+}
+
+async function fetchLedgerSSH() {
+    const approver = (document.getElementById('video-approver') || {}).value || '';
+    const username = prompt('SSH username (used once, never stored):');
+    if (username === null) return;
+    const password = prompt('SSH password (used once, never stored):');
+    if (password === null) return;
+    const el = document.getElementById('ledger-status');
+    if (el) el.textContent = 'Fetching via SSH…';
+    try {
+        await API.fetchLedger({ source: 'ssh', sessionId, approver, username, password });
+        await refreshLedgerStatus();
+        refreshAuditStats();
+    } catch (err) {
+        if (el) { el.textContent = `SSH fetch failed: ${err.message}`; el.className = 'ledger-status stale'; }
+    }
+}
+
+async function uploadLedger(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    const approver = (document.getElementById('video-approver') || {}).value || '';
+    const el = document.getElementById('ledger-status');
+    try {
+        const csv = await file.text();
+        if (el) el.textContent = 'Uploading…';
+        await API.fetchLedger({ source: 'upload', sessionId, approver, csv });
+        await refreshLedgerStatus();
+        refreshAuditStats();
+    } catch (err) {
+        if (el) { el.textContent = `Upload failed: ${err.message}`; el.className = 'ledger-status stale'; }
+    } finally {
+        event.target.value = '';
     }
 }
 

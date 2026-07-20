@@ -31,7 +31,13 @@ from backend.agents.video_stack import (
 from backend.agents.video_stack import DURATIONS as VIDEO_DURATIONS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
-from backend.pipeline import intelligence_crew, media_crew, video_stack
+from backend.pipeline import (
+    intelligence_crew,
+    ledger_scheduler,
+    legal_ledger,
+    media_crew,
+    video_stack,
+)
 from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
 from backend.pipeline.orchestrator import (
     cancel_pipeline,
@@ -56,6 +62,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def _start_ledger_scheduler() -> None:
+    ledger_scheduler.start()
 
 
 # ── Health ──────────────────────────────────────────────────────────
@@ -317,6 +328,64 @@ def compliance_audit(session_id: str = "", limit: int = 100):
         "events": compliance_recorder.get_log(session_id or None, limit),
         "stats": compliance_recorder.get_stats(),
     }
+
+
+# ── Legal-authorization ledger ──────────────────────────────────────
+# The ledger supplies the authorization *references* a human legal-proxy approver
+# may cite. It never auto-clears a request. Every fetch is audit-logged; SSH
+# credentials are supplied at request time and never stored.
+
+
+@app.get("/api/compliance/ledger/status")
+def ledger_status():
+    if not legal_proxy_enabled():
+        raise HTTPException(status_code=403, detail="Legal-proxy role is not enabled")
+    return legal_ledger.status()
+
+
+class LedgerFetchRequest(BaseModel):
+    source: str = Field(..., description="https | ssh | upload")
+    session_id: str = Field(default="system", max_length=200)
+    approver: str = Field(default="", max_length=200)
+    # SSH-only, used transiently for a single fetch and never stored:
+    username: str = Field(default="", max_length=200)
+    password: str = Field(default="", max_length=400)
+    # upload-only:
+    csv: str = Field(default="", max_length=5_000_000)
+
+
+@app.post("/api/compliance/ledger/fetch")
+def ledger_fetch(req: LedgerFetchRequest):
+    if not legal_proxy_enabled():
+        raise HTTPException(status_code=403, detail="Legal-proxy role is not enabled")
+    try:
+        if req.source == "https":
+            meta = legal_ledger.fetch_https()
+        elif req.source == "ssh":
+            meta = legal_ledger.fetch_ssh(req.username, req.password)
+        elif req.source == "upload":
+            meta = legal_ledger.load_from_upload(req.csv.encode("utf-8"))
+        else:
+            raise HTTPException(status_code=400, detail=f"unknown source '{req.source}'")
+    except HTTPException:
+        raise
+    except Exception as exc:  # log the failed fetch, then surface a safe message
+        compliance_recorder.record(
+            req.session_id, "ledger.fetch",
+            f"[ledger] fetch via {req.source} FAILED",
+            {"source": req.source},  # note: no credentials are ever recorded
+            consent_attested=True,
+        )
+        raise HTTPException(status_code=502, detail=f"ledger fetch failed: {exc}") from exc
+
+    compliance_recorder.record(
+        req.session_id, "ledger.fetch",
+        f"[ledger] fetched {meta['count']} authorizations via {meta['source']}"
+        + (f" by {req.approver}" if req.approver else ""),
+        {"source": meta["source"], "count": meta["count"], "sha256": meta["sha256"][:16]},
+        consent_attested=True,
+    )
+    return {"ok": True, "status": legal_ledger.status()}
 
 
 class CancelRequest(BaseModel):

@@ -582,6 +582,56 @@ body {
   font-weight: 700;
 }
 
+.ledger-panel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.ledger-panel .lp-subtitle {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.ledger-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+}
+
+.ledger-status.ok {
+  color: var(--accent-green);
+}
+
+.ledger-status.stale {
+  color: var(--accent-amber, #f59e0b);
+}
+
+.ledger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ledger-upload-label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ledger-hint {
+  font-size: 10px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  opacity: 0.8;
+}
+
 .compliance-banner .cb-audit {
   font-family: var(--font-mono);
   font-size: 10px;

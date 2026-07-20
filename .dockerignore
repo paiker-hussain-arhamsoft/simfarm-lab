@@ -3,5 +3,8 @@ node_modules
 __pycache__
 *.pyc
 .env
+.env.secrets
 data/brain.db
+data/legal_ledger.csv
+data/legal_ledger.meta
 .venv

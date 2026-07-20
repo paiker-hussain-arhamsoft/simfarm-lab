@@ -178,6 +178,35 @@ const API = {
         return res.json();
     },
 
+    async getLedgerStatus() {
+        const res = await fetch('/api/compliance/ledger/status');
+        if (!res.ok) throw new Error(`Ledger status ${res.status}`);
+        return res.json();
+    },
+
+    /**
+     * Fetch/refresh the legal-authorization ledger.
+     * @param {object} opts - source ('https'|'ssh'|'upload'), sessionId, approver,
+     *                        and for ssh: username/password (transient), for upload: csv
+     */
+    async fetchLedger(opts) {
+        const res = await fetch('/api/compliance/ledger/fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: opts.source,
+                session_id: opts.sessionId || 'system',
+                approver: opts.approver || '',
+                username: opts.username || '',
+                password: opts.password || '',
+                csv: opts.csv || '',
+            }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Ledger fetch ${res.status}`);
+        return data;
+    },
+
     async cancelPipeline(runId) {
         const res = await fetch('/api/pipeline/cancel', {
             method: 'POST',
