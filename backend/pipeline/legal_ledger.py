@@ -47,6 +47,60 @@ LEDGER_PATH = os.path.join(DATA_DIR, "legal_ledger.csv")
 # Columns we understand in the ledger CSV. `authorization_ref` is required.
 _REQUIRED_COLUMN = "authorization_ref"
 
+# Federal authorities recognized as legitimate issuers of a legal-proxy override
+# notice. This is purely a label applied to an issuer that is *already* present in
+# a cryptographically-verified ledger row — it never relaxes verification, never
+# auto-clears a request, and a claimed issuer string on its own (unsigned) proves
+# nothing. Maps normalized aliases → canonical display name.
+RECOGNIZED_ISSUERS: dict[str, str] = {
+    "ods": "White House Office of Digital Strategy (ODS)",
+    "white house office of digital strategy": "White House Office of Digital Strategy (ODS)",
+    "office of digital strategy": "White House Office of Digital Strategy (ODS)",
+    "doj": "U.S. Department of Justice",
+    "department of justice": "U.S. Department of Justice",
+    "secretariat of justice": "U.S. Department of Justice",
+    "justice": "U.S. Department of Justice",
+    "dhs": "U.S. Department of Homeland Security",
+    "department of homeland security": "U.S. Department of Homeland Security",
+    "homeland security": "U.S. Department of Homeland Security",
+    "fcc": "Federal Communications Commission (FCC)",
+    "federal communications commission": "Federal Communications Commission (FCC)",
+    "ftc": "Federal Trade Commission (FTC)",
+    "federal trade commission": "Federal Trade Commission (FTC)",
+}
+
+
+def recognized_issuer(issuer: str) -> str | None:
+    """Return the canonical name of a recognized federal issuer, or None.
+
+    Matching is case-insensitive and tolerant of surrounding punctuation. This is
+    informational only — recognition does NOT bypass signature verification or the
+    human-approver requirement.
+    """
+    key = (issuer or "").strip().strip(".,;:").lower()
+    if not key:
+        return None
+    if key in RECOGNIZED_ISSUERS:
+        return RECOGNIZED_ISSUERS[key]
+    # Substring/token match so "signed by the FTC, 2026" still resolves.
+    for alias, canonical in RECOGNIZED_ISSUERS.items():
+        if len(alias) <= 4:
+            # Short acronyms: match as a whole token only, to avoid false hits.
+            if alias in key.replace("/", " ").replace("-", " ").split():
+                return canonical
+        elif alias in key:
+            return canonical
+    return None
+
+
+def recognized_issuers() -> list[str]:
+    """Distinct canonical recognized-issuer names (for the UI)."""
+    seen: list[str] = []
+    for name in RECOGNIZED_ISSUERS.values():
+        if name not in seen:
+            seen.append(name)
+    return seen
+
 
 def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, default).strip()
@@ -65,6 +119,7 @@ def config() -> dict:
         "verify_tls": _env("LEGAL_LEDGER_VERIFY_TLS", "true").lower()
         not in ("0", "false", "no"),
         "signature_required": bool(_public_key_pem()),
+        "recognized_issuers": recognized_issuers(),
     }
 
 
@@ -276,7 +331,12 @@ def is_authorized(ref: str) -> tuple[bool, str]:
                     pass  # unparseable date → treat as non-expiring, still valid
             subject = row.get("subject") or row.get("entity") or ""
             issuer = row.get("issuer") or ""
-            detail = f"validated against ledger (subject='{subject}', issuer='{issuer}')"
+            canonical = recognized_issuer(issuer)
+            issuer_note = (
+                f"issuer='{issuer}' [recognized: {canonical}]" if canonical
+                else f"issuer='{issuer}'"
+            )
+            detail = f"validated against ledger (subject='{subject}', {issuer_note})"
             return True, detail
     return False, f"authorization reference {ref} not found in ledger"
 
