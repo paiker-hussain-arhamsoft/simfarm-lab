@@ -179,7 +179,7 @@ const API = {
 
     /**
      * Run the TIER 2 Cyber Crew and return an SSE reader.
-     * @param {object} opts - target, engagement, scanTool, authorized, sessionId, backend
+     * @param {object} opts - target, engagement, scanTool, authorized, approver, authorizationRef, sessionId, backend
      * @param {AbortSignal} signal
      * @returns {ReadableStreamDefaultReader}
      */
@@ -192,6 +192,8 @@ const API = {
                 engagement: opts.engagement,
                 scan_tool: opts.scanTool,
                 authorized: !!opts.authorized,
+                authorization_ref: opts.authorizationRef || '',
+                approver: opts.approver || '',
                 session_id: opts.sessionId,
                 backend: opts.backend || '',
             }),

@@ -337,6 +337,7 @@ def cyber_config():
         "engagements": ENGAGEMENTS,
         "scan_tools": SCAN_TOOLS,
         "dast_tools": DAST_TOOLS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
         "config": get_config(),
     }
 
@@ -347,6 +348,14 @@ class CyberRequest(BaseModel):
     scan_tool: str = Field(default="nmap")
     authorized: bool = Field(
         default=False, description="Written scope authorization attested for this engagement"
+    )
+    authorization_ref: str = Field(
+        default="", max_length=200,
+        description="Legal-proxy authorization reference (case no. / signed-release ID / court order)",
+    )
+    approver: str = Field(
+        default="", max_length=200,
+        description="Identity of the approving legal-proxy reviewer",
     )
     session_id: str = Field(..., min_length=1)
     backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
@@ -359,6 +368,8 @@ async def cyber_plan(req: CyberRequest):
         "engagement": req.engagement,
         "scan_tool": req.scan_tool,
         "authorized": req.authorized,
+        "authorization_ref": req.authorization_ref,
+        "approver": req.approver,
     }
     generator = cyber_crew.route(inp, req.session_id, backend=req.backend)
     return StreamingResponse(

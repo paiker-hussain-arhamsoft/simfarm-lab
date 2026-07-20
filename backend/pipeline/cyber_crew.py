@@ -144,6 +144,8 @@ async def route(inp: dict, session_id: str, backend: str = "") -> AsyncGenerator
     summary = f"[cyber] {inp.get('target', '')} | engagement={inp.get('engagement', '')}"
     result = compliance.record(
         session_id, "cyber.plan", summary, inp, inp.get("authorized", False),
+        authorization_ref=inp.get("authorization_ref", ""),
+        approver=inp.get("approver", ""),
     )
 
     yield _sse({
@@ -165,7 +167,9 @@ async def route(inp: dict, session_id: str, backend: str = "") -> AsyncGenerator
                 "This request was flagged by the safety screen and cannot proceed as-is. "
                 "It has been recorded in the audit log (id " + result.audit_id + ") for legal "
                 "review. Reasons: " + "; ".join(result.reasons) + ". Cyber engagements must be "
-                "lawful and scope-authorized; remove the flagged content or attest authorization."
+                "lawful and scope-authorized; remove the flagged content, or (for authorized "
+                "legal users) clear it via the accountable Legal-Proxy Override with a real "
+                "authorization reference and approver — a claimed origin alone is not sufficient."
             ),
             "reasons": result.reasons,
         })

@@ -333,6 +333,24 @@
                         <input type="checkbox" id="cyber-authorized">
                         I attest written scope authorization exists for this engagement and all activity is lawful.
                     </label>
+                    <div id="cyber-legal-proxy" class="legal-proxy-box hidden">
+                        <div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div>
+                        <div class="lp-note">Only for authorized legal users. A flagged engagement can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Authorization is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review. A claimed origin (e.g. "Pentagon-issued") is not sufficient on its own: when an official public key is configured, the cited reference must appear in a cryptographically-signed authorization ledger.</div>
+                        <input type="text" id="cyber-approver" placeholder="Approver identity (name / role)">
+                        <input type="text" id="cyber-auth-ref" placeholder="Authorization reference (order ID / signed authorization / case no.)">
+                        <div class="ledger-panel">
+                            <div class="lp-subtitle">Authorization Ledger</div>
+                            <div class="ledger-status" id="cyber-ledger-status">Ledger not loaded.</div>
+                            <div class="ledger-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload signed CSV
+                                    <input type="file" id="cyber-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden>
+                                </label>
+                            </div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite — it never auto-clears a request. When an official public key is configured, a ledger is accepted only with a valid detached signature (<code>index.csv</code> + <code>index.csv.sig</code>), so a renamed or self-asserted file can't pass as official. SSH credentials are entered per-fetch and never stored.</div>
+                        </div>
+                    </div>
                     <div class="example-tasks" id="cyber-examples-area">
                         <p>Example engagements:</p>
                         <div class="chips" id="cyber-example-chips"></div>

@@ -1929,67 +1929,80 @@ async function loadAuditLog() {
     }
 }
 
-/* ── Legal-authorization ledger ─────────────────────── */
+/* ── Legal-authorization ledger (shared across views) ── */
+
+// The ledger is a single server-side resource; the Video and Cyber views each
+// render a status element (class `ledger-status`). Update them all at once and
+// read the approver from whichever legal-proxy panel is currently visible.
+function setLedgerStatus(text, cls) {
+    document.querySelectorAll('.ledger-status').forEach(el => {
+        el.textContent = text;
+        el.className = cls || 'ledger-status';
+    });
+}
+
+function activeApprover() {
+    const cyberView = document.getElementById('view-cyber');
+    if (cyberView && !cyberView.classList.contains('hidden')) {
+        return (document.getElementById('cyber-approver') || {}).value || '';
+    }
+    return (document.getElementById('video-approver') || {}).value || '';
+}
 
 async function refreshLedgerStatus() {
-    const el = document.getElementById('ledger-status');
-    if (!el) return;
+    if (!document.querySelector('.ledger-status')) return;
     try {
         const s = await API.getLedgerStatus();
         if (!s.loaded) {
-            el.textContent = 'Ledger not loaded.';
-            el.className = 'ledger-status';
+            setLedgerStatus('Ledger not loaded.', 'ledger-status');
             return;
         }
         const when = new Date(s.fetched_at * 1000).toLocaleString();
         const sig = s.verified ? ' · ✓ signed' : (s.config && s.config.signature_required ? ' · UNVERIFIED' : '');
-        el.textContent = `${s.count} authorizations · via ${s.source} · ${when}${sig}` + (s.stale ? ' · STALE' : '');
-        el.className = 'ledger-status' + ((s.stale || (s.config && s.config.signature_required && !s.verified)) ? ' stale' : ' ok');
+        const text = `${s.count} authorizations · via ${s.source} · ${when}${sig}` + (s.stale ? ' · STALE' : '');
+        const cls = 'ledger-status' + ((s.stale || (s.config && s.config.signature_required && !s.verified)) ? ' stale' : ' ok');
+        setLedgerStatus(text, cls);
     } catch (err) {
-        el.textContent = `Ledger status unavailable: ${err.message}`;
-        el.className = 'ledger-status stale';
+        setLedgerStatus(`Ledger status unavailable: ${err.message}`, 'ledger-status stale');
     }
 }
 
 async function fetchLedger(source) {
-    const approver = (document.getElementById('video-approver') || {}).value || '';
-    const el = document.getElementById('ledger-status');
-    if (el) el.textContent = `Fetching via ${source}…`;
+    const approver = activeApprover();
+    setLedgerStatus(`Fetching via ${source}…`, 'ledger-status');
     try {
         await API.fetchLedger({ source, sessionId, approver });
         await refreshLedgerStatus();
         refreshAuditStats();
     } catch (err) {
-        if (el) { el.textContent = `Fetch failed: ${err.message}`; el.className = 'ledger-status stale'; }
+        setLedgerStatus(`Fetch failed: ${err.message}`, 'ledger-status stale');
     }
 }
 
 async function fetchLedgerSSH() {
-    const approver = (document.getElementById('video-approver') || {}).value || '';
+    const approver = activeApprover();
     const username = prompt('SSH username (used once, never stored):');
     if (username === null) return;
     const password = prompt('SSH password (used once, never stored):');
     if (password === null) return;
-    const el = document.getElementById('ledger-status');
-    if (el) el.textContent = 'Fetching via SSH…';
+    setLedgerStatus('Fetching via SSH…', 'ledger-status');
     try {
         await API.fetchLedger({ source: 'ssh', sessionId, approver, username, password });
         await refreshLedgerStatus();
         refreshAuditStats();
     } catch (err) {
-        if (el) { el.textContent = `SSH fetch failed: ${err.message}`; el.className = 'ledger-status stale'; }
+        setLedgerStatus(`SSH fetch failed: ${err.message}`, 'ledger-status stale');
     }
 }
 
 async function uploadLedger(event) {
     const files = Array.from(event.target.files || []);
     if (!files.length) return;
-    const approver = (document.getElementById('video-approver') || {}).value || '';
-    const el = document.getElementById('ledger-status');
+    const approver = activeApprover();
     const csvFile = files.find(f => f.name.toLowerCase().endsWith('.csv'));
     const sigFile = files.find(f => f.name.toLowerCase().endsWith('.sig'));
     if (!csvFile) {
-        if (el) { el.textContent = 'Select the .csv file (and its .sig when signing is required).'; el.className = 'ledger-status stale'; }
+        setLedgerStatus('Select the .csv file (and its .sig when signing is required).', 'ledger-status stale');
         event.target.value = '';
         return;
     }
@@ -2002,12 +2015,12 @@ async function uploadLedger(event) {
             buf.forEach(b => { binary += String.fromCharCode(b); });
             signatureB64 = btoa(binary);
         }
-        if (el) el.textContent = 'Uploading…';
+        setLedgerStatus('Uploading…', 'ledger-status');
         await API.fetchLedger({ source: 'upload', sessionId, approver, csv, signatureB64 });
         await refreshLedgerStatus();
         refreshAuditStats();
     } catch (err) {
-        if (el) { el.textContent = `Upload failed: ${err.message}`; el.className = 'ledger-status stale'; }
+        setLedgerStatus(`Upload failed: ${err.message}`, 'ledger-status stale');
     } finally {
         event.target.value = '';
     }
@@ -2056,6 +2069,10 @@ async function setupCyberView() {
     renderCyberOutput();
     updateCyberButton();
     refreshCyberAuditStats();
+
+    const lpBox = document.getElementById('cyber-legal-proxy');
+    if (lpBox) lpBox.classList.toggle('hidden', !cyberConfig.legal_proxy_enabled);
+    if (cyberConfig.legal_proxy_enabled) refreshLedgerStatus();
 
     const textarea = document.getElementById('cyber-target');
     if (!textarea.dataset.bound) {
@@ -2203,6 +2220,10 @@ async function runCyber() {
 
     const engagement = document.getElementById('cyber-engagement').value;
     const authorized = document.getElementById('cyber-authorized').checked;
+    const approverEl = document.getElementById('cyber-approver');
+    const authRefEl = document.getElementById('cyber-auth-ref');
+    const approver = approverEl ? approverEl.value.trim() : '';
+    const authorizationRef = authRefEl ? authRefEl.value.trim() : '';
 
     cyberState = 'running';
     cyberTurns = [];
@@ -2221,6 +2242,7 @@ async function runCyber() {
     try {
         const reader = await API.runCyberPlan({
             target, engagement, scanTool: cyberScanTool, authorized,
+            approver, authorizationRef,
             sessionId, backend: selectedBackend,
         }, cyberAbort.signal);
         const decoder = new TextDecoder();
@@ -2474,10 +2496,11 @@ async function loadCyberAuditLog() {
             if (e.sensitivity === 'red' || e.verdict === 'pre_cleared_legal_proxy') cls = 'sensitive';
             else if (e.verdict === 'flagged') cls = 'flagged';
             const reasons = e.reasons && e.reasons.length ? ` — ${escapeHtml(e.reasons.join('; '))}` : '';
+            const approver = e.approver ? ` [approver: ${escapeHtml(e.approver)}]` : '';
             return `<div class="audit-row ${cls}">
                 <span class="audit-when">${when}</span>
                 <span class="audit-action">${escapeHtml(e.action)}</span>
-                <span class="audit-verdict">${e.verdict}${reasons}</span>
+                <span class="audit-verdict">${e.verdict}${approver}${reasons}</span>
             </div>`;
         }).join('');
     } catch (err) {
