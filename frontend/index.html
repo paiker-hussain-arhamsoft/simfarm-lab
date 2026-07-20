@@ -27,6 +27,7 @@
         <button id="nav-tier2" onclick="showTier2()">TIER 2 · Intelligence</button>
         <button id="nav-media" onclick="showMedia()">TIER 2 · Media</button>
         <button id="nav-video" onclick="showVideo()">TIER 2 · Video</button>
+        <button id="nav-cyber" onclick="showCyber()">TIER 2 · Cyber</button>
         <button id="nav-scenarios" onclick="showScenarios()">Scenarios</button>
     </nav>
 </header>
@@ -286,6 +287,66 @@
                     </div>
                 </div>
                 <div id="video-output-area"></div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══ TIER 2 · Cyber Crew view ═══ -->
+    <section id="view-cyber" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Cyber Crew</div>
+                    <div id="cyber-agent-list"></div>
+                </div>
+                <div id="cyber-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="cyber-session-display"></span>
+                </div>
+                <div class="compliance-box" id="cyber-compliance-box">
+                    <div class="cb-title">Compliance & Audit</div>
+                    <div class="cb-line">All activity is recorded for legal review. Access is open until an activity is flagged.</div>
+                    <div class="cb-stats" id="cyber-audit-stats"></div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadCyberAuditLog()">View audit log</button>
+                    <div id="cyber-audit-log"></div>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Cyber Crew</h2>
+                    <p>Defensive security assessment: Red Team Strategist (Nmap/OpenVAS) → DAST Engineer (OWASP ZAP/Burp) → TLS Fingerprint Engineer (JA3) → Security Director (Metasploit validation, OSINT, report). Offline-first &amp; simulated — no real scanning or exploitation. Every run is compliance-screened and audit-logged; engagements must be lawful and scope-authorized.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Engagement Type</label>
+                            <select id="cyber-engagement"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Scanner</label>
+                            <select id="cyber-scan"></select>
+                        </div>
+                    </div>
+                    <label>Target / Scope</label>
+                    <textarea id="cyber-target" rows="2" placeholder="e.g. Assess the authorized staging web app at app.example-lab.internal (in-scope hosts only)..." maxlength="2000"></textarea>
+                    <label class="consent-check">
+                        <input type="checkbox" id="cyber-authorized">
+                        I attest written scope authorization exists for this engagement and all activity is lawful.
+                    </label>
+                    <div class="example-tasks" id="cyber-examples-area">
+                        <p>Example engagements:</p>
+                        <div class="chips" id="cyber-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="cyber-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="cyber-btn-reset" onclick="resetCyber()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="cyber-btn-stop" onclick="stopCyber()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="cyber-btn-run" onclick="runCyber()" disabled>▶ Plan Assessment</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="cyber-output-area"></div>
             </div>
         </div>
     </section>

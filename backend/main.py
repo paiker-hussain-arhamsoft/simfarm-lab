@@ -30,9 +30,16 @@ from backend.agents.video_stack import (
     VIDEO_STACK,
 )
 from backend.agents.video_stack import DURATIONS as VIDEO_DURATIONS
+from backend.agents.cyber_crew import (
+    CYBER_CREW,
+    DAST_TOOLS,
+    ENGAGEMENTS,
+    SCAN_TOOLS,
+)
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import (
+    cyber_crew,
     intelligence_crew,
     ledger_scheduler,
     legal_ledger,
@@ -309,6 +316,51 @@ async def video_plan(req: VideoRequest):
         "approver": req.approver,
     }
     generator = video_stack.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 2 — Cyber Crew (defensive security) ───────────────
+
+
+@app.get("/api/cyber/config")
+def cyber_config():
+    return {
+        "agents": [a.to_meta() for a in CYBER_CREW],
+        "engagements": ENGAGEMENTS,
+        "scan_tools": SCAN_TOOLS,
+        "dast_tools": DAST_TOOLS,
+        "config": get_config(),
+    }
+
+
+class CyberRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=2000)
+    engagement: str = Field(default="External Network Pentest")
+    scan_tool: str = Field(default="nmap")
+    authorized: bool = Field(
+        default=False, description="Written scope authorization attested for this engagement"
+    )
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/cyber/plan")
+async def cyber_plan(req: CyberRequest):
+    inp = {
+        "target": req.target,
+        "engagement": req.engagement,
+        "scan_tool": req.scan_tool,
+        "authorized": req.authorized,
+    }
+    generator = cyber_crew.route(inp, req.session_id, backend=req.backend)
     return StreamingResponse(
         generator,
         media_type="text/event-stream",

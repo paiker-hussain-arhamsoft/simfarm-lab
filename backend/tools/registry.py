@@ -344,6 +344,97 @@ async def _ffmpeg_pipeline(steps: str = "", **_: Any) -> dict:
     }
 
 
+# ── Cyber Crew stubs (defensive security; simulated, offline) ───────
+# These stand in for real security tooling (Nmap, OpenVAS, OWASP ZAP, JA3, CAI,
+# Metasploit, OSINT). Everything is SIMULATED — no real scanning, exploitation,
+# fingerprint spoofing, or reconnaissance is performed. Results are synthetic and
+# framed for authorized, defensive, blue-team / lab use only.
+
+_SCAN_PROVIDERS = {
+    "nmap": {"provider": "Nmap", "kind": "port/service discovery"},
+    "openvas": {"provider": "OpenVAS", "kind": "vulnerability assessment"},
+}
+
+
+async def _recon_scan(tool: str = "nmap", target: str = "", **_: Any) -> dict:
+    p = _SCAN_PROVIDERS.get(tool, _SCAN_PROVIDERS["nmap"])
+    return {
+        "simulated": True,
+        "provider": p["provider"],
+        "kind": p["kind"],
+        "requires_internet": False,
+        "target": "lab-scoped target (redacted)",
+        "open_ports": [{"port": 22, "svc": "ssh"}, {"port": 443, "svc": "https"}],
+        "findings": [{"id": "sim-info-1", "severity": "info", "title": "TLS 1.2 offered"}],
+        "note": f"Stub — {p['provider']} {p['kind']}. Simulated only; no real scan is run. "
+                "Authorized/defensive lab use; assume scope authorization is required.",
+    }
+
+
+async def _dast_scan(tool: str = "zap", target: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "OWASP ZAP / Burp Suite",
+        "requires_internet": False,
+        "target": "lab-scoped web app (redacted)",
+        "alerts": [
+            {"risk": "medium", "name": "Missing security headers (simulated)"},
+            {"risk": "low", "name": "Cookie without SameSite (simulated)"},
+        ],
+        "note": "Stub — dynamic application security testing. Simulated only; no real "
+                "requests are sent. Authorized/defensive testing context.",
+    }
+
+
+async def _ja3_fingerprint(host: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "Salesforce JA3",
+        "requires_internet": False,
+        "ja3": "769,47-53-5-10-49171-49172,0-11-10,23-24,0 (example hash)",
+        "purpose": "TLS client fingerprint ANALYSIS / detection (blue-team)",
+        "note": "Stub — JA3/JA3S fingerprint profiling for DETECTION and inventory. "
+                "Simulated only. Does not perform fingerprint spoofing or evasion.",
+    }
+
+
+async def _exploit_validate(module: str = "", target: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "Metasploit",
+        "requires_internet": False,
+        "module": module or "auxiliary/scanner (simulated)",
+        "outcome": "no exploitation performed",
+        "note": "Stub — controlled vulnerability VALIDATION concept only. Simulated; no "
+                "payloads, no exploitation, no real target interaction. Requires written "
+                "authorization and lab scope for any real use.",
+    }
+
+
+async def _osint_lookup(subject: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "OSINT (public sources)",
+        "requires_internet": False,
+        "subject": "authorized asset (redacted)",
+        "exposure": ["example public DNS record", "example leaked-credential indicator"],
+        "note": "Stub — passive open-source exposure mapping for owned/authorized assets. "
+                "Simulated only; no live collection is performed.",
+    }
+
+
+async def _cai_redteam(scope: str = "", **_: Any) -> dict:
+    return {
+        "simulated": True,
+        "provider": "CAI (Alias Robotics)",
+        "requires_internet": False,
+        "scope": "authorized engagement scope (redacted)",
+        "plan": ["surface mapping", "DAST", "manual validation", "reporting"],
+        "note": "Stub — automated red-teaming / DAST orchestration concept. Simulated only; "
+                "no autonomous attacks are executed. Authorized engagement required.",
+    }
+
+
 def _register_defaults() -> None:
     if _REGISTRY:
         return
@@ -442,6 +533,42 @@ def _register_defaults() -> None:
         description="Deterministic FFmpeg compositing / muxing pipeline.",
         category="media", provider="FFmpeg", run=_ffmpeg_pipeline,
         parameters={"steps": "comma-separated steps"},
+    ))
+    register(ToolSpec(
+        id="recon_scan", name="Attack-Surface Scanner",
+        description="Port/service discovery & vulnerability assessment (Nmap, OpenVAS). Simulated.",
+        category="security", provider="Nmap / OpenVAS", run=_recon_scan,
+        parameters={"tool": "nmap|openvas", "target": "authorized in-scope target"},
+    ))
+    register(ToolSpec(
+        id="dast_scan", name="DAST Scanner",
+        description="Dynamic application security testing (OWASP ZAP, Burp Suite). Simulated.",
+        category="security", provider="OWASP ZAP / Burp Suite", run=_dast_scan,
+        parameters={"tool": "zap|burp", "target": "authorized web app"},
+    ))
+    register(ToolSpec(
+        id="ja3_fingerprint", name="TLS Fingerprint Analyzer",
+        description="JA3/JA3S TLS client fingerprint analysis for detection (blue-team). Simulated.",
+        category="security", provider="Salesforce JA3", run=_ja3_fingerprint,
+        parameters={"host": "host to profile"},
+    ))
+    register(ToolSpec(
+        id="exploit_validate", name="Vulnerability Validator",
+        description="Controlled vulnerability validation concept (Metasploit). Simulated; no exploitation.",
+        category="security", provider="Metasploit", run=_exploit_validate,
+        parameters={"module": "module name", "target": "authorized target"},
+    ))
+    register(ToolSpec(
+        id="osint_lookup", name="OSINT Exposure Mapper",
+        description="Passive open-source exposure mapping for owned/authorized assets. Simulated.",
+        category="security", provider="OSINT", run=_osint_lookup,
+        parameters={"subject": "owned/authorized asset"},
+    ))
+    register(ToolSpec(
+        id="cai_redteam", name="Automated Red-Team Orchestrator",
+        description="Automated red-teaming / DAST orchestration concept (CAI). Simulated.",
+        category="security", provider="CAI (Alias Robotics)", run=_cai_redteam,
+        parameters={"scope": "authorized engagement scope"},
     ))
     register(ToolSpec(
         id="playwright_stealth_check", name="Automation Posture Check",

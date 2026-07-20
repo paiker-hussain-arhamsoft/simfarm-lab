@@ -172,6 +172,37 @@ const API = {
         return res.body.getReader();
     },
 
+    async getCyberConfig() {
+        const res = await fetch('/api/cyber/config');
+        return res.json();
+    },
+
+    /**
+     * Run the TIER 2 Cyber Crew and return an SSE reader.
+     * @param {object} opts - target, engagement, scanTool, authorized, sessionId, backend
+     * @param {AbortSignal} signal
+     * @returns {ReadableStreamDefaultReader}
+     */
+    async runCyberPlan(opts, signal) {
+        const res = await fetch('/api/cyber/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target: opts.target,
+                engagement: opts.engagement,
+                scan_tool: opts.scanTool,
+                authorized: !!opts.authorized,
+                session_id: opts.sessionId,
+                backend: opts.backend || '',
+            }),
+            signal,
+        });
+        if (!res.ok || !res.body) {
+            throw new Error(`API error: ${res.status}`);
+        }
+        return res.body.getReader();
+    },
+
     async getComplianceAudit(sessionId) {
         const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
         const res = await fetch(`/api/compliance/audit${q}`);

@@ -2013,6 +2013,478 @@ async function uploadLedger(event) {
     }
 }
 
+/* ── TIER 2 · Cyber Crew ────────────────────────────── */
+
+let cyberConfig = null;
+let cyberState = 'idle';
+let cyberTurns = [];
+let cyberActive = null;
+let cyberDone = new Set();
+let cyberRunId = null;
+let cyberAbort = null;
+let cyberPending = {};
+let cyberScanTool = 'nmap';
+let cyberCompliance = null;
+
+const CYBER_EXAMPLES = [
+    "Assess the authorized staging web app at app.example-lab.internal",
+    "External network pentest of the in-scope /24 lab range",
+    "Purple-team exercise: validate detection of anomalous JA3 fingerprints",
+    "Cloud config review of an owned, authorized test account",
+];
+
+async function showCyber() {
+    setView('cyber');
+    await setupCyberView();
+}
+
+async function setupCyberView() {
+    if (!cyberConfig) {
+        try {
+            cyberConfig = await API.getCyberConfig();
+        } catch (err) {
+            console.error('Cyber config load error:', err);
+            return;
+        }
+    }
+
+    renderCyberAgents();
+    renderCyberBackend();
+    renderCyberSelectors();
+    renderCyberExamples();
+    document.getElementById('cyber-session-display').textContent = sessionId.slice(0, 16) + '…';
+    renderCyberOutput();
+    updateCyberButton();
+    refreshCyberAuditStats();
+
+    const textarea = document.getElementById('cyber-target');
+    if (!textarea.dataset.bound) {
+        textarea.dataset.bound = '1';
+        textarea.addEventListener('input', () => {
+            updateCyberCharCount();
+            updateCyberButton();
+        });
+        textarea.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) runCyber();
+        });
+    }
+}
+
+function renderCyberSelectors() {
+    document.getElementById('cyber-engagement').innerHTML =
+        (cyberConfig.engagements || []).map(s => `<option value="${s}">${s}</option>`).join('');
+    const scanSel = document.getElementById('cyber-scan');
+    scanSel.innerHTML =
+        (cyberConfig.scan_tools || []).map(t => `<option value="${t.id}">${t.label}</option>`).join('');
+    scanSel.value = cyberScanTool;
+    if (!scanSel.dataset.bound) {
+        scanSel.dataset.bound = '1';
+        scanSel.addEventListener('change', () => { cyberScanTool = scanSel.value; });
+    }
+}
+
+function renderCyberAgents() {
+    const list = document.getElementById('cyber-agent-list');
+    const crew = cyberConfig.agents || [];
+    list.innerHTML = crew.map((a, i) => {
+        const isActive = cyberActive === a.id;
+        const isDone = cyberDone.has(a.id);
+        let statusHtml = '';
+        if (isActive) {
+            statusHtml = `<span class="pa-status" style="color: ${a.color}"><span class="spinner" style="border-top-color: ${a.color}"></span> Running</span>`;
+        } else if (isDone) {
+            statusHtml = '<span class="pa-status" style="color: var(--accent-green)">✓</span>';
+        }
+        let bgStyle = '';
+        let borderStyle = 'border-color: var(--border)';
+        if (isActive) {
+            bgStyle = `background: ${a.color}08`;
+            borderStyle = `border-color: ${a.color}30`;
+        } else if (isDone) {
+            bgStyle = 'background: var(--bg-card); opacity: 0.7';
+        }
+        const arrow = i < crew.length - 1 ? '<div class="pa-arrow">▼</div>' : '';
+        return `
+            <div class="pa-agent ${isActive ? 'active' : ''}" style="${bgStyle}; ${borderStyle}">
+                <div class="pa-row">
+                    <div class="pa-icon" style="background: ${a.color}15; border: 1px solid ${a.color}30">${a.icon}</div>
+                    <span class="pa-role">${a.role}</span>
+                    ${statusHtml}
+                </div>
+                <div class="pa-desc">${a.description}</div>
+                <div class="pa-fw" style="color: ${a.color}">${a.framework}</div>
+            </div>
+            ${arrow}
+        `;
+    }).join('');
+}
+
+function renderCyberBackend() {
+    const container = document.getElementById('cyber-backend');
+    const cfg = cyberConfig.config || {};
+    const backends = cfg.backends || [];
+    const readyBackends = backends.filter(b => b.status === 'ready');
+    if (readyBackends.length === 0) {
+        container.innerHTML = '<div class="fw-group"><label class="fw-label">Backend</label><div class="fw-pills"><span class="backend-pill">Demo mode</span></div></div>';
+        return;
+    }
+    let html = '<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills">';
+    const autoActive = !selectedBackend ? 'active' : '';
+    html += `<button class="fw-pill ${autoActive}" onclick="selectCyberBackend('')">Auto</button>`;
+    for (const be of readyBackends) {
+        const active = selectedBackend === be.id ? 'active' : '';
+        const label = be.id === 'ollama' ? `Ollama (${be.model})` : `OpenAI (${be.model})`;
+        html += `<button class="fw-pill ${active}" onclick="selectCyberBackend('${be.id}')">${label}</button>`;
+    }
+    html += '</div></div>';
+    container.innerHTML = html;
+}
+
+function selectCyberBackend(be) {
+    selectedBackend = be;
+    localStorage.setItem('brain_backend', be);
+    renderCyberBackend();
+}
+
+function renderCyberExamples() {
+    const area = document.getElementById('cyber-examples-area');
+    const chips = document.getElementById('cyber-example-chips');
+    if (cyberState !== 'idle' || cyberTurns.length > 0) {
+        area.classList.add('hidden');
+        return;
+    }
+    area.classList.remove('hidden');
+    chips.innerHTML = CYBER_EXAMPLES.map(t => {
+        const display = t.length > 60 ? t.slice(0, 60) + '…' : t;
+        return `<button class="example-chip" onclick="setCyberTarget('${t.replace(/'/g, "\\'")}')">${display}</button>`;
+    }).join('');
+}
+
+function setCyberTarget(text) {
+    const textarea = document.getElementById('cyber-target');
+    textarea.value = text;
+    updateCyberCharCount();
+    updateCyberButton();
+}
+
+function updateCyberCharCount() {
+    const textarea = document.getElementById('cyber-target');
+    document.getElementById('cyber-char-count').textContent = `${textarea.value.length}/2000 · Ctrl+Enter to run`;
+}
+
+function updateCyberButton() {
+    const textarea = document.getElementById('cyber-target');
+    const btnRun = document.getElementById('cyber-btn-run');
+    const btnStop = document.getElementById('cyber-btn-stop');
+    const btnReset = document.getElementById('cyber-btn-reset');
+
+    btnRun.disabled = !textarea.value.trim() || cyberState === 'running' || cyberState === 'done';
+
+    if (cyberState === 'running') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.remove('hidden');
+        btnReset.classList.add('hidden');
+    } else if (cyberState === 'done' || cyberState === 'error') {
+        btnRun.classList.add('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.remove('hidden');
+    } else {
+        btnRun.classList.remove('hidden');
+        btnStop.classList.add('hidden');
+        btnReset.classList.add('hidden');
+    }
+    textarea.disabled = cyberState === 'running';
+}
+
+async function runCyber() {
+    const textarea = document.getElementById('cyber-target');
+    const target = textarea.value.trim();
+    if (!target || cyberState === 'running') return;
+
+    const engagement = document.getElementById('cyber-engagement').value;
+    const authorized = document.getElementById('cyber-authorized').checked;
+
+    cyberState = 'running';
+    cyberTurns = [];
+    cyberActive = null;
+    cyberDone = new Set();
+    cyberRunId = null;
+    cyberPending = {};
+    cyberCompliance = null;
+    updateCyberButton();
+    renderCyberAgents();
+    renderCyberExamples();
+    renderCyberOutput();
+
+    cyberAbort = new AbortController();
+
+    try {
+        const reader = await API.runCyberPlan({
+            target, engagement, scanTool: cyberScanTool, authorized,
+            sessionId, backend: selectedBackend,
+        }, cyberAbort.signal);
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                let event;
+                try { event = JSON.parse(raw); } catch { continue; }
+                handleCyberSSE(event);
+            }
+        }
+        if (cyberState === 'running') cyberState = 'done';
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            cyberState = 'error';
+            renderCyberOutput(`Cyber Crew interrupted: ${err.message}`);
+        } else {
+            cyberState = 'idle';
+        }
+    }
+
+    updateCyberButton();
+    renderCyberAgents();
+    refreshCyberAuditStats();
+}
+
+function handleCyberSSE(event) {
+    switch (event.type) {
+        case 'pipeline_start':
+            cyberRunId = event.run_id;
+            break;
+
+        case 'compliance':
+            cyberCompliance = event;
+            renderCyberOutput();
+            break;
+
+        case 'compliance_block':
+            cyberCompliance = Object.assign({}, cyberCompliance, { blocked: true, message: event.message });
+            cyberState = 'error';
+            renderCyberOutput();
+            break;
+
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!cyberPending[w]) cyberPending[w] = [];
+            cyberPending[w].push(event);
+            const existing = cyberTurns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = cyberPending[w];
+                renderCyberOutput();
+            }
+            break;
+        }
+
+        case 'agent_start': {
+            cyberActive = event.agent;
+            cyberTurns.push({
+                agentId: event.agent,
+                role: event.role,
+                color: event.color,
+                icon: event.icon || '🛡️',
+                content: '',
+                done: false,
+                toolActivity: cyberPending[event.agent] || [],
+            });
+            renderCyberAgents();
+            renderCyberOutput();
+            break;
+        }
+
+        case 'token': {
+            const turn = cyberTurns.find(t => t.agentId === event.agent && !t.done);
+            if (turn) {
+                turn.content += event.content;
+                const el = document.getElementById(`cyber-content-${turn.agentId}`);
+                if (el) {
+                    el.innerHTML = escapeHtml(turn.content) + `<span class="am-cursor" style="background: ${turn.color}"></span>`;
+                    scrollCyberToBottom();
+                }
+            }
+            break;
+        }
+
+        case 'agent_done': {
+            const turn = cyberTurns.find(t => t.agentId === event.agent);
+            if (turn) turn.done = true;
+            cyberDone.add(event.agent);
+            cyberActive = null;
+            renderCyberAgents();
+            renderCyberOutput();
+            break;
+        }
+
+        case 'done':
+            cyberState = event.blocked ? 'error' : 'done';
+            updateCyberButton();
+            renderCyberAgents();
+            renderCyberOutput();
+            break;
+
+        case 'error':
+            cyberState = 'error';
+            updateCyberButton();
+            renderCyberOutput(event.message);
+            break;
+
+        case 'cancelled':
+            cyberState = 'idle';
+            updateCyberButton();
+            break;
+    }
+}
+
+function stopCyber() {
+    if (cyberAbort) cyberAbort.abort();
+    cyberState = 'idle';
+    cyberActive = null;
+    updateCyberButton();
+    renderCyberAgents();
+}
+
+function resetCyber() {
+    cyberTurns = [];
+    cyberActive = null;
+    cyberDone = new Set();
+    cyberRunId = null;
+    cyberState = 'idle';
+    cyberCompliance = null;
+    updateCyberButton();
+    renderCyberAgents();
+    renderCyberExamples();
+    renderCyberOutput();
+}
+
+function renderCyberComplianceBanner() {
+    if (!cyberCompliance) return '';
+    if (cyberCompliance.blocked) {
+        return `<div class="compliance-banner flagged">
+            <strong>⛔ Flagged — access limited.</strong> ${escapeHtml(cyberCompliance.message || '')}
+            <div class="cb-audit">Audit ID: ${cyberCompliance.audit_id}</div>
+        </div>`;
+    }
+    if (cyberCompliance.flagged) {
+        return `<div class="compliance-banner flagged">
+            <strong>⚠ Flagged for review.</strong> ${escapeHtml((cyberCompliance.reasons || []).join('; '))}
+            <div class="cb-audit">Audit ID: ${cyberCompliance.audit_id}</div>
+        </div>`;
+    }
+    return `<div class="compliance-banner ok">
+        <strong>✓ Cleared &amp; logged.</strong> Recorded for legal review — audit ID ${cyberCompliance.audit_id}.
+    </div>`;
+}
+
+function renderCyberOutput(errorMsg) {
+    const area = document.getElementById('cyber-output-area');
+    const crew = cyberConfig ? (cyberConfig.agents || []) : [];
+    const banner = renderCyberComplianceBanner();
+
+    if (cyberTurns.length === 0 && !errorMsg && !banner) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🛡️</div>
+                <h3>Ready to plan an assessment</h3>
+                <p>Pick an engagement type and scanner, describe the authorized in-scope target, and the Cyber Crew produces a full, audit-logged defensive assessment plan.</p>
+                <div class="agent-dots">
+                    ${crew.map(a => `<span class="dot"><span class="dot-circle" style="background: ${a.color}"></span> ${a.role}</span>`).join('')}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = banner;
+    if (errorMsg) {
+        html += `<div class="error-banner">${errorMsg}</div>`;
+    }
+
+    html += '<div class="output-log" id="cyber-output-log">';
+    for (const turn of cyberTurns) {
+        const cursorHtml = !turn.done
+            ? `<span class="am-cursor" style="background: ${turn.color}"></span>`
+            : '';
+        html += `
+            <div class="agent-message" id="cyber-msg-${turn.agentId}">
+                <div class="am-header">
+                    <div class="am-icon" style="background: ${turn.color}15; border: 1px solid ${turn.color}30">${turn.icon}</div>
+                    <span class="am-role" style="color: ${turn.color}">${turn.role}</span>
+                    ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
+                    ${turn.done ? `<button class="am-copy" onclick="copyCyberContent('${turn.agentId}')">📋</button>` : ''}
+                </div>
+                ${renderToolActivity(turn.toolActivity)}
+                <div class="am-content" id="cyber-content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
+            </div>
+        `;
+    }
+    if (cyberState === 'done') {
+        html += '<div class="pipeline-complete">Assessment plan complete</div>';
+    }
+    html += '</div>';
+
+    area.innerHTML = html;
+    scrollCyberToBottom();
+}
+
+function scrollCyberToBottom() {
+    const log = document.getElementById('cyber-output-log');
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+function copyCyberContent(agentId) {
+    const turn = cyberTurns.find(t => t.agentId === agentId);
+    if (turn) navigator.clipboard.writeText(turn.content);
+}
+
+async function refreshCyberAuditStats() {
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const el = document.getElementById('cyber-audit-stats');
+        if (el && data.stats) {
+            el.textContent = `${data.stats.total_events} events logged · ${data.stats.flagged_events} flagged`;
+        }
+    } catch (err) {
+        console.error('Audit stats error:', err);
+    }
+}
+
+async function loadCyberAuditLog() {
+    const container = document.getElementById('cyber-audit-log');
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const events = data.events || [];
+        if (events.length === 0) {
+            container.innerHTML = '<div class="audit-empty">No recorded activity yet.</div>';
+            return;
+        }
+        container.innerHTML = events.map(e => {
+            const when = new Date(e.created_at * 1000).toLocaleTimeString();
+            let cls = 'ok';
+            if (e.sensitivity === 'red' || e.verdict === 'pre_cleared_legal_proxy') cls = 'sensitive';
+            else if (e.verdict === 'flagged') cls = 'flagged';
+            const reasons = e.reasons && e.reasons.length ? ` — ${escapeHtml(e.reasons.join('; '))}` : '';
+            return `<div class="audit-row ${cls}">
+                <span class="audit-when">${when}</span>
+                <span class="audit-action">${escapeHtml(e.action)}</span>
+                <span class="audit-verdict">${e.verdict}${reasons}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="audit-empty">Failed to load audit log: ${err.message}</div>`;
+    }
+}
+
 /* ── Init ───────────────────────────────────────────── */
 
 document.addEventListener('DOMContentLoaded', () => {
