@@ -1,18 +1,19 @@
 # Optional media-stack extension for simfarm-lab.
 #
 # Duix-Avatar, Wan2.1, Coqui, Chatterbox, InsightFace, DeepFaceLab, FaceSwap,
-# and Deep-Live-Cam have heavy or conflicting Python dependencies, so the
-# GPU-heavy engines run as separate containers orchestrated alongside the
-# main app.
+# Deep-Live-Cam, Wav2Lip, and SadTalker have heavy or conflicting Python
+# dependencies, so the GPU-heavy engines run as separate containers orchestrated
+# alongside the main app.
 #
 # Start everything in one command:
 #   docker compose -f docker-compose.yml -f docker-compose.media.yml up -d
 #
 # Notes:
-# - Duix, DeepFaceLab, FaceSwap, and Deep-Live-Cam require an NVIDIA GPU and
-#   the NVIDIA Container Toolkit (or a CPU fallback where the image supports it).
-# - Duix images are ~70 GB; DeepFaceLab, FaceSwap, and Deep-Live-Cam images are
-#   also large.
+# - Duix, DeepFaceLab, FaceSwap, Deep-Live-Cam, and SadTalker benefit from an
+#   NVIDIA GPU and the NVIDIA Container Toolkit. CPU fallbacks are configured
+#   where the image supports them.
+# - Duix images are ~70 GB; DeepFaceLab, FaceSwap, Deep-Live-Cam, and SadTalker
+#   images are also large.
 # - InsightFace is pip-installable and runs in the strategic-brain container
 #   (build with --build-arg FACE_STACK=insightface or set FACE_STACK=insightface).
 # - DeepFaceLab and FaceSwap need a trained workspace before they can one-shot
