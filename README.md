@@ -11,19 +11,42 @@ safety invariants and runtime enforcement rules.
 
 ## Quick Start
 
+### Option 1 — One Docker command (all-in-one image)
+
+Build once, then run a single container that includes the backend, Ollama CPU model server, and the Tier 4 simulator:
+
 ```bash
-docker compose up --build
+git clone https://github.com/paiker-hussain-arhamsoft/simfarm-lab.git
+cd simfarm-lab
+docker build -f Dockerfile.all-in-one -t simfarm-lab .
+docker run -d -p 8000:8000 -v simfarm-ollama:/root/.ollama --name simfarm simfarm-lab
 ```
 
-Open **http://localhost:8000** in your browser.
+Open **http://localhost:8000**.
+
+The first start pulls the default Ollama model (`qwen2.5:1.5b`) into the named volume. Subsequent starts reuse it.
+
+### Option 2 — Docker Compose (multi-service)
+
+```bash
+docker compose up --build -d
+```
+
+Open **http://localhost:8000**.
 
 ### With a real OpenAI API key
 
 ```bash
-OPENAI_API_KEY=sk-... docker compose up --build
+OPENAI_API_KEY=sk-... docker run -d -p 8000:8000 -v simfarm-ollama:/root/.ollama simfarm-lab
 ```
 
-Without an API key the system runs in **demo mode** with pre-recorded responses.
+or, for Compose:
+
+```bash
+OPENAI_API_KEY=sk-... docker compose up --build -d
+```
+
+Without an API key the system runs **offline-first with Ollama**. Demo mode is used only when no model is available.
 
 ---
 
@@ -102,7 +125,7 @@ Returns an SSE stream with events: `pipeline_start`, `agent_start`, `token`, `ag
 
 - **Backend**: Python 3.11, FastAPI, Pydantic, OpenAI SDK, SQLite
 - **Frontend**: Vanilla HTML/CSS/JS (no frameworks)
-- **Deployment**: Docker Compose, single container, port 8000
+- **Deployment**: Docker Compose or all-in-one container, port 8000
 
 ---
 
