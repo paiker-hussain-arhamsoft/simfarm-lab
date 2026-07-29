@@ -22,6 +22,10 @@
 #   models and the main app execs it through DEEP_LIVE_CAM_COMMAND by default.
 # - Wav2Lip is one-shot: its container is prebuilt with the required models
 #   and the main app execs it through WAV2LIP_COMMAND by default.
+# - SadTalker is a talking-head generator (source image + audio -> video). It
+#   runs in a separate container and is called through SADTALKER_COMMAND. The
+#   default command uses CPU inference; remove --cpu and add an NVIDIA runtime
+#   for GPU inference.
 
 services:
   duix-avatar-tts:
@@ -139,6 +143,22 @@ services:
     shm_size: 8g
     command: tail -f /dev/null
 
+  sadtalker:
+    build:
+      context: ./services/sadtalker
+    image: simfarm-lab/sadtalker:latest
+    container_name: sadtalker
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - brain-data:/data
+      - brain-data:/app/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    command: tail -f /dev/null
+
   strategic-brain:
     build:
       context: .
@@ -153,6 +173,9 @@ services:
       - DEEP_LIVE_CAM_COMMAND=docker exec deep-live-cam python3 /app/run.py -s {source} -t {target} -o {output} --execution-provider cpu --frame-processor face_swapper
       # Default one-shot Wav2Lip command. The container is prebuilt with models.
       - WAV2LIP_COMMAND=docker exec wav2lip python /workspace/wav2lip/inference.py --checkpoint_path /workspace/wav2lip/checkpoints/wav2lip_gan.pth --face {video} --audio {audio} --outfile {output}
+      # Default SadTalker talking-head command. Runs on CPU by default; remove
+      # --cpu and add an NVIDIA runtime to the sadtalker service for GPU.
+      - SADTALKER_COMMAND=docker exec sadtalker /app/SadTalker/run_sadtalker.sh --driven_audio {audio} --source_image {video} --output {output}
     volumes:
       - brain-data:/code/data
       - brain-data:/data

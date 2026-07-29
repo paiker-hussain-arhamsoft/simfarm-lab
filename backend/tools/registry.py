@@ -411,6 +411,7 @@ _AVATAR_PROVIDERS = {
     "duix": {"provider": "Duix-Avatar", "license": "open", "online": False},
     "wav2lip": {"provider": "Wav2Lip", "license": "open", "online": False},
     "roop": {"provider": "Roop", "license": "open", "online": False},
+    "sadtalker": {"provider": "SadTalker", "license": "open", "online": False},
 }
 
 
@@ -793,7 +794,7 @@ async def _render_avatar(tool: str = "duix", photo: str = "", script: str = "", 
                          language: str = "en", **_: Any) -> dict:
     p = _AVATAR_PROVIDERS.get(tool, _AVATAR_PROVIDERS["duix"])
 
-    if tool in ("wav2lip", "roop"):
+    if tool in ("wav2lip", "roop", "sadtalker"):
         if not photo or not _external_lip_sync_command_configured(tool):
             return {
                 "simulated": True,
@@ -1130,6 +1131,7 @@ _EXTERNAL_LIPSYNC_COMMANDS = {
     "wav2lip": "WAV2LIP_COMMAND",
     "videoretalking": "VIDEORETALKING_COMMAND",
     "roop": "ROOP_COMMAND",
+    "sadtalker": "SADTALKER_COMMAND",
 }
 
 
@@ -1562,13 +1564,14 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="render_avatar", name="Digital Human Renderer",
-        description="Photo+script or photo+audio lip-synced digital human (Duix-Avatar, Wav2Lip, Roop).",
-        category="media", provider="Duix-Avatar / Wav2Lip / Roop", run=_render_avatar,
-        parameters={"tool": "duix|wav2lip|roop", "photo": "reference video (Duix)", "script": "text", "audio": "optional audio file path", "language": "lang"},
+        description="Photo+script or photo+audio lip-synced digital human (Duix-Avatar, Wav2Lip, Roop, SadTalker).",
+        category="media", provider="Duix-Avatar / Wav2Lip / Roop / SadTalker", run=_render_avatar,
+        parameters={"tool": "duix|wav2lip|roop|sadtalker", "photo": "reference video or image", "script": "text", "audio": "optional audio file path", "language": "lang"},
         status="live" if (
             _duix_video_host()
             or _external_lip_sync_command_configured("wav2lip")
             or _external_lip_sync_command_configured("roop")
+            or _external_lip_sync_command_configured("sadtalker")
         ) else "stub",
     ))
     register(ToolSpec(
