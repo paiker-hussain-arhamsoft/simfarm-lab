@@ -27,6 +27,8 @@
 #   runs in a separate container and is called through SADTALKER_COMMAND. The
 #   default command uses CPU inference; remove --cpu and add an NVIDIA runtime
 #   for GPU inference.
+# - GFPGAN is a face restoration / upscaling container. The main app execs it
+#   through GFPGAN_COMMAND. It supports both images and video.
 
 services:
   duix-avatar-tts:
@@ -160,6 +162,22 @@ services:
     shm_size: 8g
     command: tail -f /dev/null
 
+  gfpgan:
+    build:
+      context: ./services/gfpgan
+    image: simfarm-lab/gfpgan:latest
+    container_name: gfpgan
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - brain-data:/data
+      - brain-data:/app/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    command: tail -f /dev/null
+
   strategic-brain:
     build:
       context: .
@@ -177,6 +195,8 @@ services:
       # Default SadTalker talking-head command. Runs on CPU by default; remove
       # --cpu and add an NVIDIA runtime to the sadtalker service for GPU.
       - SADTALKER_COMMAND=docker exec sadtalker /app/SadTalker/run_sadtalker.sh --driven_audio {audio} --source_image {video} --output {output}
+      # Default GFPGAN face restoration/upscale command. Supports images and video.
+      - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
     volumes:
       - brain-data:/code/data
       - brain-data:/data
