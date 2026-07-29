@@ -9,12 +9,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 ARG VOICE_STACK=chatterbox
-COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt ./
+ARG VIDEO_STACK=
+COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
     if [ "$VOICE_STACK" = "coqui" ]; then \
         pip install --no-cache-dir -r requirements-voice-coqui.txt; \
     else \
         pip install --no-cache-dir -r requirements-voice.txt; \
+    fi && \
+    if [ "$VIDEO_STACK" = "wan" ]; then \
+        pip install --no-cache-dir -r requirements-video-wan.txt; \
     fi
 
 COPY . .

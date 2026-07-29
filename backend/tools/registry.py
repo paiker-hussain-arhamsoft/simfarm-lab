@@ -612,11 +612,140 @@ async def _clone_voice(tool: str = "chatterbox", language: str = "en",
     }
 
 
+# ── Wan2.1 text-to-video integration (with stub fallback) ───────────
+
+_WAN2_MODEL_NAME = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+_WAN2_NEGATIVE_PROMPT = (
+    "Bright tones, overexposed, static, blurred details, subtitles, style, works, "
+    "paintings, images, static, overall gray, worst quality, low quality, JPEG "
+    "compression residue, ugly, incomplete, extra fingers, poorly drawn hands, "
+    "poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, "
+    "still picture, messy background, three legs, many people in the background, "
+    "walking backwards"
+)
+_WAN2_PIPELINE: Any = None
+_WAN2_LOCK = asyncio.Lock()
+
+
+def _is_wan2_available() -> bool:
+    """Return True if diffusers>=0.33 with Wan support is installed."""
+    import importlib.util
+    try:
+        import diffusers
+        return (
+            importlib.util.find_spec("diffusers") is not None
+            and hasattr(diffusers, "__version__")
+            and diffusers.__version__ >= "0.33.0"
+            and hasattr(diffusers, "WanPipeline")
+        )
+    except Exception:
+        return False
+
+
+def _wan2_torch_dtype() -> Any:
+    """Pick a safe dtype for the current device."""
+    import torch
+    if torch.cuda.is_available():
+        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    return torch.float32
+
+
+async def _load_wan2_pipeline() -> Any:
+    """Load and cache the Wan2.1 1.3B T2V pipeline in a worker thread."""
+    global _WAN2_PIPELINE
+    if _WAN2_PIPELINE is not None:
+        return _WAN2_PIPELINE
+    async with _WAN2_LOCK:
+        if _WAN2_PIPELINE is None:
+            import torch
+            from diffusers import AutoencoderKLWan, WanPipeline
+            dtype = _wan2_torch_dtype()
+            vae_dtype = torch.float32
+            vae = await asyncio.to_thread(
+                AutoencoderKLWan.from_pretrained, _WAN2_MODEL_NAME,
+                subfolder="vae", torch_dtype=vae_dtype
+            )
+            _WAN2_PIPELINE = await asyncio.to_thread(
+                WanPipeline.from_pretrained, _WAN2_MODEL_NAME,
+                vae=vae, torch_dtype=dtype
+            )
+            if torch.cuda.is_available():
+                _WAN2_PIPELINE = _WAN2_PIPELINE.to("cuda")
+            else:
+                _WAN2_PIPELINE = _WAN2_PIPELINE.to("cpu")
+    return _WAN2_PIPELINE
+
+
+def _parse_duration(duration: str) -> int:
+    """Parse a duration string like '60s' or '5' into seconds (default 5)."""
+    digits = "".join(ch for ch in (duration or "5s") if ch.isdigit())
+    try:
+        return max(1, int(digits or 5))
+    except ValueError:
+        return 5
+
+
+async def _generate_wan2_video(script: str, duration: str = "5s") -> str:
+    """Generate an MP4 with Wan2.1 and return the local file path."""
+    import torch
+    from diffusers.utils import export_to_video
+
+    pipe = await _load_wan2_pipeline()
+    seconds = _parse_duration(duration)
+    # Wan2.1 default training resolution is 480P; keep frame count modest and cap it.
+    num_frames = min(max(5, seconds * 15), 81)
+    num_frames = max(5, (num_frames // 4) * 4 + 1)
+
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.mp4")
+
+    frames = await asyncio.to_thread(
+        pipe,
+        prompt=script,
+        negative_prompt=_WAN2_NEGATIVE_PROMPT,
+        height=480,
+        width=832,
+        num_frames=num_frames,
+        guidance_scale=5.0,
+        num_inference_steps=30,
+    )
+    export_to_video(frames.frames[0], out_path, fps=15)
+    return out_path
+
+
 async def _generate_video(tool: str = "wan2", script: str = "", duration: str = "60s",
                           **_: Any) -> dict:
     p = _VIDEO_PROVIDERS.get(tool, _VIDEO_PROVIDERS["wan2"])
     if p["online"] and not _online_available():
         raise ToolError(f"{p['provider']} requires internet; fall back to an offline video model.")
+
+    if tool == "wan2" and _is_wan2_available() and script:
+        try:
+            artifact_path = await _generate_wan2_video(script, duration)
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "params": p["params"],
+                "resolution": "480p",
+                "duration": duration,
+                "artifact": artifact_path,
+                "note": f"Generated locally with {p['provider']} (1.3B, CPU/GPU).",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "params": p["params"],
+                "resolution": "480p",
+                "duration": duration,
+                "artifact": "/artifacts/media/clip_stub.mp4",
+                "note": f"Wan2.1 failed ({exc}); Stub — wire to {p['provider']} for real text-to-video (offline/local).",
+            }
+
     return {
         "simulated": True,
         "provider": p["provider"],
@@ -962,6 +1091,7 @@ def _register_defaults() -> None:
         description="Text-to-video generation (Wan2.1, CogVideoX, Open-Sora offline; HeyGen online).",
         category="media", provider="Wan2.1 / CogVideoX / Open-Sora", run=_generate_video,
         parameters={"tool": "wan2|cogvideo|opensora|heygen", "script": "text", "duration": "e.g. 60s"},
+        status="live" if _is_wan2_available() else "stub",
     ))
     register(ToolSpec(
         id="render_avatar", name="Digital Human Renderer",
