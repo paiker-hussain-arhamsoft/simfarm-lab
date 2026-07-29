@@ -45,6 +45,8 @@ from backend.agents.persona_crew import (
 from backend.agents.infrastructure_crew import (
     INFRASTRUCTURE_CREW, MODEM_TYPES, CARRIERS, SCENARIOS as INFRA_SCENARIOS,
 )
+from backend.agents.ivr_crew import IVR_CREW, SCENARIOS as IVR_SCENARIOS, HARDWARE_KITS, REACH_MODELS
+from backend.agents.proxy_crew import PROXY_CREW, SCENARIOS as PROXY_SCENARIOS, PROVIDERS, POOL_TYPES
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import (
@@ -55,6 +57,8 @@ from backend.pipeline import (
     media_crew,
     persona_crew,
     infrastructure_crew,
+    ivr_crew,
+    proxy_crew,
     video_stack,
 )
 from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
@@ -486,6 +490,42 @@ async def infrastructure_plan(req: InfrastructureRequest):
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
                  "X-Accel-Buffering": "no"},
     )
+
+@app.get("/api/ivr/config")
+def ivr_config():
+    return {"agents":[a.to_meta() for a in IVR_CREW],"scenarios":IVR_SCENARIOS,
+            "hardware_kits":HARDWARE_KITS,"reach_models":REACH_MODELS,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class IvrRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; hardware_kit: str = ""; reach_model: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/ivr/plan")
+async def ivr_plan(req: IvrRequest):
+    generator=ivr_crew.route(req.model_dump(),req.session_id,backend=req.backend)
+    return StreamingResponse(generator,media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/proxy/config")
+def proxy_config():
+    return {"agents":[a.to_meta() for a in PROXY_CREW],"scenarios":PROXY_SCENARIOS,
+            "providers":PROVIDERS,"pool_types":POOL_TYPES,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class ProxyRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; provider: str = ""; pool_type: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/proxy/plan")
+async def proxy_plan(req: ProxyRequest):
+    generator=proxy_crew.route(req.model_dump(),req.session_id,backend=req.backend)
+    return StreamingResponse(generator,media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
 
 
 # ── Compliance & audit ──────────────────────────────────────────────

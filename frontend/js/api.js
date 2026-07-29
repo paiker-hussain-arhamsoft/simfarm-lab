@@ -261,6 +261,16 @@ const API = {
         if (!res.ok || !res.body) throw new Error(`API error: ${res.status}`);
         return res.body.getReader();
     },
+    async getIvrConfig() { const res=await fetch('/api/ivr/config'); return res.json(); },
+    async runIvrPlan(opts, signal) {
+        const res=await fetch('/api/ivr/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,hardware_kit:opts.hardwareKit,reach_model:opts.reachModel,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
+        if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
+    },
+    async getProxyConfig() { const res=await fetch('/api/proxy/config'); return res.json(); },
+    async runProxyPlan(opts, signal) {
+        const res=await fetch('/api/proxy/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,provider:opts.provider,pool_type:opts.poolType,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
+        if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
+    },
 
     async getComplianceAudit(sessionId) {
         const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';

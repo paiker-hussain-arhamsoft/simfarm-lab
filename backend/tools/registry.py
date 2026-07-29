@@ -86,6 +86,7 @@ async def call_tool(tool_id: str, **kwargs: Any) -> dict:
 async def _index_dataset(source: str = "crm", query: str = "", **_: Any) -> dict:
     return {
         "simulated": True,
+        "requires_internet": False,
         "provider": "LlamaIndex",
         "source": source,
         "records_indexed": 12483,
@@ -122,12 +123,64 @@ async def _rotate_proxy(pool: str = "residential", reason: str = "", **_: Any) -
         raise ToolError("Proxy pool 'blocked' is exhausted; caller should alter the pool.")
     return {
         "simulated": True,
+        "requires_internet": False,
         "provider": "Scrapoxy",
         "pool": pool,
         "new_vector": "10.x.x.x (simulated)",
         "reason": reason,
         "note": "Stub — infrastructure routing hook; simulated only.",
     }
+
+# ── TIER 4 · IVR and proxy-rotation local simulation tools ─────────
+_TELECOM_NOTE = ("Simulated only; real telecom execution requires specific "
+                 "communications-secretariat orders and is not performed.")
+_PROXY_NOTE = ("Simulated only; real proxy/cloud execution requires specific "
+               "communications-secretariat orders and is not performed.")
+
+async def _ivr_hardware_setup(hardware_kit="", scenario="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "Raspberry Pi · GSM · RASP-IVR",
+            "hardware_kit": hardware_kit, "topology": {"controller": "virtual-rpi", "gsm_channels": "modeled", "physical": False},
+            "detection_telemetry": ["channel occupancy", "retry bursts", "clock skew"], "note": _TELECOM_NOTE}
+async def _call_flow_design(scenario="", objective="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "Verboice",
+            "menu_tree": {"root": "welcome (modeled)", "branches": ["information", "help", "end"], "dtmf": "modeled"},
+            "scenario": scenario, "objective": objective, "real_calls": False, "note": _TELECOM_NOTE}
+async def _dtmf_handler(scenario="", objective="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "VBVoice",
+            "dtmf_policy": {"digits": "synthetic fixtures only", "timeouts": "modeled", "secrets": False},
+            "detection_signals": ["repeated invalid digits", "automation timing"], "note": _TELECOM_NOTE}
+async def _rural_reach_model(reach_model="", scenario="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "rural-reach (modeled)",
+            "reach_model": reach_model, "coverage": "modeled regional envelope", "latency_ms": 420,
+            "accessibility": "feature-phone compatible (concept)", "real_network": False, "note": _TELECOM_NOTE}
+async def _call_route_plan(scenario="", objective="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "call-routing (modeled)",
+            "routes": ["lab-entry", "sim-help", "sim-exit"], "queue": "modeled", "real_routing": False, "note": _TELECOM_NOTE}
+async def _ivr_cost_model(scenario="", objective="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "cost-model (modeled)",
+            "per_call_cost": "modeled currency units", "components": ["duration", "queue", "translation"],
+            "real_billing": False, "note": _TELECOM_NOTE}
+async def _scrapoxy_deploy(provider="", scenario="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "Scrapoxy · Docker",
+            "deployment": {"containers": 0, "network": "lab-model", "executed": False}, "provider_model": provider, "note": _PROXY_NOTE}
+async def _cloud_connector(provider="", scenario="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "cloud-connectors (modeled)",
+            "cloud": provider, "credentials_used": False, "deployment": "concept only", "note": _PROXY_NOTE}
+async def _proxy_pool_size(pool_type="", objective="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "pool-sizing (modeled)",
+            "pool_type": pool_type, "recommended_size": 24, "sizing_basis": "modeled traffic envelope", "note": _PROXY_NOTE}
+async def _proxy_health_monitor(pool_type="", scenario="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "health-monitor (modeled)",
+            "pool_type": pool_type, "signals": ["latency", "error ratio", "reputation fixture"], "probes_executed": False, "note": _PROXY_NOTE}
+async def _proxy_integration_plan(provider="", objective="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "Playwright · Puppeteer · requests",
+            "integration": "telemetry-only concept", "evasion": False, "live_requests": False, "provider_model": provider, "note": _PROXY_NOTE}
+async def _proxy_cost_model(provider="", pool_type="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "cost-model (modeled)",
+            "provider_model": provider, "pool_type": pool_type, "cost": "modeled units per hour", "real_billing": False, "note": _PROXY_NOTE}
+async def _proxy_deployment_synth(provider="", scenario="", **_):
+    return {"simulated": True, "requires_internet": False, "provider": "deployment (modeled)",
+            "deployment_plan": ["validate telemetry", "stage lab fixtures", "review detections"], "executed": False, "provider_model": provider, "note": _PROXY_NOTE}
 
 
 async def _adjust_load_balancer(strategy: str = "round_robin", **_: Any) -> dict:
@@ -710,6 +763,26 @@ def _register_defaults() -> None:
         register(ToolSpec(id=ident, name=name,
             description="Simulated infrastructure action; real telecom execution requires communications-secretariat orders and is not performed.",
             category="infrastructure", provider=provider, run=fn, parameters=params))
+    tier4_local = [
+        ("ivr_hardware_setup","IVR Hardware Setup","Raspberry Pi · GSM · RASP-IVR",_ivr_hardware_setup,{"hardware_kit":"hardware kit","scenario":"scenario"}),
+        ("call_flow_design","Call Flow Designer","Verboice",_call_flow_design,{"scenario":"scenario","objective":"objective"}),
+        ("dtmf_handler","DTMF Handler","VBVoice",_dtmf_handler,{"scenario":"scenario","objective":"objective"}),
+        ("rural_reach_model","Rural Reach Model","rural-reach (modeled)",_rural_reach_model,{"reach_model":"reach model","scenario":"scenario"}),
+        ("call_route_plan","Call Route Planner","call-routing (modeled)",_call_route_plan,{"scenario":"scenario","objective":"objective"}),
+        ("ivr_cost_model","IVR Cost Model","cost-model (modeled)",_ivr_cost_model,{"scenario":"scenario","objective":"objective"}),
+        ("scrapoxy_deploy","Scrapoxy Deploy","Scrapoxy · Docker",_scrapoxy_deploy,{"provider":"provider","scenario":"scenario"}),
+        ("cloud_connector","Cloud Connector","cloud-connectors (modeled)",_cloud_connector,{"provider":"provider","scenario":"scenario"}),
+        ("proxy_pool_size","Proxy Pool Sizer","pool-sizing (modeled)",_proxy_pool_size,{"pool_type":"pool type","objective":"objective"}),
+        ("proxy_health_monitor","Proxy Health Monitor","health-monitor (modeled)",_proxy_health_monitor,{"pool_type":"pool type","scenario":"scenario"}),
+        ("proxy_integration_plan","Proxy Integration Planner","Playwright · Puppeteer · requests",_proxy_integration_plan,{"provider":"provider","objective":"objective"}),
+        ("proxy_cost_model","Proxy Cost Model","cost-model (modeled)",_proxy_cost_model,{"provider":"provider","pool_type":"pool type"}),
+        ("proxy_deployment_synth","Proxy Deployment Synthesizer","deployment (modeled)",_proxy_deployment_synth,{"provider":"provider","scenario":"scenario"}),
+    ]
+    for ident, name, provider, fn, params in tier4_local:
+        category = "ivr" if ident.startswith(("ivr_", "call_", "dtmf_", "rural_")) else "proxy"
+        register(ToolSpec(id=ident, name=name,
+            description="Simulated only; real execution requires communications-secretariat orders and is not performed.",
+            category=category, provider=provider, run=fn, parameters=params))
 
 
 _register_defaults()

@@ -1950,6 +1950,14 @@ function activeApprover() {
     if (infrastructureView && !infrastructureView.classList.contains('hidden')) {
         return (document.getElementById('infrastructure-approver') || {}).value || '';
     }
+    const ivrView = document.getElementById('view-ivr');
+    if (ivrView && !ivrView.classList.contains('hidden')) {
+        return (document.getElementById('ivr-approver') || {}).value || '';
+    }
+    const proxyView = document.getElementById('view-proxy');
+    if (proxyView && !proxyView.classList.contains('hidden')) {
+        return (document.getElementById('proxy-approver') || {}).value || '';
+    }
     const cyberView = document.getElementById('view-cyber');
     if (cyberView && !cyberView.classList.contains('hidden')) {
         return (document.getElementById('cyber-approver') || {}).value || '';
@@ -3379,3 +3387,69 @@ async function loadInfrastructureAuditLog() {
         container.innerHTML = `<div class="audit-empty">Failed to load audit log: ${err.message}</div>`;
     }
 }
+
+/* ── TIER 4 IVR / Proxy controllers ───────────────────────────── */
+const tier4CrewState = {};
+function renderTier4Agents(k){const s=tier4CrewState[k],el=document.getElementById(`${k}-agent-list`);if(!s?.config)return;el.innerHTML=s.config.agents.map((a,i)=>`<div class="pa-agent ${s.active===a.id?'active':''}" style="border-color:${a.color}30"><div class="pa-row"><div class="pa-icon" style="background:${a.color}15">${a.icon}</div><span class="pa-role">${a.role}</span><span class="pa-status">${s.done.has(a.id)?'✓':s.active===a.id?'Running':''}</span></div><div class="pa-desc">${a.description}</div><div class="pa-fw" style="color:${a.color}">${a.framework}</div></div>${i<s.config.agents.length-1?'<div class="pa-arrow">▼</div>':''}`).join('')}
+function renderTier4Selectors(k){const c=tier4CrewState[k].config;document.getElementById(`${k}-scenario`).innerHTML=c.scenarios.map(x=>`<option>${x}</option>`).join('');const spec=k==='ivr'?[['hardware',c.hardware_kits],['reach',c.reach_models]]:[['provider',c.providers],['pooltype',c.pool_types]];spec.forEach(([n,v])=>document.getElementById(`${k}-${n}`).innerHTML=v.map(x=>`<option value="${x.id}">${x.label}</option>`).join(''))}
+function renderTier4Backend(k){const c=document.getElementById(`${k}-backend`),bs=(tier4CrewState[k].config.config||{}).backends||[];c.innerHTML='<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills"><span class="backend-pill">Demo mode</span>'+bs.filter(x=>x.status==='ready').map(x=>`<button class="fw-pill" onclick="selectedBackend='${x.id}';renderTier4Backend('${k}')">${x.id}</button>`).join('')+'</div></div>'}
+function tier4CharCount(k){const t=document.getElementById(`${k}-objective`);document.getElementById(`${k}-char-count`).textContent=`${t.value.length}/2000 · Ctrl+Enter to run`}
+function tier4Button(k){const s=tier4CrewState[k],t=document.getElementById(`${k}-objective`),run=document.getElementById(`${k}-btn-run`),busy=s.state==='running';run.disabled=!t.value.trim()||busy||s.state==='done';run.classList.toggle('hidden',busy||s.state==='done');document.getElementById(`${k}-btn-stop`).classList.toggle('hidden',!busy);document.getElementById(`${k}-btn-reset`).classList.toggle('hidden',!(s.state==='done'||s.state==='error'));t.disabled=busy}
+function tier4Objective(k,x){document.getElementById(`${k}-objective`).value=x;tier4CharCount(k);tier4Button(k)}
+async function tier4AuditStats(k){try{const x=await API.getComplianceAudit(sessionId);document.getElementById(`${k}-audit-stats`).textContent=`${x.stats?.total_events||0} events logged · ${x.stats?.flagged_events||0} flagged`}catch(e){}}
+const IVR_EXAMPLES=['Model an IVR fraud-detection tabletop for an authorized regulator lab','Study DTMF timing anomalies in a simulated awareness IVR','Model feature-phone accessibility signals for blue-team testing'];
+const PROXY_EXAMPLES=['Model proxy-abuse detection for an authorized lab','Study rotation and latency signatures in a simulated pool','Create a bot-traffic detection tabletop with proxy telemetry'];
+async function showIvr(){setView('ivr');await tier4Setup('ivr',API.getIvrConfig,IVR_EXAMPLES)()} async function showProxy(){setView('proxy');await tier4Setup('proxy',API.getProxyConfig,PROXY_EXAMPLES)()}
+async function setupIvrView(){return tier4Setup('ivr',API.getIvrConfig,IVR_EXAMPLES)()} async function setupProxyView(){return tier4Setup('proxy',API.getProxyConfig,PROXY_EXAMPLES)()}
+function renderIvrAgents(){renderTier4Agents('ivr')} function renderIvrBackend(){renderTier4Backend('ivr')} function renderIvrSelectors(){renderTier4Selectors('ivr')} function renderIvrExamples(){}
+function updateIvrCharCount(){tier4CharCount('ivr')} function updateIvrButton(){tier4Button('ivr')}
+function setIvrObjective(x){tier4Objective('ivr',x)} function runIvr(){return tier4Run('ivr')} function stopIvr(){return tier4Stop('ivr')} function resetIvr(){return tier4Reset('ivr')} function loadIvrAuditLog(){return tier4AuditLog('ivr')} function refreshIvrAuditStats(){return tier4AuditStats('ivr')}
+function renderProxyAgents(){renderTier4Agents('proxy')} function renderProxyBackend(){renderTier4Backend('proxy')} function renderProxySelectors(){renderTier4Selectors('proxy')} function renderProxyExamples(){}
+function updateProxyCharCount(){tier4CharCount('proxy')} function updateProxyButton(){tier4Button('proxy')}
+function setProxyObjective(x){tier4Objective('proxy',x)} function runProxy(){return tier4Run('proxy')} function stopProxy(){return tier4Stop('proxy')} function resetProxy(){return tier4Reset('proxy')} function loadProxyAuditLog(){return tier4AuditLog('proxy')} function refreshProxyAuditStats(){return tier4AuditStats('proxy')}
+
+/* Shared crew renderer: full-fidelity per-agent cards for IVR and Proxy. */
+function tier4ComplianceBanner(k) {
+    const c=tier4CrewState[k].compliance;
+    if (!c) return '';
+    if (c.blocked) return `<div class="compliance-banner flagged"><strong>⛔ Flagged — access limited.</strong> ${escapeHtml(c.message||'')}<div class="cb-audit">Audit ID: ${c.audit_id||''}</div></div>`;
+    if (c.flagged) return `<div class="compliance-banner flagged"><strong>⚠ Flagged for review.</strong> ${escapeHtml((c.reasons||[]).join('; '))}<div class="cb-audit">Audit ID: ${c.audit_id||''}</div></div>`;
+    return `<div class="compliance-banner ok"><strong>✓ Cleared &amp; logged.</strong> Recorded for legal review — audit ID ${c.audit_id||''}.</div>`;
+}
+function renderTier4Output(k,errorMsg='') {
+    const s=tier4CrewState[k], area=document.getElementById(`${k}-output-area`), crew=s.config?.agents||[];
+    if (!s.turns.length && !errorMsg && !s.compliance) {
+        area.innerHTML=`<div class="empty-state"><div class="empty-icon">${k==='ivr'?'🍓':'🐳'}</div><h3>Ready to model ${k==='ivr'?'IVR':'proxy rotation'}</h3><p>Simulation-only detection research. No real ${k==='ivr'?'calls, DTMF, robocalls, or OTP handling':'proxy provisioning, cloud deployment, scraping, or ban-evasion'} occurs. Activity is compliance-screened and audit-logged.</p><div class="agent-dots">${crew.map(a=>`<span class="dot"><span class="dot-circle" style="background:${a.color}"></span> ${a.role}</span>`).join('')}</div></div>`;
+        return;
+    }
+    let html=tier4ComplianceBanner(k)+(errorMsg?`<div class="error-banner">${escapeHtml(errorMsg)}</div>`:'')+`<div class="output-log" id="${k}-output-log">`;
+    for(const turn of s.turns){
+        const cursor=!turn.done?`<span class="am-cursor" style="background:${turn.color}"></span>`:'';
+        html+=`<div class="agent-message" id="${k}-msg-${turn.agentId}"><div class="am-header"><div class="am-icon" style="background:${turn.color}15;border:1px solid ${turn.color}30">${turn.icon}</div><span class="am-role" style="color:${turn.color}">${turn.role}</span>${!turn.done?'<span class="spinner" style="width:10px;height:10px"></span>':''}${turn.done?`<button class="am-copy" onclick="copy${k==='ivr'?'Ivr':'Proxy'}Content('${turn.agentId}')">📋</button>`:''}</div>${renderToolActivity(turn.toolActivity||[])}<div class="am-content" id="${k}-content-${turn.agentId}" style="background:${turn.color}06;border-color:${turn.color}18">${escapeHtml(turn.content)}${cursor}</div></div>`;
+    }
+    if(s.state==='done') html+='<div class="pipeline-complete">Plan complete</div>';
+    area.innerHTML=html+'</div>'; tier4Scroll(k);
+}
+function tier4Scroll(k){const log=document.getElementById(`${k}-output-log`);if(log)log.scrollTop=log.scrollHeight}
+function tier4Copy(k,id){const t=tier4CrewState[k].turns.find(x=>x.agentId===id);if(t)navigator.clipboard.writeText(t.content)}
+function copyIvrContent(id){tier4Copy('ivr',id)} function copyProxyContent(id){tier4Copy('proxy',id)}
+function tier4PendingActivity(k,e){const s=tier4CrewState[k],worker=e.worker||e.agent;if(!worker)return;(s.pending[worker] ||= []).push(e);const t=s.turns.find(x=>x.agentId===worker);if(t){t.toolActivity.push(e);delete s.pending[worker]}}
+function tier4Handle(k,e){
+    const s=tier4CrewState[k];
+    if(e.type==='pipeline_start')s.runId=e.run_id;
+    else if(e.type==='compliance'){s.compliance=e;renderTier4Output(k)}
+    else if(e.type==='compliance_block'){s.compliance={...s.compliance,...e,blocked:true};s.state='error';renderTier4Output(k)}
+    else if(['tool_call','tool_result','self_heal'].includes(e.type))tier4PendingActivity(k,e);
+    else if(e.type==='agent_start'){const a=s.config.agents.find(x=>x.id===e.agent);const t={agentId:e.agent,role:e.role,framework:e.framework,color:e.color,icon:e.icon,description:e.description,content:'',done:false,toolActivity:s.pending[e.agent]||[]};delete s.pending[e.agent];s.turns.push(t);s.active=e.agent;renderTier4Agents(k);renderTier4Output(k)}
+    else if(e.type==='token'){const t=s.turns.find(x=>x.agentId===e.agent);if(t){t.content+=e.content;const el=document.getElementById(`${k}-content-${e.agent}`);if(el)el.innerHTML=escapeHtml(t.content)+`<span class="am-cursor" style="background:${t.color}"></span>`;tier4Scroll(k)}}
+    else if(e.type==='agent_done'){const t=s.turns.find(x=>x.agentId===e.agent);if(t)t.done=true;s.done.add(e.agent);s.active=null;renderTier4Agents(k);renderTier4Output(k)}
+    else if(e.type==='done'){if(!e.blocked)s.state='done';renderTier4Output(k)}
+    else if(e.type==='error'){s.state='error';renderTier4Output(k,e.message||'Pipeline error')}
+    else if(e.type==='cancelled'){s.state='idle';renderTier4Output(k,'Run cancelled')}
+}
+function tier4RunFull(k){const s=tier4CrewState[k],get=id=>document.getElementById(id),objective=get(`${k}-objective`).value.trim();if(!objective||s.state==='running')return;s.state='running';s.turns=[];s.pending={};s.compliance=null;s.done=new Set();s.active=null;s.runId=null;s.abort=new AbortController();renderTier4Output(k);tier4Button(k);const o={objective,scenario:get(`${k}-scenario`).value,authorized:get(`${k}-authorized`).checked,approver:get(`${k}-approver`).value,authorizationRef:get(`${k}-auth-ref`).value,sessionId,backend:selectedBackend};if(k==='ivr'){o.hardwareKit=get('ivr-hardware').value;o.reachModel=get('ivr-reach').value}else{o.provider=get('proxy-provider').value;o.poolType=get('proxy-pooltype').value}const request=k==='ivr'?API.runIvrPlan(o,s.abort.signal):API.runProxyPlan(o,s.abort.signal);request.then(async reader=>{const d=new TextDecoder();let b='';while(true){const {value,done}=await reader.read();if(done)break;b+=d.decode(value,{stream:true});const chunks=b.split('\n\n');b=chunks.pop();for(const chunk of chunks){const line=chunk.split('\n').find(x=>x.startsWith('data: '));if(line){try{tier4Handle(k,JSON.parse(line.slice(6)))}catch(e){}}}}if(s.state==='running')s.state='done';tier4Button(k);renderTier4Output(k);tier4AuditStats(k)}).catch(err=>{if(err.name==='AbortError')s.state='idle';else{s.state='error';renderTier4Output(k,err.message)}tier4Button(k)})}
+function tier4StopFull(k){const s=tier4CrewState[k];if(s.abort&&typeof s.abort.abort==='function')s.abort.abort();if(s.runId)API.cancelPipeline(s.runId);s.state='idle';tier4Button(k)}
+function tier4ResetFull(k){const s=tier4CrewState[k];s.state='idle';s.turns=[];s.pending={};s.compliance=null;s.done=new Set();s.active=null;const t=document.getElementById(`${k}-objective`);if(t)t.value='';const a=document.getElementById(`${k}-output-area`);if(a)a.innerHTML='';tier4CharCount(k);tier4Button(k);renderTier4Agents(k)}
+function tier4AuditLogFull(k){API.getComplianceAudit(sessionId).then(data=>{const c=document.getElementById(`${k}-audit-log`),events=data.events||[];c.innerHTML=events.length?events.map(e=>{const when=new Date(e.created_at*1000).toLocaleTimeString(),cls=e.sensitivity==='red'||e.verdict==='pre_cleared_legal_proxy'?'sensitive':e.verdict==='flagged'?'flagged':'ok',reasons=e.reasons?.length?` — ${escapeHtml(e.reasons.join('; '))}`:'',approver=e.approver?` [approver: ${escapeHtml(e.approver)}]`:'';return `<div class="audit-row ${cls}"><span class="audit-when">${when}</span><span class="audit-action">${escapeHtml(e.action)}</span><span class="audit-verdict">${e.verdict}${approver}${reasons}</span></div>`}).join(''):'<div class="audit-empty">No recorded activity yet.</div>'}).catch(e=>{document.getElementById(`${k}-audit-log`).textContent=e.message})}
+tier4Setup=function(kind,loader,examples){return async function(){const s=tier4CrewState[kind] ||= {config:null,state:'idle',active:null,done:new Set(),turns:[],pending:{},compliance:null,abort:null,runId:null};if(!s.config)s.config=await loader();renderTier4Agents(kind);renderTier4Selectors(kind);renderTier4Backend(kind);document.getElementById(`${kind}-session-display`).textContent=sessionId.slice(0,16)+'…';document.getElementById(`${kind}-example-chips`).innerHTML=examples.map((x,i)=>`<button class="example-chip" onclick="set${kind==='ivr'?'Ivr':'Proxy'}Objective('${x.replace(/'/g,"\\'")}')">${escapeHtml(x)}</button>`).join('');const ta=document.getElementById(`${kind}-objective`);if(!ta.dataset.bound){ta.dataset.bound='1';ta.oninput=()=>{tier4CharCount(kind);tier4Button(kind)};ta.onkeydown=e=>{if(e.key==='Enter'&&(e.ctrlKey||e.metaKey))tier4RunFull(kind)}}tier4CharCount(kind);tier4Button(kind);tier4AuditStats(kind);document.getElementById(`${kind}-legal-proxy`).classList.toggle('hidden',!s.config.legal_proxy_enabled);if(s.config.legal_proxy_enabled)refreshLedgerStatus();renderTier4Output(kind)}};
+tier4Run=tier4RunFull;tier4Stop=tier4StopFull;tier4Reset=tier4ResetFull;tier4AuditLog=tier4AuditLogFull;
