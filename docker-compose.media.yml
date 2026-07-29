@@ -1,0 +1,63 @@
+# Optional media-stack extension for simfarm-lab.
+#
+# Duix-Avatar, like Coqui and Wan2.1, has heavy or conflicting Python dependencies,
+# so it runs as separate GPU containers orchestrated alongside the main app.
+#
+# Start everything in one command:
+#   docker compose -f docker-compose.yml -f docker-compose.media.yml up -d
+#
+# The Duix video-generation service requires an NVIDIA GPU and the NVIDIA
+# Container Toolkit. Images are large (~70 GB total download). Provide a
+# reference video in the shared brain-data volume and call render_avatar with
+# tool="duix", photo="<relative path under DUIX_DATA_DIR>", and script="text".
+
+services:
+  duix-avatar-tts:
+    image: guiji2025/fish-speech-ziming
+    container_name: duix-avatar-tts
+    restart: unless-stopped
+    ports:
+      - "18180:8080"
+    volumes:
+      - brain-data:/code/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: /bin/bash -c "/opt/conda/envs/python310/bin/python3 tools/api_server.py --listen 0.0.0.0:8080"
+
+  duix-avatar-gen-video:
+    image: guiji2025/duix.avatar
+    container_name: duix-avatar-gen-video
+    restart: unless-stopped
+    privileged: true
+    ports:
+      - "8383:8383"
+    volumes:
+      - brain-data:/code/data
+    environment:
+      - PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: python /code/app_local.py
+
+  strategic-brain:
+    environment:
+      - DUIX_VIDEO_HOST=http://duix-avatar-gen-video:8383
+      - DUIX_DATA_DIR=/code/data
+    volumes:
+      - brain-data:/code/data
