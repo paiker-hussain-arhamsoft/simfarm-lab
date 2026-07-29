@@ -723,6 +723,11 @@ if os.path.isdir(FRONTEND_DIR):
         if os.path.isdir(sub_path):
             app.mount(f"/{subdir}", StaticFiles(directory=sub_path), name=subdir)
 
+    # Serve generated artifacts (e.g. Chatterbox WAV files) from the data volume
+    ARTIFACTS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "artifacts")
+    os.makedirs(ARTIFACTS_DIR, exist_ok=True)
+    app.mount("/artifacts", StaticFiles(directory=ARTIFACTS_DIR), name="artifacts")
+
     @app.get("/")
     def serve_index():
         return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))

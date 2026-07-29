@@ -1,0 +1,8 @@
+# Optional heavy voice/TTS stack.
+# Installed separately in Docker because it pulls torch, torchaudio, transformers, etc.
+chatterbox-tts==0.1.7
+setuptools<70
+# Keep the base ASGI stack pinned so gradio/chatterbox do not override it
+fastapi==0.115.6
+pydantic>=2.10.4,<3.0.0
+uvicorn[standard]==0.34.0
