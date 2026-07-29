@@ -15,10 +15,13 @@
 #   also large.
 # - InsightFace is pip-installable and runs in the strategic-brain container
 #   (build with --build-arg FACE_STACK=insightface or set FACE_STACK=insightface).
-# - DeepFaceLab, FaceSwap, and Deep-Live-Cam are multi-step or GUI tools. This
-#   compose file starts their containers with workspaces on the shared brain-data
-#   volume; the operator runs training/setup inside the container and then wires a
-#   non-interactive command into `face_swap` via the relevant *_COMMAND env var.
+# - DeepFaceLab and FaceSwap need a trained workspace before they can one-shot
+#   swap; the operator prepares the workspace inside the container and sets the
+#   matching *_COMMAND env var.
+# - Deep-Live-Cam is one-shot: its container is prebuilt with the required
+#   models and the main app execs it through DEEP_LIVE_CAM_COMMAND by default.
+# - Wav2Lip is one-shot: its container is prebuilt with the required models
+#   and the main app execs it through WAV2LIP_COMMAND by default.
 
 services:
   duix-avatar-tts:
@@ -72,6 +75,7 @@ services:
     privileged: true
     volumes:
       - brain-data:/data
+      - brain-data:/app/data
     environment:
       - DEEPFACELAB_PATH=/usr/local/deepfacelab
       - DEEPFACELAB_WORKSPACE=/data/deepfacelab_workspace
@@ -88,57 +92,68 @@ services:
     command: /bin/bash -c "mkdir -p /data/deepfacelab_workspace && echo 'DeepFaceLab workspace ready at /data/deepfacelab_workspace' && tail -f /dev/null"
 
   faceswap:
-    image: faceswap/faceswap:latest
+    build:
+      context: ./services/faceswap
+    image: simfarm-lab/faceswap-cpu:latest
     container_name: faceswap
     restart: unless-stopped
-    runtime: nvidia
     privileged: true
     volumes:
       - brain-data:/data
+      - brain-data:/app/data
     environment:
+      - FACESWAP_WORKSPACE=/data/faceswap_workspace
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
     shm_size: 8g
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    entrypoint: ["/bin/bash", "-c"]
-    command: "mkdir -p /data/faceswap_workspace && echo 'FaceSwap workspace ready at /data/faceswap_workspace' && tail -f /dev/null"
+    command: /bin/bash -c "mkdir -p /data/faceswap_workspace && echo 'FaceSwap workspace ready at /data/faceswap_workspace' && tail -f /dev/null"
 
   deep-live-cam:
-    image: madkne/deep-live-cam:latest
+    build:
+      context: ./services/deep-live-cam
+    image: simfarm-lab/deep-live-cam:latest
     container_name: deep-live-cam
     restart: unless-stopped
-    runtime: nvidia
     privileged: true
     volumes:
       - brain-data:/data
+      - brain-data:/app/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+      - INSIGHTFACE_HOME=/data/.insightface
+    shm_size: 8g
+    command: tail -f /dev/null
+
+  wav2lip:
+    image: jwduck/wav2lip:latest
+    container_name: wav2lip
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - brain-data:/data
+      - brain-data:/app/data
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
     shm_size: 8g
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
-    entrypoint: ["/bin/bash", "-c"]
-    command: "echo 'Deep-Live-Cam ready. exec into the container and run python run.py -s <source> -t <target> -o <output> --execution-provider cuda' && tail -f /dev/null"
+    command: tail -f /dev/null
 
   strategic-brain:
     build:
+      context: .
       args:
         FACE_STACK: ${FACE_STACK:-}
     environment:
       - DUIX_VIDEO_HOST=http://duix-avatar-gen-video:8383
       - DUIX_DATA_DIR=/code/data
       - INSIGHTFACE_HOME=${INSIGHTFACE_HOME:-/opt/insightface}
+      # Default one-shot Deep-Live-Cam command. The strategic-brain container
+      # mounts the host Docker socket so it can exec sibling media containers.
+      - DEEP_LIVE_CAM_COMMAND=docker exec deep-live-cam python3 /app/run.py -s {source} -t {target} -o {output} --execution-provider cpu --frame-processor face_swapper
+      # Default one-shot Wav2Lip command. The container is prebuilt with models.
+      - WAV2LIP_COMMAND=docker exec wav2lip python /workspace/wav2lip/inference.py --checkpoint_path /workspace/wav2lip/checkpoints/wav2lip_gan.pth --face {video} --audio {audio} --outfile {output}
     volumes:
       - brain-data:/code/data
       - brain-data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
