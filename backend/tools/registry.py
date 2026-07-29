@@ -184,6 +184,9 @@ async def _proxy_deployment_synth(provider="", scenario="", **_):
 
 _STEALTH_NOTE = "Simulated only; real browser/WAF execution requires authorization and is not performed."
 _CONTENT_NOTE = "Simulated only; real email, CMS, social, or content execution requires authorization and is not performed."
+_MEMORY_NOTE = ("Simulated only; synthetic fixtures are used and no real PII or voter "
+                "records are stored. Real memory/data-lake execution requires authorization "
+                "and is not performed.")
 async def _stealth_stub(provider, payload, **_):
     return {"simulated": True, "requires_internet": False, "provider": provider, "modeled": payload, "note": _STEALTH_NOTE}
 async def _content_stub(provider, payload, **_):
@@ -208,6 +211,26 @@ async def _postiz_scheduler_model(**kw): return await _content_stub("Postiz", {"
 async def _cross_platform_model(**kw): return await _content_stub("cross-platform (modeled)", {"repurposing":["long→short","blog→social","video→carousel"]}, **kw)
 async def _content_calendar_model(**kw): return await _content_stub("calendar (modeled)", {"weeks":4,"channels":["email","social","blog","webhook"]}, **kw)
 async def _content_cost_model(**kw): return await _content_stub("cost-model (modeled)", {"monthly":{"hosting":"modeled","email":"modeled","social":"modeled","cdn":"modeled"}}, **kw)
+async def _memory_stub(provider, payload, **_):
+    return {"simulated": True, "requires_internet": False, "provider": provider,
+            "modeled": payload, "note": _MEMORY_NOTE}
+async def _mem0_fact_extraction_model(**kw): return await _memory_stub("Mem0", {"stages":["synthetic input","fact extraction","deduplication","confidence review"],"real_records":False}, **kw)
+async def _persona_memory_isolation_model(**kw): return await _memory_stub("persona-isolation (modeled)", {"boundaries":["tenant","persona","session"],"cross_persona_access":False}, **kw)
+async def _async_write_pipeline_model(**kw): return await _memory_stub("async-write (modeled)", {"queue":"synthetic event buffer","retries":3,"durability":"modeled"}, **kw)
+async def _vector_graph_store_model(**kw): return await _memory_stub("Qdrant · Neo4j · Redis", {"stores":["vector fixture index","graph fixture relations","hot cache"],"live_connections":False}, **kw)
+async def _pgvector_schema_model(**kw): return await _memory_stub("PostgreSQL · pgvector", {"tables":["synthetic_memories","synthetic_embeddings"],"indexes":["hnsw (modeled)"],"real_records":False}, **kw)
+async def _memory_tiering_model(**kw): return await _memory_stub("memory-tiering (modeled)", {"tiers":["hot","warm","cold"],"promotion":"synthetic access score","retention":"modeled"}, **kw)
+async def _event_sourcing_model(**kw): return await _memory_stub("event-sourcing (modeled)", {"events":["memory.created","memory.updated","memory.archived"],"replayable":True}, **kw)
+async def _conflict_resolution_model(**kw): return await _memory_stub("conflict-resolution (modeled)", {"strategy":"version + confidence review","human_review_fixture":True}, **kw)
+async def _kafka_topic_model(**kw): return await _memory_stub("Kafka (modeled)", {"topics":["synthetic.memory.events","synthetic.audit.events"],"partitions":3,"live_broker":False}, **kw)
+async def _cassandra_schema_model(**kw): return await _memory_stub("Cassandra (synthetic)", {"keyspace":"synthetic_memory","tables":["memory_by_persona","events_by_day"],"synthetic_record_count":100000,"real_voter_or_pii_data":False,"capacity_estimate_only":True}, **kw)
+async def _pyspark_bulk_load_model(**kw): return await _memory_stub("PySpark (modeled)", {"input":"synthetic fixtures only","records_loaded":50000,"real_data":False,"job_executed":False}, **kw)
+async def _trino_analytics_model(**kw): return await _memory_stub("Trino (modeled)", {"catalog":"synthetic_lake","queries":["retention","lineage","access anomalies"],"results":"fixtures"}, **kw)
+async def _pii_encryption_model(**kw): return await _memory_stub("envelope-encryption (modeled)", {"fields":["key_id","algorithm","wrapped_data_key","ciphertext"],"verified":False,"real_pii":False}, **kw)
+async def _memory_routing_model(**kw): return await _memory_stub("memory-routing (modeled)", {"routes":{"hot":"Redis","warm":"pgvector","cold":"Cassandra/Trino"},"routing_executed":False}, **kw)
+async def _memory_compose_model(**kw): return await _memory_stub("Docker Compose (modeled)", {"services":["memory-api","redis-fixture","pgvector-fixture","cassandra-fixture"],"started":False}, **kw)
+async def _storage_estimate_model(**kw): return await _memory_stub("storage-estimate (modeled)", {"tiers":{"hot":"modeled GB","warm":"modeled GB","cold":"modeled TB"},"synthetic_capacity_only":True}, **kw)
+async def _oeads_integration_model(**kw): return await _memory_stub("OEADS integration (modeled)", {"interfaces":["audit events","routing decisions","retention policy"],"live_integration":False}, **kw)
 
 
 async def _adjust_load_balancer(strategy: str = "round_robin", **_: Any) -> dict:
@@ -834,9 +857,30 @@ def _register_defaults() -> None:
         ("content_calendar_model","Content Calendar Model","calendar (modeled)",_content_calendar_model),
         ("content_cost_model","Content Cost Model","cost-model (modeled)",_content_cost_model),
     ]
-    for ident,name,provider,fn in stealth_local+content_local:
+    memory_local = [
+        ("mem0_fact_extraction_model","Mem0 Fact Extraction Model","Mem0",_mem0_fact_extraction_model),
+        ("persona_memory_isolation_model","Persona Memory Isolation Model","persona-isolation (modeled)",_persona_memory_isolation_model),
+        ("async_write_pipeline_model","Async Write Pipeline Model","async-write (modeled)",_async_write_pipeline_model),
+        ("vector_graph_store_model","Vector Graph Store Model","Qdrant · Neo4j · Redis",_vector_graph_store_model),
+        ("pgvector_schema_model","pgvector Schema Model","PostgreSQL · pgvector",_pgvector_schema_model),
+        ("memory_tiering_model","Memory Tiering Model","memory-tiering (modeled)",_memory_tiering_model),
+        ("event_sourcing_model","Event Sourcing Model","event-sourcing (modeled)",_event_sourcing_model),
+        ("conflict_resolution_model","Conflict Resolution Model","conflict-resolution (modeled)",_conflict_resolution_model),
+        ("kafka_topic_model","Kafka Topic Model","Kafka (modeled)",_kafka_topic_model),
+        ("cassandra_schema_model","Cassandra Schema Model","Cassandra (synthetic)",_cassandra_schema_model),
+        ("pyspark_bulk_load_model","PySpark Bulk Load Model","PySpark (modeled)",_pyspark_bulk_load_model),
+        ("trino_analytics_model","Trino Analytics Model","Trino (modeled)",_trino_analytics_model),
+        ("pii_encryption_model","PII Encryption Model","envelope-encryption (modeled)",_pii_encryption_model),
+        ("memory_routing_model","Memory Routing Model","memory-routing (modeled)",_memory_routing_model),
+        ("memory_compose_model","Memory Compose Model","Docker Compose (modeled)",_memory_compose_model),
+        ("storage_estimate_model","Storage Estimate Model","storage-estimate (modeled)",_storage_estimate_model),
+        ("oeads_integration_model","OEADS Integration Model","OEADS integration (modeled)",_oeads_integration_model),
+    ]
+    memory_ids = {x[0] for x in memory_local}
+    stealth_ids = {x[0] for x in stealth_local}
+    for ident,name,provider,fn in stealth_local+content_local+memory_local:
         register(ToolSpec(id=ident,name=name,description="Simulated only; real execution requires authorization and is not performed.",
-                          category="stealth" if ident in {x[0] for x in stealth_local} else "content",
+                          category="stealth" if ident in stealth_ids else "memory" if ident in memory_ids else "content",
                           provider=provider,run=fn))
 
 

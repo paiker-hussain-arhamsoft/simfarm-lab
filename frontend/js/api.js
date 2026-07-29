@@ -281,6 +281,11 @@ const API = {
         const res=await fetch('/api/content/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,cms_platform:opts.cmsPlatform,distribution_channel:opts.distributionChannel,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
         if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
     },
+    async getMemoryConfig() { const res=await fetch('/api/memory/config'); return res.json(); },
+    async runMemoryPlan(opts, signal) {
+        const res=await fetch('/api/memory/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,memory_backend:opts.memoryBackend,storage_tier:opts.storageTier,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
+        if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
+    },
 
     async getComplianceAudit(sessionId) {
         const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';

@@ -49,6 +49,9 @@ from backend.agents.ivr_crew import IVR_CREW, SCENARIOS as IVR_SCENARIOS, HARDWA
 from backend.agents.proxy_crew import PROXY_CREW, SCENARIOS as PROXY_SCENARIOS, PROVIDERS, POOL_TYPES
 from backend.agents.stealth_crew import STEALTH_CREW, SCENARIOS as STEALTH_SCENARIOS, EVASION_TARGETS, BROWSER_ENGINES
 from backend.agents.content_crew import CONTENT_CREW, SCENARIOS as CONTENT_SCENARIOS, CMS_PLATFORMS, DISTRIBUTION_CHANNELS
+from backend.agents.memory_crew import (
+    MEMORY_CREW, SCENARIOS as MEMORY_SCENARIOS, MEMORY_BACKENDS, STORAGE_TIERS,
+)
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import (
@@ -63,6 +66,7 @@ from backend.pipeline import (
     proxy_crew,
     stealth_crew,
     content_crew,
+    memory_crew,
     video_stack,
 )
 from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
@@ -564,6 +568,24 @@ class ContentRequest(BaseModel):
 @app.post("/api/content/plan")
 async def content_plan(req: ContentRequest):
     return StreamingResponse(content_crew.route(req.model_dump(),req.session_id,backend=req.backend),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/memory/config")
+def memory_config():
+    return {"agents": [a.to_meta() for a in MEMORY_CREW], "scenarios": MEMORY_SCENARIOS,
+            "memory_backends": MEMORY_BACKENDS, "storage_tiers": STORAGE_TIERS,
+            "legal_proxy_enabled": legal_proxy_enabled(), "config": get_config()}
+
+class MemoryRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; memory_backend: str = ""; storage_tier: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/memory/plan")
+async def memory_plan(req: MemoryRequest):
+    return StreamingResponse(memory_crew.route(req.model_dump(), req.session_id, backend=req.backend),
                              media_type="text/event-stream",
                              headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
 
