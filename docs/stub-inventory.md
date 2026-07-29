@@ -4,11 +4,42 @@ This document lists every simulated tool currently implemented in the platform, 
 
 ## How to read the flags
 
-- **Offline-only** — the tool returns a simulated result and can function with no internet.
-- **Offline-primary / online-optional** — the tool prefers an offline implementation, but the prompt/agent description acknowledges an optional online provider that would only work with an explicit API key (e.g. ElevenLabs, HeyGen).
+"Offline" means the tool **has an offline-capable design** and does not require internet by default. The actual engine may still be a stub — see the **Actually installed vs. stub-only** table for what is really present in the image.
+
+- **Offline-only** — the tool's modeled implementation would run without internet.
+- **Offline-primary / online-optional** — the tool is described as preferring an offline implementation, with an optional online provider (e.g. ElevenLabs, HeyGen) that would need an API key.
 - **Online-optional** — the tool is described against an online-capable provider (e.g. Browserbase) but the stub still returns `simulated: true` and never calls out.
 
 All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_result`), which rejects any result where `simulated != true` or any real-activity flag (e.g. `real_pii`, `job_executed`) is set to `True`. Therefore every tool below is simulation-only at runtime.
+
+## Actually installed vs. stub-only
+
+"Offline" below means the tool **could run offline if its real engine were installed** (no internet required), not that the engine is currently installed. Right now only the multi-agent/orchestration runtime and Ollama client are actually bundled; everything else is a simulation stub.
+
+| Technology | Installed in the Docker image? | Offline-capable if installed? | Notes |
+|---|---|---|---|
+| Microsoft AutoGen (`autogen-agentchat` 0.7.4) | **Yes** | Yes | Runs the Tier 1/2/3/4 pipelines offline against Ollama. |
+| LangGraph (`langgraph` 1.2.6) | **Yes** | Yes | Dispatchable orchestration framework; currently used for some crews. |
+| Ollama (client + server binary) | **Yes** (binary copied from official image) | Yes | Default LLM backend; model is downloaded into a volume on first run. |
+| OpenAI SDK / API | **Yes** (`openai` + `langchain-openai`) | No | Used only when `OPENAI_API_KEY` is supplied (online). |
+| FastAPI / Uvicorn | **Yes** | Yes | Web backend. |
+| LlamaIndex | **No** | Yes | `index_dataset` is a stub; no `llama-index` package installed. |
+| Chatterbox / Coqui / Bark | **No** | Yes | `clone_voice` / `voice_dialect_map` are stubs; no TTS packages installed. |
+| ElevenLabs SDK | **No** | No | Mentioned only as an optional online provider; no package installed. |
+| HeyGen API | **No** | No | Optional online provider only. |
+| Wan2.1 / CogVideoX / Open-Sora | **No** | Yes (with GPU) | `generate_video` is a stub; no video-generation packages installed. |
+| Duix-Avatar / Wav2Lip / Roop / GFPGAN / DeepFaceLab / FaceSwap / Deep-Live-Cam / VideoRetalking | **No** | Yes (with GPU) | Media avatar/face/lip-sync tools are all simulated stubs. |
+| FFmpeg binary | **No** | Yes | `ffmpeg_pipeline` returns a fake artifact; FFmpeg is not installed in the image. |
+| Playwright / Puppeteer / Selenium | **No** | Yes | Browser automation tools are stubs; no browser driver installed. |
+| Scrapoxy / Browserbase | **No** | Online proxy/cloud | `rotate_proxy`, `fingerprint_pool_model`, `scrapoxy_deploy` are stubs; no proxy service installed. |
+| FlareSolverr | **No** | Online (challenge solver) | `flaresolverr_model` is a stub; no FlareSolverr container installed. |
+| Nmap / OpenVAS / OWASP ZAP / Burp Suite / Metasploit / CAI (Alias Robotics) | **No** | Mixed | Cyber crew tools are simulated; no security scanners installed. |
+| ElizaOS / Botpress / LangGraph (framework only) / Socioboard | **No** | Yes (self-hosted) | Persona tools are stubs; only the LangGraph orchestration library is installed, not ElizaOS/Botpress/Socioboard engines. |
+| SMSgate / Gammu / SIM800/SIM900 / RASP-IVR / Verboice / VBVoice | **No** | Yes (on-prem hardware) | SIM/IVR tools are simulated; no GSM/SIP libraries or hardware drivers installed. |
+| Mautic / Strapi / Postiz | **No** | Yes (self-hosted Docker) | Content-distribution tools are stubs; no CMS/marketing containers installed. |
+| Mem0 / Qdrant / Neo4j / Redis / PostgreSQL+pgvector / Apache Kafka / Cassandra / Trino | **No** | Yes (self-hosted) | Memory/data-lake tools are stubs; no database services installed. |
+| PySpark | **No** | Yes | `pyspark_bulk_load_model` is a stub; no Spark installed. |
+| LightGBM | **No** | Yes | `behavior_forecast` returns synthetic scores; no model is trained. |
 
 ## Implemented simulated tool stubs (87 total)
 
