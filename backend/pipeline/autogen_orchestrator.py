@@ -48,8 +48,10 @@ async def run(task: str, session_id: str, backend: LLMBackend) -> AsyncGenerator
         )
         autogen_agents.append(ag)
 
-    # RoundRobinGroupChat: each agent takes one turn in order
-    termination = MaxMessageTermination(max_messages=len(ALL_AGENTS))
+    # RoundRobinGroupChat: each agent takes one turn in order. The initial
+    # user task counts as a message, so allow one extra so every agent (incl.
+    # the final synthesizer) gets a turn.
+    termination = MaxMessageTermination(max_messages=len(ALL_AGENTS) + 1)
     team = RoundRobinGroupChat(autogen_agents, termination_condition=termination)
 
     yield sse({
