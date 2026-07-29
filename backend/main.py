@@ -47,6 +47,8 @@ from backend.agents.infrastructure_crew import (
 )
 from backend.agents.ivr_crew import IVR_CREW, SCENARIOS as IVR_SCENARIOS, HARDWARE_KITS, REACH_MODELS
 from backend.agents.proxy_crew import PROXY_CREW, SCENARIOS as PROXY_SCENARIOS, PROVIDERS, POOL_TYPES
+from backend.agents.stealth_crew import STEALTH_CREW, SCENARIOS as STEALTH_SCENARIOS, EVASION_TARGETS, BROWSER_ENGINES
+from backend.agents.content_crew import CONTENT_CREW, SCENARIOS as CONTENT_SCENARIOS, CMS_PLATFORMS, DISTRIBUTION_CHANNELS
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import (
@@ -59,6 +61,8 @@ from backend.pipeline import (
     infrastructure_crew,
     ivr_crew,
     proxy_crew,
+    stealth_crew,
+    content_crew,
     video_stack,
 )
 from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
@@ -525,6 +529,42 @@ class ProxyRequest(BaseModel):
 async def proxy_plan(req: ProxyRequest):
     generator=proxy_crew.route(req.model_dump(),req.session_id,backend=req.backend)
     return StreamingResponse(generator,media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/stealth/config")
+def stealth_config():
+    return {"agents":[a.to_meta() for a in STEALTH_CREW],"scenarios":STEALTH_SCENARIOS,
+            "evasion_targets":EVASION_TARGETS,"browser_engines":BROWSER_ENGINES,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class StealthRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; evasion_target: str = ""; browser_engine: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/stealth/plan")
+async def stealth_plan(req: StealthRequest):
+    return StreamingResponse(stealth_crew.route(req.model_dump(),req.session_id,backend=req.backend),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/content/config")
+def content_config():
+    return {"agents":[a.to_meta() for a in CONTENT_CREW],"scenarios":CONTENT_SCENARIOS,
+            "cms_platforms":CMS_PLATFORMS,"distribution_channels":DISTRIBUTION_CHANNELS,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class ContentRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; cms_platform: str = ""; distribution_channel: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/content/plan")
+async def content_plan(req: ContentRequest):
+    return StreamingResponse(content_crew.route(req.model_dump(),req.session_id,backend=req.backend),
+                             media_type="text/event-stream",
                              headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
 
 

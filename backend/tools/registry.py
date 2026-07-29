@@ -182,6 +182,33 @@ async def _proxy_deployment_synth(provider="", scenario="", **_):
     return {"simulated": True, "requires_internet": False, "provider": "deployment (modeled)",
             "deployment_plan": ["validate telemetry", "stage lab fixtures", "review detections"], "executed": False, "provider_model": provider, "note": _PROXY_NOTE}
 
+_STEALTH_NOTE = "Simulated only; real browser/WAF execution requires authorization and is not performed."
+_CONTENT_NOTE = "Simulated only; real email, CMS, social, or content execution requires authorization and is not performed."
+async def _stealth_stub(provider, payload, **_):
+    return {"simulated": True, "requires_internet": False, "provider": provider, "modeled": payload, "note": _STEALTH_NOTE}
+async def _content_stub(provider, payload, **_):
+    return {"simulated": True, "requires_internet": False, "provider": provider, "modeled": payload, "note": _CONTENT_NOTE}
+async def _stealth_patch_model(**kw): return await _stealth_stub("playwright-extra", {"patches":["navigator","WebGL","canvas","audio","WebRTC","timezone","language","plugins","chrome-app","iframe","permissions"],"signals":["automation flags","fingerprint inconsistency"]}, **kw)
+async def _canvas_spoof_model(**kw): return await _stealth_stub("canvas-spoof (modeled)", {"noise":"bounded fixture","consistency_checks":["render hash","font metrics"]}, **kw)
+async def _webrtc_spoof_model(**kw): return await _stealth_stub("WebRTC-spoof (modeled)", {"leak_prevention":"fixture only","signals":["candidate exposure","ASN mismatch"]}, **kw)
+async def _human_behavior_model(**kw): return await _stealth_stub("behavior-sim (modeled)", {"timing":{"typing":"lognormal","scroll":"bursty","mouse":"bounded-jitter"}}, **kw)
+async def _flaresolverr_model(**kw): return await _stealth_stub("FlareSolverr · Docker", {"containers":0,"challenge_telemetry":["JS challenge","managed challenge","session age"]}, **kw)
+async def _challenge_bypass_model(**kw): return await _stealth_stub("challenge-solver (modeled)", {"challenge_signals":["IUAM","managed challenge","DDoS-GUARD"]}, **kw)
+async def _fingerprint_pool_model(**kw): return await _stealth_stub("Browserbase · Scrapoxy", {"pool_size":24,"diversity_metrics":["engine","viewport","locale"]}, **kw)
+async def _session_isolation_model(**kw): return await _stealth_stub("session-isolation (modeled)", {"isolated":["cookie","storage","fingerprint"]}, **kw)
+async def _ip_warmup_model(**kw): return await _stealth_stub("IP-warmup (modeled)", {"schedule":["observe","low-volume","normalization"],"signals":["reputation","ASN churn"]}, **kw)
+async def _evasion_matrix_model(**kw): return await _stealth_stub("evasion-matrix (modeled)", {"signals":["canvas","WebGL","audio","WebRTC","timezone","language","navigator","plugins","TLS/JA3","IP reputation","behavioral timing","cookie/storage"]}, **kw)
+async def _stealth_checklist_model(**kw): return await _stealth_stub("stealth-checklist (modeled)", {"checks":["consistency","challenge telemetry","rate limits","audit evidence"]}, **kw)
+async def _mautic_campaign_model(**kw): return await _content_stub("Mautic · Docker", {"flow":["segment","trigger","message fixture","stop condition"],"deployed":False}, **kw)
+async def _lead_scoring_model(**kw): return await _content_stub("Mautic · lead-scoring", {"weights":{"behavioral":0.6,"demographic":0.4},"live_subscribers":False}, **kw)
+async def _email_auth_model(**kw): return await _content_stub("DKIM/SPF/DMARC (modeled)", {"records":["DKIM","SPF","DMARC"],"verified":False}, **kw)
+async def _strapi_lifecycle_model(**kw): return await _content_stub("Strapi · AI", {"schema":"modeled content type","hooks":["draft","review","publish"],"deployed":False}, **kw)
+async def _webhook_chain_model(**kw): return await _content_stub("webhook (modeled)", {"topology":["source fixture","review queue","satellite fixture"],"live":False}, **kw)
+async def _postiz_scheduler_model(**kw): return await _content_stub("Postiz", {"schedule":"modeled matrix","captions":"fixture stubs","queued":False}, **kw)
+async def _cross_platform_model(**kw): return await _content_stub("cross-platform (modeled)", {"repurposing":["long→short","blog→social","video→carousel"]}, **kw)
+async def _content_calendar_model(**kw): return await _content_stub("calendar (modeled)", {"weeks":4,"channels":["email","social","blog","webhook"]}, **kw)
+async def _content_cost_model(**kw): return await _content_stub("cost-model (modeled)", {"monthly":{"hosting":"modeled","email":"modeled","social":"modeled","cdn":"modeled"}}, **kw)
+
 
 async def _adjust_load_balancer(strategy: str = "round_robin", **_: Any) -> dict:
     return {
@@ -783,6 +810,34 @@ def _register_defaults() -> None:
         register(ToolSpec(id=ident, name=name,
             description="Simulated only; real execution requires communications-secretariat orders and is not performed.",
             category=category, provider=provider, run=fn, parameters=params))
+    stealth_local = [
+        ("stealth_patch_model","Stealth Patch Model","playwright-extra",_stealth_patch_model),
+        ("canvas_spoof_model","Canvas Spoof Model","canvas-spoof (modeled)",_canvas_spoof_model),
+        ("webrtc_spoof_model","WebRTC Spoof Model","WebRTC-spoof (modeled)",_webrtc_spoof_model),
+        ("human_behavior_model","Human Behavior Model","behavior-sim (modeled)",_human_behavior_model),
+        ("flaresolverr_model","FlareSolverr Model","FlareSolverr · Docker",_flaresolverr_model),
+        ("challenge_bypass_model","Challenge Bypass Model","challenge-solver (modeled)",_challenge_bypass_model),
+        ("fingerprint_pool_model","Fingerprint Pool Model","Browserbase · Scrapoxy",_fingerprint_pool_model),
+        ("session_isolation_model","Session Isolation Model","session-isolation (modeled)",_session_isolation_model),
+        ("ip_warmup_model","IP Warmup Model","IP-warmup (modeled)",_ip_warmup_model),
+        ("evasion_matrix_model","Evasion Matrix Model","evasion-matrix (modeled)",_evasion_matrix_model),
+        ("stealth_checklist_model","Stealth Checklist Model","stealth-checklist (modeled)",_stealth_checklist_model),
+    ]
+    content_local = [
+        ("mautic_campaign_model","Mautic Campaign Model","Mautic · Docker",_mautic_campaign_model),
+        ("lead_scoring_model","Lead Scoring Model","Mautic · lead-scoring",_lead_scoring_model),
+        ("email_auth_model","Email Auth Model","DKIM/SPF/DMARC (modeled)",_email_auth_model),
+        ("strapi_lifecycle_model","Strapi Lifecycle Model","Strapi · AI",_strapi_lifecycle_model),
+        ("webhook_chain_model","Webhook Chain Model","webhook (modeled)",_webhook_chain_model),
+        ("postiz_scheduler_model","Postiz Scheduler Model","Postiz",_postiz_scheduler_model),
+        ("cross_platform_model","Cross Platform Model","cross-platform (modeled)",_cross_platform_model),
+        ("content_calendar_model","Content Calendar Model","calendar (modeled)",_content_calendar_model),
+        ("content_cost_model","Content Cost Model","cost-model (modeled)",_content_cost_model),
+    ]
+    for ident,name,provider,fn in stealth_local+content_local:
+        register(ToolSpec(id=ident,name=name,description="Simulated only; real execution requires authorization and is not performed.",
+                          category="stealth" if ident in {x[0] for x in stealth_local} else "content",
+                          provider=provider,run=fn))
 
 
 _register_defaults()

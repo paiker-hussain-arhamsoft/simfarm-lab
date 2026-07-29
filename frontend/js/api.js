@@ -271,6 +271,16 @@ const API = {
         const res=await fetch('/api/proxy/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,provider:opts.provider,pool_type:opts.poolType,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
         if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
     },
+    async getStealthConfig() { const res=await fetch('/api/stealth/config'); return res.json(); },
+    async runStealthPlan(opts, signal) {
+        const res=await fetch('/api/stealth/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,evasion_target:opts.evasionTarget,browser_engine:opts.browserEngine,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
+        if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
+    },
+    async getContentConfig() { const res=await fetch('/api/content/config'); return res.json(); },
+    async runContentPlan(opts, signal) {
+        const res=await fetch('/api/content/plan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({objective:opts.objective,scenario:opts.scenario,cms_platform:opts.cmsPlatform,distribution_channel:opts.distributionChannel,authorized:!!opts.authorized,authorization_ref:opts.authorizationRef||'',approver:opts.approver||'',session_id:opts.sessionId,backend:opts.backend||''}),signal});
+        if(!res.ok||!res.body) throw new Error(`API error: ${res.status}`); return res.body.getReader();
+    },
 
     async getComplianceAudit(sessionId) {
         const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
