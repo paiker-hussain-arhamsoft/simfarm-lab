@@ -12,9 +12,11 @@ FROM ollama/ollama:0.6.7 AS ollama-bin
 
 FROM python:3.11-slim
 
-# Minimal runtime deps + supervisor for multi-process management
+# Runtime deps + audio build deps for Chatterbox TTS + supervisor for multi-process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        curl ca-certificates supervisor && \
+        curl ca-certificates supervisor build-essential git \
+        libsndfile1 libsndfile1-dev ffmpeg \
+        espeak espeak-data && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy Ollama binary and its runtime libraries from the official Ollama image
@@ -24,9 +26,10 @@ ENV LD_LIBRARY_PATH=/usr/lib/ollama
 
 WORKDIR /app
 
-# Install Python dependencies first for layer caching
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies first for layer caching; voice deps are heavy so keep them separate
+COPY requirements.txt requirements-voice.txt ./
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir -r requirements-voice.txt
 
 # Copy the entire application
 COPY . .

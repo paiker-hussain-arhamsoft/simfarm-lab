@@ -15,7 +15,9 @@ the orchestrators.
 
 from __future__ import annotations
 
+import asyncio
 import os
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -409,11 +411,114 @@ _AVATAR_PROVIDERS = {
 }
 
 
+# ── Chatterbox TTS integration (with stub fallback) ─────────────────
+
+_VOICE_ARTIFACT_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "artifacts", "media"
+)
+
+_CHATTERBOX_SUPPORTED_LANGS = {
+    "ar", "da", "de", "el", "en", "es", "fi", "fr", "he", "hi", "it",
+    "ja", "ko", "ms", "nl", "no", "pl", "pt", "ru", "sv", "sw", "tr", "zh",
+}
+
+_CHATTERBOX_MODELS: dict[tuple[Any, str, tuple], Any] = {}
+_CHATTERBOX_LOCK = asyncio.Lock()
+
+
+def _is_chatterbox_available() -> bool:
+    """Return True if the chatterbox-tts package is installed."""
+    import importlib.util
+    return (
+        importlib.util.find_spec("chatterbox") is not None
+        and importlib.util.find_spec("chatterbox.tts") is not None
+        and importlib.util.find_spec("chatterbox.mtl_tts") is not None
+    )
+
+
+def _chatterbox_device() -> str:
+    """Pick the best device Chatterbox can use."""
+    try:
+        import torch
+        return "cuda" if torch.cuda.is_available() else "cpu"
+    except Exception:
+        return "cpu"
+
+
+async def _load_chatterbox_model(model_cls, device: str, **kwargs) -> Any:
+    """Load and cache a Chatterbox model in a worker thread."""
+    key = (model_cls, device, tuple(sorted(kwargs.items())))
+    if key not in _CHATTERBOX_MODELS:
+        _CHATTERBOX_MODELS[key] = await asyncio.to_thread(
+            model_cls.from_pretrained, device=device, **kwargs
+        )
+    return _CHATTERBOX_MODELS[key]
+
+
+async def _generate_chatterbox_voice(script: str, language: str, reference_audio: str = "") -> str:
+    """Generate a WAV with Chatterbox and return the local file path."""
+    device = _chatterbox_device()
+    kwargs = {}
+    if reference_audio:
+        kwargs["audio_prompt_path"] = reference_audio
+
+    if language == "en":
+        from chatterbox.tts import ChatterboxTTS
+        model = await _load_chatterbox_model(ChatterboxTTS, device)
+        wav = await asyncio.to_thread(model.generate, script, **kwargs)
+    else:
+        from chatterbox.mtl_tts import ChatterboxMultilingualTTS
+        model = await _load_chatterbox_model(ChatterboxMultilingualTTS, device, t3_model="v3")
+        wav = await asyncio.to_thread(
+            model.generate, script, language_id=language, **kwargs
+        )
+
+    import torch
+    import torchaudio as ta
+
+    if wav is None:
+        raise ToolError("Chatterbox produced no audio")
+
+    if wav.ndim == 1:
+        wav = wav.unsqueeze(0)
+    elif wav.ndim > 2:
+        wav = wav.squeeze()
+        if wav.ndim == 1:
+            wav = wav.unsqueeze(0)
+
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.wav")
+    ta.save(out_path, wav, model.sr)
+    return out_path
+
+
 async def _clone_voice(tool: str = "chatterbox", language: str = "en",
-                       script: str = "", **_: Any) -> dict:
+                       script: str = "", reference_audio: str = "", **_: Any) -> dict:
     p = _VOICE_PROVIDERS.get(tool, _VOICE_PROVIDERS["chatterbox"])
     if p["online"] and not _online_available():
         raise ToolError(f"{p['provider']} requires internet; fall back to an offline voice tool.")
+
+    chatterbox_error: str | None = None
+    if tool == "chatterbox" and _is_chatterbox_available() and language in _CHATTERBOX_SUPPORTED_LANGS and script:
+        try:
+            artifact_path = await _generate_chatterbox_voice(script, language, reference_audio)
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "language": language,
+                "reference_audio_sec": 5 if reference_audio else 0,
+                "artifact": artifact_path,
+                "note": f"Generated locally with {p['provider']} ({'with reference clip' if reference_audio else 'default voice'}).",
+            }
+        except Exception as exc:
+            chatterbox_error = str(exc)
+
+    note = f"Stub — wire to {p['provider']} for real voice cloning ({'online' if p['online'] else 'offline/local'})."
+    if chatterbox_error:
+        note = f"Chatterbox failed ({chatterbox_error}); {note}"
     return {
         "simulated": True,
         "provider": p["provider"],
@@ -422,7 +527,7 @@ async def _clone_voice(tool: str = "chatterbox", language: str = "en",
         "language": language,
         "reference_audio_sec": 5,
         "artifact": "/artifacts/media/voice_stub.wav",
-        "note": f"Stub — wire to {p['provider']} for real voice cloning ({'online' if p['online'] else 'offline/local'}).",
+        "note": note,
     }
 
 
@@ -768,7 +873,8 @@ def _register_defaults() -> None:
         id="clone_voice", name="Voice Cloner",
         description="Zero-shot voice cloning / TTS (Chatterbox, Coqui, Bark offline; ElevenLabs online).",
         category="media", provider="Chatterbox / Coqui / Bark", run=_clone_voice,
-        parameters={"tool": "chatterbox|coqui|bark|elevenlabs", "language": "lang", "script": "text"},
+        parameters={"tool": "chatterbox|coqui|bark|elevenlabs", "language": "lang", "script": "text", "reference_audio": "optional path to a 5-20s reference WAV"},
+        status="live" if _is_chatterbox_available() else "stub",
     ))
     register(ToolSpec(
         id="generate_video", name="Video Generator",
