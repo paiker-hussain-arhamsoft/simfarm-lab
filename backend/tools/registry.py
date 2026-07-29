@@ -1289,15 +1289,81 @@ async def _lip_sync(tool: str = "wav2lip", video: str = "", audio: str = "",
     }
 
 
+def _external_gfpgan_configured() -> bool:
+    """Return True if a GFPGAN command is configured."""
+    return bool(os.environ.get("GFPGAN_COMMAND", ""))
+
+
+async def _run_external_gfpgan(input_path: str, scale: int, output_path: str) -> str:
+    """Invoke the configured GFPGAN command and return the output path."""
+    cmd_template = os.environ.get("GFPGAN_COMMAND", "")
+    if not cmd_template:
+        raise ToolError("GFPGAN_COMMAND is not configured")
+
+    command = cmd_template.format(
+        input=shlex.quote(input_path),
+        output=shlex.quote(output_path),
+        scale=scale,
+    )
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"GFPGAN command failed: {stderr.decode()[:500]}")
+    if not os.path.exists(output_path):
+        raise ToolError("GFPGAN command did not produce the expected output file")
+    return output_path
+
+
 async def _gfpgan_upscale(input_path: str = "", scale: int = 2, **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "GFPGAN",
-        "requires_internet": False,
-        "scale": scale,
-        "artifact": "/artifacts/video/restored_stub.mp4",
-        "note": "Stub — wire to GFPGAN for face restoration / upscaling (offline/local).",
-    }
+    p = {"provider": "GFPGAN", "license": "open", "online": False}
+
+    if not input_path or not _external_gfpgan_configured():
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "license": p["license"],
+            "requires_internet": p["online"],
+            "scale": scale,
+            "artifact": "/artifacts/video/restored_stub.mp4",
+            "note": f"Stub — wire to {p['provider']} for face restoration / upscaling (offline/local).",
+        }
+
+    try:
+        data_dir = _duix_data_dir()
+        input_path = input_path if os.path.isabs(input_path) else os.path.join(data_dir, input_path)
+        input_path = os.path.normpath(input_path)
+        if not os.path.exists(input_path):
+            raise ToolError(f"Input file not found: {input_path}")
+
+        ext = os.path.splitext(input_path)[1].lower()
+        out_ext = ".mp4" if ext in {".mp4", ".mov", ".avi", ".mkv", ".webm", ".m4v", ".flv"} else (ext or ".png")
+        os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+        out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}{out_ext}")
+
+        artifact = await _run_external_gfpgan(input_path, scale, out_path)
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "license": p["license"],
+            "requires_internet": p["online"],
+            "scale": scale,
+            "artifact": artifact,
+            "note": f"Restored/upscaled with {p['provider']} (scale={scale}).",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "license": p["license"],
+            "requires_internet": p["online"],
+            "scale": scale,
+            "artifact": "/artifacts/video/restored_stub.mp4",
+            "note": f"{p['provider']} failed ({exc}); Stub — wire to {p['provider']} for face restoration / upscaling (offline/local).",
+        }
 
 
 async def _ffmpeg_pipeline(steps: str = "", **_: Any) -> dict:
@@ -1601,6 +1667,7 @@ def _register_defaults() -> None:
         description="GFPGAN face restoration and upscaling.",
         category="media", provider="GFPGAN", run=_gfpgan_upscale,
         parameters={"input_path": "input", "scale": "upscale factor"},
+        status="live" if _external_gfpgan_configured() else "stub",
     ))
     register(ToolSpec(
         id="ffmpeg_pipeline", name="FFmpeg Pipeline",
