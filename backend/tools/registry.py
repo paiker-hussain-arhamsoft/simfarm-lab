@@ -493,13 +493,78 @@ async def _generate_chatterbox_voice(script: str, language: str, reference_audio
     return out_path
 
 
+# ── Coqui TTS integration (with stub fallback) ───────────────────────
+
+_COQUI_SUPPORTED_LANGS = {
+    "ar", "cs", "de", "en", "es", "fr", "hi", "hu", "it", "ja", "ko",
+    "nl", "pl", "pt", "ru", "tr", "zh", "zh-cn",
+}
+
+_COQUI_LANG_MAP = {
+    "zh": "zh-cn",
+}
+
+_COQUI_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
+_COQUI_MODEL: Any = None
+_COQUI_LOCK = asyncio.Lock()
+
+
+def _is_coqui_available() -> bool:
+    """Return True if the coqui-tts package is installed."""
+    import importlib.util
+    return importlib.util.find_spec("TTS") is not None
+
+
+async def _load_coqui_model() -> Any:
+    """Load and cache the Coqui XTTS v2 model in a worker thread."""
+    global _COQUI_MODEL
+    if _COQUI_MODEL is not None:
+        return _COQUI_MODEL
+    async with _COQUI_LOCK:
+        if _COQUI_MODEL is None:
+            from TTS.api import TTS
+            device = _chatterbox_device()
+            _COQUI_MODEL = await asyncio.to_thread(TTS, _COQUI_MODEL_NAME)
+            _COQUI_MODEL = _COQUI_MODEL.to(device)
+    return _COQUI_MODEL
+
+
+async def _generate_coqui_voice(script: str, language: str, reference_audio: str = "") -> str:
+    """Generate a WAV with Coqui XTTS v2 and return the local file path."""
+    if os.environ.get("COQUI_TOS_AGREED", "") != "1":
+        raise ToolError(
+            "Coqui XTTS requires accepting the CPML terms. "
+            "Set COQUI_TOS_AGREED=1 to enable."
+        )
+
+    coqui_lang = _COQUI_LANG_MAP.get(language, language)
+    if coqui_lang not in _COQUI_SUPPORTED_LANGS:
+        raise ToolError(f"Language '{language}' is not supported by Coqui XTTS v2")
+
+    model = await _load_coqui_model()
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.wav")
+
+    kwargs = {"text": script, "language": coqui_lang, "file_path": out_path}
+    if reference_audio:
+        kwargs["speaker_wav"] = reference_audio
+    elif model.speakers:
+        kwargs["speaker"] = model.speakers[0]
+    else:
+        raise ToolError("Coqui XTTS v2 has no default speaker and no reference audio was provided")
+
+    await asyncio.to_thread(model.tts_to_file, **kwargs)
+    return out_path
+
+
 async def _clone_voice(tool: str = "chatterbox", language: str = "en",
                        script: str = "", reference_audio: str = "", **_: Any) -> dict:
     p = _VOICE_PROVIDERS.get(tool, _VOICE_PROVIDERS["chatterbox"])
     if p["online"] and not _online_available():
         raise ToolError(f"{p['provider']} requires internet; fall back to an offline voice tool.")
 
-    chatterbox_error: str | None = None
+    real_error: str | None = None
+
     if tool == "chatterbox" and _is_chatterbox_available() and language in _CHATTERBOX_SUPPORTED_LANGS and script:
         try:
             artifact_path = await _generate_chatterbox_voice(script, language, reference_audio)
@@ -514,11 +579,27 @@ async def _clone_voice(tool: str = "chatterbox", language: str = "en",
                 "note": f"Generated locally with {p['provider']} ({'with reference clip' if reference_audio else 'default voice'}).",
             }
         except Exception as exc:
-            chatterbox_error = str(exc)
+            real_error = f"Chatterbox failed: {exc}"
+
+    elif tool == "coqui" and _is_coqui_available() and language in _COQUI_SUPPORTED_LANGS and script:
+        try:
+            artifact_path = await _generate_coqui_voice(script, language, reference_audio)
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "language": language,
+                "reference_audio_sec": 5 if reference_audio else 0,
+                "artifact": artifact_path,
+                "note": f"Generated locally with {p['provider']} ({'with reference clip' if reference_audio else 'built-in speaker'}).",
+            }
+        except Exception as exc:
+            real_error = f"Coqui failed: {exc}"
 
     note = f"Stub — wire to {p['provider']} for real voice cloning ({'online' if p['online'] else 'offline/local'})."
-    if chatterbox_error:
-        note = f"Chatterbox failed ({chatterbox_error}); {note}"
+    if real_error:
+        note = f"{real_error}; {note}"
     return {
         "simulated": True,
         "provider": p["provider"],
@@ -531,11 +612,140 @@ async def _clone_voice(tool: str = "chatterbox", language: str = "en",
     }
 
 
+# ── Wan2.1 text-to-video integration (with stub fallback) ───────────
+
+_WAN2_MODEL_NAME = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+_WAN2_NEGATIVE_PROMPT = (
+    "Bright tones, overexposed, static, blurred details, subtitles, style, works, "
+    "paintings, images, static, overall gray, worst quality, low quality, JPEG "
+    "compression residue, ugly, incomplete, extra fingers, poorly drawn hands, "
+    "poorly drawn faces, deformed, disfigured, misshapen limbs, fused fingers, "
+    "still picture, messy background, three legs, many people in the background, "
+    "walking backwards"
+)
+_WAN2_PIPELINE: Any = None
+_WAN2_LOCK = asyncio.Lock()
+
+
+def _is_wan2_available() -> bool:
+    """Return True if diffusers>=0.33 with Wan support is installed."""
+    import importlib.util
+    try:
+        import diffusers
+        return (
+            importlib.util.find_spec("diffusers") is not None
+            and hasattr(diffusers, "__version__")
+            and diffusers.__version__ >= "0.33.0"
+            and hasattr(diffusers, "WanPipeline")
+        )
+    except Exception:
+        return False
+
+
+def _wan2_torch_dtype() -> Any:
+    """Pick a safe dtype for the current device."""
+    import torch
+    if torch.cuda.is_available():
+        return torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+    return torch.float32
+
+
+async def _load_wan2_pipeline() -> Any:
+    """Load and cache the Wan2.1 1.3B T2V pipeline in a worker thread."""
+    global _WAN2_PIPELINE
+    if _WAN2_PIPELINE is not None:
+        return _WAN2_PIPELINE
+    async with _WAN2_LOCK:
+        if _WAN2_PIPELINE is None:
+            import torch
+            from diffusers import AutoencoderKLWan, WanPipeline
+            dtype = _wan2_torch_dtype()
+            vae_dtype = torch.float32
+            vae = await asyncio.to_thread(
+                AutoencoderKLWan.from_pretrained, _WAN2_MODEL_NAME,
+                subfolder="vae", torch_dtype=vae_dtype
+            )
+            _WAN2_PIPELINE = await asyncio.to_thread(
+                WanPipeline.from_pretrained, _WAN2_MODEL_NAME,
+                vae=vae, torch_dtype=dtype
+            )
+            if torch.cuda.is_available():
+                _WAN2_PIPELINE = _WAN2_PIPELINE.to("cuda")
+            else:
+                _WAN2_PIPELINE = _WAN2_PIPELINE.to("cpu")
+    return _WAN2_PIPELINE
+
+
+def _parse_duration(duration: str) -> int:
+    """Parse a duration string like '60s' or '5' into seconds (default 5)."""
+    digits = "".join(ch for ch in (duration or "5s") if ch.isdigit())
+    try:
+        return max(1, int(digits or 5))
+    except ValueError:
+        return 5
+
+
+async def _generate_wan2_video(script: str, duration: str = "5s") -> str:
+    """Generate an MP4 with Wan2.1 and return the local file path."""
+    import torch
+    from diffusers.utils import export_to_video
+
+    pipe = await _load_wan2_pipeline()
+    seconds = _parse_duration(duration)
+    # Wan2.1 default training resolution is 480P; keep frame count modest and cap it.
+    num_frames = min(max(5, seconds * 15), 81)
+    num_frames = max(5, (num_frames // 4) * 4 + 1)
+
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.mp4")
+
+    frames = await asyncio.to_thread(
+        pipe,
+        prompt=script,
+        negative_prompt=_WAN2_NEGATIVE_PROMPT,
+        height=480,
+        width=832,
+        num_frames=num_frames,
+        guidance_scale=5.0,
+        num_inference_steps=30,
+    )
+    export_to_video(frames.frames[0], out_path, fps=15)
+    return out_path
+
+
 async def _generate_video(tool: str = "wan2", script: str = "", duration: str = "60s",
                           **_: Any) -> dict:
     p = _VIDEO_PROVIDERS.get(tool, _VIDEO_PROVIDERS["wan2"])
     if p["online"] and not _online_available():
         raise ToolError(f"{p['provider']} requires internet; fall back to an offline video model.")
+
+    if tool == "wan2" and _is_wan2_available() and script:
+        try:
+            artifact_path = await _generate_wan2_video(script, duration)
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "params": p["params"],
+                "resolution": "480p",
+                "duration": duration,
+                "artifact": artifact_path,
+                "note": f"Generated locally with {p['provider']} (1.3B, CPU/GPU).",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "params": p["params"],
+                "resolution": "480p",
+                "duration": duration,
+                "artifact": "/artifacts/media/clip_stub.mp4",
+                "note": f"Wan2.1 failed ({exc}); Stub — wire to {p['provider']} for real text-to-video (offline/local).",
+            }
+
     return {
         "simulated": True,
         "provider": p["provider"],
@@ -549,18 +759,124 @@ async def _generate_video(tool: str = "wan2", script: str = "", duration: str = 
     }
 
 
-async def _render_avatar(tool: str = "duix", photo: str = "", script: str = "",
-                         **_: Any) -> dict:
+# ── Duix-Avatar integration (remote service, with stub fallback) ────
+
+_DUIX_POLL_INTERVAL = 2.0
+_DUIX_MAX_POLL = 120
+
+
+def _duix_video_host() -> str:
+    """Return the configured Duix video-generation service URL, or empty."""
+    return os.environ.get("DUIX_VIDEO_HOST", "").rstrip("/")
+
+
+def _duix_data_dir() -> str:
+    """Return the shared data directory visible to both the app and Duix."""
+    return os.environ.get("DUIX_DATA_DIR", _VOICE_ARTIFACT_DIR)
+
+
+async def _prepare_audio_for_duix(script: str, language: str = "en") -> str:
+    """Synthesize audio for Duix using the local voice stack (Chatterbox/Coqui)."""
+    if not script:
+        raise ToolError("No script or audio provided for Duix avatar")
+    voice_result = await _clone_voice(tool="chatterbox", language=language, script=script, reference_audio="")
+    artifact = voice_result.get("artifact", "")
+    if not artifact or artifact.endswith("voice_stub.wav") or not os.path.exists(artifact):
+        raise ToolError("No local voice engine available to synthesize audio for Duix")
+    return artifact
+
+
+async def _render_avatar(tool: str = "duix", photo: str = "", script: str = "", audio: str = "",
+                         language: str = "en", **_: Any) -> dict:
     p = _AVATAR_PROVIDERS.get(tool, _AVATAR_PROVIDERS["duix"])
-    return {
-        "simulated": True,
-        "provider": p["provider"],
-        "license": p["license"],
-        "requires_internet": p["online"],
-        "lip_sync_fps": 24,
-        "artifact": "/artifacts/media/avatar_stub.mp4",
-        "note": f"Stub — wire to {p['provider']} for photo+script lip-sync (offline/local).",
-    }
+    if tool != "duix":
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "license": p["license"],
+            "requires_internet": p["online"],
+            "lip_sync_fps": 24,
+            "artifact": "/artifacts/media/avatar_stub.mp4",
+            "note": f"Stub — wire to {p['provider']} for photo+script lip-sync (offline/local).",
+        }
+
+    host = _duix_video_host()
+    if not host or not photo:
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "license": p["license"],
+            "requires_internet": p["online"],
+            "lip_sync_fps": 24,
+            "artifact": "/artifacts/media/avatar_stub.mp4",
+            "note": f"Stub — wire to {p['provider']} for photo+script lip-sync (offline/local).",
+        }
+
+    try:
+        import httpx
+        data_dir = _duix_data_dir()
+        video_path = photo if os.path.isabs(photo) else os.path.join(data_dir, photo)
+        video_path = os.path.normpath(video_path)
+        if not os.path.exists(video_path):
+            raise ToolError(f"Duix reference video not found: {video_path}")
+
+        if audio:
+            audio_path = audio if os.path.isabs(audio) else os.path.join(data_dir, audio)
+            audio_path = os.path.normpath(audio_path)
+        else:
+            audio_path = await _prepare_audio_for_duix(script, language)
+
+        if not os.path.exists(audio_path):
+            raise ToolError(f"Duix audio file not found: {audio_path}")
+
+        task_code = str(uuid.uuid4())
+        payload = {
+            "audio_url": audio_path,
+            "video_url": video_path,
+            "code": task_code,
+            "chaofen": 0,
+            "watermark_switch": 0,
+            "pn": 1,
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            r = await client.post(f"{host}/easy/submit", json=payload)
+            r.raise_for_status()
+
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            for _ in range(_DUIX_MAX_POLL):
+                await asyncio.sleep(_DUIX_POLL_INTERVAL)
+                r = await client.get(f"{host}/easy/query", params={"code": task_code})
+                r.raise_for_status()
+                data = r.json().get("data", {})
+                status = data.get("status")
+                if status == "success":
+                    result = data.get("result", "")
+                    if result and os.path.exists(result):
+                        return {
+                            "simulated": True,
+                            "provider": p["provider"],
+                            "license": p["license"],
+                            "requires_internet": False,
+                            "lip_sync_fps": 24,
+                            "artifact": result,
+                            "note": f"Generated by {p['provider']} from reference video + {'provided' if audio else 'synthesized'} audio.",
+                        }
+                    raise ToolError("Duix finished but output path is not accessible")
+                elif status == "error":
+                    raise ToolError(data.get("msg", "Duix video generation failed"))
+            raise ToolError("Duix video generation timed out")
+
+    except Exception as exc:
+        note = f"Duix failed ({exc}); Stub — wire to {p['provider']} for photo+script lip-sync (offline/local)."
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "license": p["license"],
+            "requires_internet": p["online"],
+            "lip_sync_fps": 24,
+            "artifact": "/artifacts/media/avatar_stub.mp4",
+            "note": note,
+        }
 
 
 def _online_available() -> bool:
@@ -874,19 +1190,21 @@ def _register_defaults() -> None:
         description="Zero-shot voice cloning / TTS (Chatterbox, Coqui, Bark offline; ElevenLabs online).",
         category="media", provider="Chatterbox / Coqui / Bark", run=_clone_voice,
         parameters={"tool": "chatterbox|coqui|bark|elevenlabs", "language": "lang", "script": "text", "reference_audio": "optional path to a 5-20s reference WAV"},
-        status="live" if _is_chatterbox_available() else "stub",
+        status="live" if (_is_chatterbox_available() or _is_coqui_available()) else "stub",
     ))
     register(ToolSpec(
         id="generate_video", name="Video Generator",
         description="Text-to-video generation (Wan2.1, CogVideoX, Open-Sora offline; HeyGen online).",
         category="media", provider="Wan2.1 / CogVideoX / Open-Sora", run=_generate_video,
         parameters={"tool": "wan2|cogvideo|opensora|heygen", "script": "text", "duration": "e.g. 60s"},
+        status="live" if _is_wan2_available() else "stub",
     ))
     register(ToolSpec(
         id="render_avatar", name="Digital Human Renderer",
-        description="Photo+script lip-synced digital human (Duix-Avatar, Wav2Lip, Roop).",
+        description="Photo+script or photo+audio lip-synced digital human (Duix-Avatar, Wav2Lip, Roop).",
         category="media", provider="Duix-Avatar / Wav2Lip / Roop", run=_render_avatar,
-        parameters={"tool": "duix|wav2lip|roop", "photo": "ref photo", "script": "text"},
+        parameters={"tool": "duix|wav2lip|roop", "photo": "reference video (Duix)", "script": "text", "audio": "optional audio file path", "language": "lang"},
+        status="live" if _duix_video_host() else "stub",
     ))
     register(ToolSpec(
         id="face_swap", name="Face-Swap Engine",

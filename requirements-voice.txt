@@ -1,5 +1,7 @@
-# Optional heavy voice/TTS stack.
+# Optional heavy voice/TTS stack for Chatterbox.
 # Installed separately in Docker because it pulls torch, torchaudio, transformers, etc.
+# Note: Coqui XTTS cannot be installed alongside Chatterbox due to conflicting
+# transformers versions; use requirements-voice-coqui.txt for Coqui only.
 chatterbox-tts==0.1.7
 setuptools<70
 # Keep the base ASGI stack pinned so gradio/chatterbox do not override it
