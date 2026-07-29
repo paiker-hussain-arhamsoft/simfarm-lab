@@ -1,10 +1,10 @@
-__pycache__/
+.git
+node_modules
+__pycache__
 *.pyc
-*.pyo
 .env
 .env.secrets
 data/brain.db
 data/legal_ledger.csv
 data/legal_ledger.meta
-node_modules/
-.venv/
+.venv

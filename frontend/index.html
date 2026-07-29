@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SimFarm Security Lab</title>
+    <title>TIER 1 — Strategic Brain</title>
     <link rel="stylesheet" href="/css/style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -12,15 +12,30 @@
 
 <!-- Header -->
 <header class="header">
-    <div class="header-logo">
-        <h1>SimFarm <span>Security Lab</span></h1>
+    <div class="header-left">
+        <div class="header-logo">
+            <div class="icon-box">🧠</div>
+            <h1>Strategic Brain <span>TIER 1</span></h1>
+        </div>
+        <div class="header-badge">
+            ⚡ AutoGen + LangGraph
+        </div>
     </div>
     <nav class="header-nav">
         <button id="nav-dashboard" class="active" onclick="showDashboard()">Dashboard</button>
-        <button id="nav-lab" onclick="showLab()">Lab</button>
-        <button id="nav-playground" onclick="showPlayground()">Playground</button>
-        <button id="nav-uk-demo" onclick="showUkDemo()">UK Demo</button>
-        <button id="nav-legendary" onclick="showLegendary()">Legendary</button>
+        <button id="nav-pipeline" onclick="showPipeline()">Pipeline</button>
+        <button id="nav-tier2" onclick="showTier2()">TIER 2 · Intelligence</button>
+        <button id="nav-media" onclick="showMedia()">TIER 2 · Media</button>
+        <button id="nav-video" onclick="showVideo()">TIER 2 · Video</button>
+        <button id="nav-cyber" onclick="showCyber()">TIER 2 · Cyber</button>
+        <button id="nav-persona" onclick="showPersona()">TIER 3 · Persona</button>
+        <button id="nav-infrastructure" onclick="showInfrastructure()">TIER 4 · Infra</button>
+        <button id="nav-ivr" onclick="showIvr()">TIER 4 · IVR</button>
+        <button id="nav-proxy" onclick="showProxy()">TIER 4 · Proxy</button>
+        <button id="nav-stealth" onclick="showStealth()">TIER 4 · Stealth</button>
+        <button id="nav-content" onclick="showContent()">TIER 4 · Content</button>
+        <button id="nav-memory" onclick="showMemory()">TIER 4 · Memory</button>
+        <button id="nav-scenarios" onclick="showScenarios()">Scenarios</button>
     </nav>
 </header>
 
@@ -30,169 +45,458 @@
     <!-- ═══ Dashboard view ═══ -->
     <section id="view-dashboard">
         <div class="dashboard-hero">
-            <h2>SIM Farm Detection Lab</h2>
-            <p>A hands-on cybersecurity training platform. Detect SIM farm operations across three difficulty levels — from blatant to invisible.</p>
+            <h2>Strategic Brain</h2>
+            <p>A four-agent AI pipeline for cybersecurity analysis — Director, Researcher, Critic, and Synthesizer collaborate to produce high-quality strategic outputs.</p>
         </div>
-        <div class="level-grid" id="level-grid">
-            <div class="loading"><div class="spinner"></div> Loading levels...</div>
+        <div id="demo-banner-slot"></div>
+        <h3 class="section-title">Agent Pipeline</h3>
+        <div class="agent-grid" id="agent-grid">
+            <div class="loading"><div class="spinner"></div> Loading agents...</div>
+        </div>
+        <h3 class="section-title">Exercise Scenarios</h3>
+        <div class="scenario-grid" id="scenario-grid">
+            <div class="loading"><div class="spinner"></div> Loading scenarios...</div>
+        </div>
+    </section>
+
+    <!-- ═══ Pipeline view ═══ -->
+    <section id="view-pipeline" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Agent Pipeline</div>
+                    <div id="pipeline-agent-list"></div>
+                </div>
+                <div id="framework-selector" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="session-id-display"></span>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="task-input-box">
+                    <label>Task Input</label>
+                    <textarea id="task-input" rows="3" placeholder="Describe the task or problem you want the agent team to work on..." maxlength="4000"></textarea>
+                    <div class="example-tasks" id="example-tasks-area">
+                        <p>Example tasks:</p>
+                        <div class="chips" id="example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="char-count">0/4000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="btn-reset" onclick="resetPipeline()">↻ New Task</button>
+                            <button class="btn btn-danger hidden" id="btn-stop" onclick="stopPipeline()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="btn-run" onclick="runPipeline()" disabled>▶ Run Agents</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="output-area"></div>
+            </div>
         </div>
     </section>
 
-    <!-- ═══ Lab view ═══ -->
-    <section id="view-lab" class="hidden">
-        <div class="lab-header">
-            <div>
-                <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
-                <h2 id="lab-title" class="mt-1"></h2>
+    <!-- ═══ TIER 2 · Intelligence Crew view ═══ -->
+    <section id="view-tier2" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Intelligence Crew</div>
+                    <div id="tier2-agent-list"></div>
+                </div>
+                <div id="tier2-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="tier2-session-display"></span>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Intelligence Crew</h2>
+                    <p>LlamaIndex retrieval + LightGBM forecasting + Meta-Llama-3.1-8B dialect analysis (Punjabi Shahmukhi / Saraiki). Four agents fuse open-source research, behavior forecasting, and social-channel strategy into a cross-channel intelligence brief.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Region</label>
+                            <select id="tier2-region"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Language / Dialect</label>
+                            <select id="tier2-language"></select>
+                        </div>
+                    </div>
+                    <label>Analysis Query</label>
+                    <textarea id="tier2-query" rows="3" placeholder="e.g. Analyze voter sentiment and turnout likelihood among swing voter segments..." maxlength="4000"></textarea>
+                    <div class="example-tasks" id="tier2-examples-area">
+                        <p>Example queries:</p>
+                        <div class="chips" id="tier2-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="tier2-char-count">0/4000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="tier2-btn-reset" onclick="resetTier2()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="tier2-btn-stop" onclick="stopTier2()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="tier2-btn-run" onclick="runTier2()" disabled>▶ Run Crew</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="tier2-output-area"></div>
             </div>
-            <div id="lab-stats" class="game-stats"></div>
-        </div>
-
-        <!-- Briefing -->
-        <div class="briefing-box" id="lab-briefing"></div>
-
-        <!-- Tab bar -->
-        <div class="tab-bar" id="lab-tabs">
-            <button class="active" data-tab="tab-data" onclick="switchTab(this)">Data Explorer</button>
-            <button data-tab="tab-analysis" onclick="switchTab(this)">Analysis Tools</button>
-            <button data-tab="tab-exercises" onclick="switchTab(this)">Exercises</button>
-            <button data-tab="tab-phishing" id="phishing-tab-btn" class="hidden" onclick="switchTab(this)">Phishing Game</button>
-        </div>
-
-        <!-- Tab: Data Explorer -->
-        <div class="tab-panel active" id="tab-data">
-            <div class="tab-bar" id="data-sub-tabs" style="border-color: var(--bg-card);">
-                <button class="active" data-tab="subtab-sims" onclick="switchSubTab(this)">SIM Cards</button>
-                <button data-tab="subtab-cdrs" onclick="switchSubTab(this)">CDRs</button>
-                <button data-tab="subtab-netlogs" onclick="switchSubTab(this)">Network Logs</button>
-            </div>
-            <div class="tab-panel active" id="subtab-sims">
-                <div id="sims-table-container"><div class="loading"><div class="spinner"></div> Loading SIM data...</div></div>
-            </div>
-            <div class="tab-panel" id="subtab-cdrs">
-                <div id="cdrs-table-container"><div class="loading"><div class="spinner"></div> Loading CDR data...</div></div>
-            </div>
-            <div class="tab-panel" id="subtab-netlogs">
-                <div id="netlogs-table-container"><div class="loading"><div class="spinner"></div> Loading network logs...</div></div>
-            </div>
-        </div>
-
-        <!-- Tab: Analysis Tools -->
-        <div class="tab-panel" id="tab-analysis">
-            <div class="analysis-grid" id="analysis-grid"></div>
-            <div id="analysis-result-container"></div>
-        </div>
-
-        <!-- Tab: Exercises -->
-        <div class="tab-panel" id="tab-exercises">
-            <div class="exercise-list" id="exercise-list"></div>
-        </div>
-
-        <!-- Tab: Phishing Game (Legendary only) -->
-        <div class="tab-panel" id="tab-phishing">
-            <div id="phishing-container"></div>
         </div>
     </section>
-    <!-- ═══ Playground view (Attack Mode) ═══ -->
-    <section id="view-playground" class="hidden">
-        <div class="lab-header">
-            <div>
-                <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
-                <h2 class="mt-1">SIM Farm Playground</h2>
-                <p class="text-muted" style="margin-top:4px;">Build and configure a SIM farm from scratch in Pakistan's telecom ecosystem.</p>
+
+    <!-- ═══ TIER 2 · Media Crew view ═══ -->
+    <section id="view-media" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Media Crew · Duix-Avatar</div>
+                    <div id="media-agent-list"></div>
+                </div>
+                <div id="media-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="media-session-display"></span>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Media Crew</h2>
+                    <p>The Duix-Avatar Pipeline: Script Writer → Voice Architect → Video Director → Production Lead. Offline-first digital-human production (Duix-Avatar + Chatterbox/Coqui/Bark + Wan2.1/CogVideoX/Open-Sora), with optional online tools (ElevenLabs, HeyGen).</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Tone</label>
+                            <select id="media-tone"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Language</label>
+                            <select id="media-language"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Duration</label>
+                            <select id="media-duration"></select>
+                        </div>
+                    </div>
+                    <label>Topic / Brief</label>
+                    <textarea id="media-topic" rows="2" placeholder="e.g. A public-service explainer on protecting your CNIC from SIM fraud..." maxlength="2000"></textarea>
+                    <div class="media-tool-groups">
+                        <div class="media-tool-group">
+                            <label>Voice Tool</label>
+                            <div class="fw-pills" id="media-voice-tools"></div>
+                        </div>
+                        <div class="media-tool-group">
+                            <label>Video Model</label>
+                            <div class="fw-pills" id="media-video-tools"></div>
+                        </div>
+                        <div class="media-tool-group">
+                            <label>Avatar Engine</label>
+                            <div class="fw-pills" id="media-avatar-tools"></div>
+                        </div>
+                    </div>
+                    <div class="example-tasks" id="media-examples-area">
+                        <p>Example topics:</p>
+                        <div class="chips" id="media-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="media-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="media-btn-reset" onclick="resetMedia()">↻ New Production</button>
+                            <button class="btn btn-danger hidden" id="media-btn-stop" onclick="stopMedia()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="media-btn-run" onclick="runMedia()" disabled>▶ Produce</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="media-output-area"></div>
             </div>
         </div>
-
-        <div class="briefing-box">
-            <strong>SCENARIO:</strong> You are setting up a SIM farming operation in Pakistan.
-            Choose your city, carriers, hardware, acquisition method, and OPSEC measures.
-            The system will calculate your detection risk, costs, and how long before PTA/FIA catches you.
-            <br><br>
-            <em>For educational purposes only. Learn how SIM farms operate to better detect them.</em>
-        </div>
-
-        <div id="pg-wizard"></div>
-        <div id="pg-result"></div>
     </section>
 
-    <!-- ═══ UK Demo view ═══ -->
-    <section id="view-uk-demo" class="hidden">
-        <div class="lab-header">
-            <div>
-                <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
-                <h2 class="mt-1">UK & Wales SIM Farm Demo</h2>
-                <p class="text-muted" style="margin-top:4px;">Pre-built political campaign scenarios demonstrating SIM farm-driven astroturfing in UK elections.</p>
+    <!-- ═══ TIER 2 · Video Stack view ═══ -->
+    <section id="view-video" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Video Stack</div>
+                    <div id="video-agent-list"></div>
+                </div>
+                <div id="video-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="video-session-display"></span>
+                </div>
+                <div class="compliance-box" id="video-compliance-box">
+                    <div class="cb-title">Compliance & Audit</div>
+                    <div class="cb-line">All activity is recorded for legal review. Access is open until an activity is flagged.</div>
+                    <div class="cb-stats" id="video-audit-stats"></div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadAuditLog()">View audit log</button>
+                    <div id="video-audit-log"></div>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Video Stack</h2>
+                    <p>Face-swap &amp; lip-sync production: Render Strategist (DeepFaceLab/FaceSwap/Deep-Live-Cam) → Script Writer → Technical Director (GFPGAN + FFmpeg) → Video Director. Offline-first &amp; simulated. Every run is compliance-screened and audit-logged; synthetic media of a real person requires a consent attestation.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Style</label>
+                            <select id="video-style"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Duration</label>
+                            <select id="video-duration"></select>
+                        </div>
+                    </div>
+                    <label>Project / Brief</label>
+                    <textarea id="video-topic" rows="2" placeholder="e.g. A consented training video with a spokesperson explaining new SIM-registration rules..." maxlength="2000"></textarea>
+                    <div class="media-tool-groups">
+                        <div class="media-tool-group">
+                            <label>Face-Swap Engine</label>
+                            <div class="fw-pills" id="video-swap-tools"></div>
+                        </div>
+                        <div class="media-tool-group">
+                            <label>Lip-Sync Engine</label>
+                            <div class="fw-pills" id="video-lipsync-tools"></div>
+                        </div>
+                    </div>
+                    <label class="consent-check">
+                        <input type="checkbox" id="video-consent">
+                        I attest lawful, documented consent for any real person's likeness or voice used in this production.
+                    </label>
+                    <div id="video-legal-proxy" class="legal-proxy-box hidden">
+                        <div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div>
+                        <div class="lp-note">Only for authorized legal users. A flagged request can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Consent is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review.</div>
+                        <input type="text" id="video-approver" placeholder="Approver identity (name / role)">
+                        <input type="text" id="video-auth-ref" placeholder="Authorization reference (case no. / signed-release ID / court order)">
+                        <div class="ledger-panel">
+                            <div class="lp-subtitle">Authorization Ledger</div>
+                            <div class="ledger-status" id="ledger-status">Ledger not loaded.</div>
+                            <div class="ledger-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload signed CSV
+                                    <input type="file" id="ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden>
+                                </label>
+                            </div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite — it never auto-clears a request. When an official public key is configured, a ledger is accepted only with a valid detached signature (<code>index.csv</code> + <code>index.csv.sig</code>), so a renamed file can't pass as official. SSH credentials are entered per-fetch and never stored.</div>
+                        </div>
+                    </div>
+                    <div class="example-tasks" id="video-examples-area">
+                        <p>Example projects:</p>
+                        <div class="chips" id="video-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="video-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="video-btn-reset" onclick="resetVideo()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="video-btn-stop" onclick="stopVideo()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="video-btn-run" onclick="runVideo()" disabled>▶ Plan Production</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="video-output-area"></div>
             </div>
         </div>
-
-        <div class="briefing-box">
-            <strong>SCENARIO BRIEFING:</strong> These demonstrations show how SIM farms could be weaponised
-            for political influence operations in UK elections. Each scenario includes a complete operational
-            plan — infrastructure, cost analysis, campaign timeline, and detection risk assessment.
-            <br><br>
-            <em>For educational purposes only. Understanding these attack vectors is essential for election security.</em>
-        </div>
-
-        <div id="uk-reg-context"></div>
-        <div id="uk-scenarios" class="uk-scenarios-grid"></div>
-        <div id="uk-result"></div>
     </section>
 
-    <!-- ═══ Legendary Detection Module ═══ -->
-    <section id="view-legendary" class="hidden">
-        <div class="lab-header">
-            <div>
-                <button class="back-btn" onclick="showDashboard()">&larr; Back to Dashboard</button>
-                <h2 class="mt-1">Legendary Detection Module</h2>
-                <p class="text-muted" style="margin-top:4px;">Advanced SIM farm threat intelligence — TTP reference library and forensic investigation scenarios.</p>
+    <!-- ═══ TIER 2 · Cyber Crew view ═══ -->
+    <section id="view-cyber" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Cyber Crew</div>
+                    <div id="cyber-agent-list"></div>
+                </div>
+                <div id="cyber-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="cyber-session-display"></span>
+                </div>
+                <div class="compliance-box" id="cyber-compliance-box">
+                    <div class="cb-title">Compliance & Audit</div>
+                    <div class="cb-line">All activity is recorded for legal review. Access is open until an activity is flagged.</div>
+                    <div class="cb-stats" id="cyber-audit-stats"></div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadCyberAuditLog()">View audit log</button>
+                    <div id="cyber-audit-log"></div>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 2 — Cyber Crew</h2>
+                    <p>Defensive security assessment: Red Team Strategist (Nmap/OpenVAS) → DAST Engineer (OWASP ZAP/Burp) → TLS Fingerprint Engineer (JA3) → Security Director (Metasploit validation, OSINT, report). Offline-first &amp; simulated — no real scanning or exploitation. Every run is compliance-screened and audit-logged; engagements must be lawful and scope-authorized.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Engagement Type</label>
+                            <select id="cyber-engagement"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Scanner</label>
+                            <select id="cyber-scan"></select>
+                        </div>
+                    </div>
+                    <label>Target / Scope</label>
+                    <textarea id="cyber-target" rows="2" placeholder="e.g. Assess the authorized staging web app at app.example-lab.internal (in-scope hosts only)..." maxlength="2000"></textarea>
+                    <label class="consent-check">
+                        <input type="checkbox" id="cyber-authorized">
+                        I attest written scope authorization exists for this engagement and all activity is lawful.
+                    </label>
+                    <div id="cyber-legal-proxy" class="legal-proxy-box hidden">
+                        <div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div>
+                        <div class="lp-note">Only for authorized legal users. A flagged engagement can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Authorization is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review. A claimed origin (e.g. "Pentagon-issued") is not sufficient on its own: when an official public key is configured, the cited reference must appear in a cryptographically-signed authorization ledger.</div>
+                        <input type="text" id="cyber-approver" placeholder="Approver identity (name / role)">
+                        <input type="text" id="cyber-auth-ref" placeholder="Authorization reference (order ID / signed authorization / case no.)">
+                        <div class="ledger-panel">
+                            <div class="lp-subtitle">Authorization Ledger</div>
+                            <div class="ledger-status" id="cyber-ledger-status">Ledger not loaded.</div>
+                            <div class="ledger-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload signed CSV
+                                    <input type="file" id="cyber-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden>
+                                </label>
+                            </div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite — it never auto-clears a request. When an official public key is configured, a ledger is accepted only with a valid detached signature (<code>index.csv</code> + <code>index.csv.sig</code>), so a renamed or self-asserted file can't pass as official. SSH credentials are entered per-fetch and never stored.</div>
+                        </div>
+                    </div>
+                    <div class="example-tasks" id="cyber-examples-area">
+                        <p>Example engagements:</p>
+                        <div class="chips" id="cyber-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="cyber-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="cyber-btn-reset" onclick="resetCyber()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="cyber-btn-stop" onclick="stopCyber()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="cyber-btn-run" onclick="runCyber()" disabled>▶ Plan Assessment</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="cyber-output-area"></div>
             </div>
         </div>
+    </section>
 
-        <div class="briefing-box" style="border-left-color: var(--accent-red);">
-            <strong style="color: var(--accent-red);">CLASSIFIED — INSTRUCTOR-SUPERVISED ACCESS ONLY</strong><br><br>
-            This module contains advanced threat intelligence documentation for detecting near-undetectable
-            SIM farm operations. Content is structured as a defender's reference following the MITRE ATT&CK
-            framework. Each technique includes: technical definition, indicators of compromise, detection
-            methods, countermeasures, and analysis of how operators disguise their activities.
-            <br><br>
-            <em>Accessible only by authorised students under oath and direct instructor supervision.
-            Misuse constitutes a violation of Computer Misuse Act 1990, PECA 2016, and institutional conduct codes.</em>
-        </div>
-
-        <!-- Sub-tabs -->
-        <div class="tab-bar" id="legendary-tabs">
-            <button class="active" data-tab="leg-tab-ttps" onclick="switchLegendaryTab(this)">TTP Library</button>
-            <button data-tab="leg-tab-scenarios" onclick="switchLegendaryTab(this)">Investigation Scenarios</button>
-            <button data-tab="leg-tab-killchain" onclick="switchLegendaryTab(this)">Kill Chain Map</button>
-        </div>
-
-        <!-- Tab: TTP Library -->
-        <div class="leg-tab-panel active" id="leg-tab-ttps">
-            <div class="ttp-filter-bar" id="ttp-filter-bar"></div>
-            <div class="ttp-list" id="ttp-list"></div>
-            <div class="ttp-detail-container hidden" id="ttp-detail-container"></div>
-        </div>
-
-        <!-- Tab: Investigation Scenarios -->
-        <div class="leg-tab-panel" id="leg-tab-scenarios">
-            <div class="scenario-grid" id="scenario-grid"></div>
-            <div class="scenario-active hidden" id="scenario-active"></div>
-        </div>
-
-        <!-- Tab: Kill Chain Map -->
-        <div class="leg-tab-panel" id="leg-tab-killchain">
-            <div class="killchain-container" id="killchain-container"></div>
+    <!-- ═══ TIER 3 · Persona Orchestration view ═══ -->
+    <section id="view-persona" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents">
+                    <div class="pa-title">Persona Crew</div>
+                    <div id="persona-agent-list"></div>
+                </div>
+                <div id="persona-backend" class="framework-selector"></div>
+                <div class="session-box">
+                    Session: <span id="persona-session-display"></span>
+                </div>
+                <div class="compliance-box" id="persona-compliance-box">
+                    <div class="cb-title">Compliance & Audit</div>
+                    <div class="cb-line">All activity is recorded for legal review. Access is open until an activity is flagged.</div>
+                    <div class="cb-stats" id="persona-audit-stats"></div>
+                    <button class="btn btn-secondary btn-sm" onclick="loadPersonaAuditLog()">View audit log</button>
+                    <div id="persona-audit-log"></div>
+                </div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px">
+                    <h2>TIER 3 — Persona Orchestration</h2>
+                    <p>Synthetic-persona design &amp; orchestration: Persona Architect (ElizaOS 7-layer) → Behavior Architect (Botpress/LangGraph) → Voice &amp; Dialect Specialist (offline TTS · ElevenLabs) → Orchestration Engineer (Socioboard · Playwright · lifecycle). Offline-first &amp; simulated — no real accounts are created, nothing is deployed to live platforms, and no stealth/fingerprint-evasion is performed. Built for authorized research, red/blue-team training, and detection of coordinated inauthentic behavior. Every run is compliance-screened and audit-logged.</p>
+                </div>
+                <div class="task-input-box">
+                    <div class="tier2-fields">
+                        <div class="t2-field">
+                            <label>Scenario</label>
+                            <select id="persona-scenario"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Platform (sandbox)</label>
+                            <select id="persona-platform"></select>
+                        </div>
+                        <div class="t2-field">
+                            <label>Region / Dialect</label>
+                            <select id="persona-region"></select>
+                        </div>
+                    </div>
+                    <label>Objective / Brief</label>
+                    <textarea id="persona-objective" rows="2" placeholder="e.g. Model a synthetic-persona fleet to build detection signatures for coordinated inauthentic behavior (lab-only)..." maxlength="2000"></textarea>
+                    <label class="consent-check">
+                        <input type="checkbox" id="persona-authorized">
+                        I attest this is an authorized, lab-only research/training exercise — no real accounts, deployment, or platform evasion.
+                    </label>
+                    <div id="persona-legal-proxy" class="legal-proxy-box hidden">
+                        <div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div>
+                        <div class="lp-note">Only for authorized legal users. A flagged objective can be cleared <strong>only</strong> when a real authorization reference and approver are supplied. Authorization is never fabricated — the override is logged in red as <code>PRE_CLEARED_LEGAL_PROXY</code> for legal review. A claimed origin alone is not sufficient: when an official public key is configured, the cited reference must appear in a cryptographically-signed authorization ledger.</div>
+                        <input type="text" id="persona-approver" placeholder="Approver identity (name / role)">
+                        <input type="text" id="persona-auth-ref" placeholder="Authorization reference (order ID / signed authorization / case no.)">
+                        <div class="ledger-panel">
+                            <div class="lp-subtitle">Authorization Ledger</div>
+                            <div class="ledger-status" id="persona-ledger-status">Ledger not loaded.</div>
+                            <div class="ledger-actions">
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button>
+                                <label class="btn btn-secondary btn-sm ledger-upload-label">Upload signed CSV
+                                    <input type="file" id="persona-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden>
+                                </label>
+                            </div>
+                            <div class="ledger-hint">The ledger only supplies authorization references an approver must cite — it never auto-clears a request. When an official public key is configured, a ledger is accepted only with a valid detached signature, so a renamed or self-asserted file can't pass as official. SSH credentials are entered per-fetch and never stored.</div>
+                        </div>
+                    </div>
+                    <div class="example-tasks" id="persona-examples-area">
+                        <p>Example objectives:</p>
+                        <div class="chips" id="persona-example-chips"></div>
+                    </div>
+                    <div class="controls-bar">
+                        <span class="char-count" id="persona-char-count">0/2000 · Ctrl+Enter to run</span>
+                        <div class="btns">
+                            <button class="btn btn-secondary hidden" id="persona-btn-reset" onclick="resetPersona()">↻ New Plan</button>
+                            <button class="btn btn-danger hidden" id="persona-btn-stop" onclick="stopPersona()">⏹ Stop</button>
+                            <button class="btn btn-primary" id="persona-btn-run" onclick="runPersona()" disabled>▶ Plan Orchestration</button>
+                        </div>
+                    </div>
+                </div>
+                <div id="persona-output-area"></div>
+            </div>
         </div>
     </section>
+
+    <section id="view-infrastructure" class="hidden">
+        <div class="pipeline-layout">
+            <aside class="pipeline-sidebar">
+                <div class="pipeline-agents"><div class="pa-title">Infrastructure Crew</div><div id="infrastructure-agent-list"></div></div>
+                <div id="infrastructure-backend" class="framework-selector"></div>
+                <div class="session-box">Session: <span id="infrastructure-session-display"></span></div>
+                <div class="compliance-box" id="infrastructure-compliance-box"><div class="cb-title">Compliance &amp; Audit</div><div class="cb-line">Simulation-only activity is audit-logged.</div><div class="cb-stats" id="infrastructure-audit-stats"></div><button class="btn btn-secondary btn-sm" onclick="loadInfrastructureAuditLog()">View audit log</button><div id="infrastructure-audit-log"></div></div>
+            </aside>
+            <div class="pipeline-main">
+                <div class="dashboard-hero" style="margin-bottom:16px"><h2>TIER 4 — Infrastructure Layer</h2><p>Simulation-only SIM-farm and GSM-gateway detection research. No real SIM activation, modem control, SMS/OTP sending, carrier access, or Celery execution occurs. Real telecom execution requires communications-secretariat orders and is never performed; all activity is audit-logged.</p></div>
+                <div class="task-input-box">
+                    <div class="tier2-fields"><div class="t2-field"><label>Scenario</label><select id="infrastructure-scenario"></select></div><div class="t2-field"><label>Modem topology</label><select id="infrastructure-modem"></select></div><div class="t2-field"><label>Carrier model</label><select id="infrastructure-carrier"></select></div></div>
+                    <label>Objective / Brief</label><textarea id="infrastructure-objective" rows="2" maxlength="2000" placeholder="Model infrastructure to build telecom-fraud detection signatures (simulation-only)…"></textarea>
+                    <label class="consent-check"><input type="checkbox" id="infrastructure-authorized"> I attest this is an authorized, lab-only detection exercise.</label>
+                    <div id="infrastructure-legal-proxy" class="legal-proxy-box hidden"><div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div><input type="text" id="infrastructure-approver" placeholder="Approver identity"><input type="text" id="infrastructure-auth-ref" placeholder="Authorization reference"><div class="ledger-panel"><div class="ledger-status" id="infrastructure-ledger-status">Ledger not loaded.</div><button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button><button type="button" class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button><label class="btn btn-secondary btn-sm">Upload signed CSV<input type="file" id="infrastructure-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden></label></div></div>
+                    <div class="example-tasks" id="infrastructure-examples-area"><p>Example objectives:</p><div class="chips" id="infrastructure-example-chips"></div></div>
+                    <div class="controls-bar"><span class="char-count" id="infrastructure-char-count">0/2000 · Ctrl+Enter to run</span><div class="btns"><button class="btn btn-secondary hidden" id="infrastructure-btn-reset" onclick="resetInfrastructure()">↻ New Plan</button><button class="btn btn-danger hidden" id="infrastructure-btn-stop" onclick="stopInfrastructure()">⏹ Stop</button><button class="btn btn-primary" id="infrastructure-btn-run" onclick="runInfrastructure()" disabled>▶ Plan Infrastructure</button></div></div>
+                </div><div id="infrastructure-output-area"></div>
+            </div>
+        </div>
+    </section>
+
+    <section id="view-ivr" class="hidden"><div class="pipeline-layout"><aside class="pipeline-sidebar"><div class="pipeline-agents"><div class="pa-title">IVR Crew</div><div id="ivr-agent-list"></div></div><div id="ivr-backend" class="framework-selector"></div><div class="session-box">Session: <span id="ivr-session-display"></span></div><div class="compliance-box" id="ivr-compliance-box"><div class="cb-title">Compliance &amp; Audit</div><div class="cb-line">Simulation-only activity is audit-logged.</div><div class="cb-stats" id="ivr-audit-stats"></div><button class="btn btn-secondary btn-sm" onclick="loadIvrAuditLog()">View audit log</button><div id="ivr-audit-log"></div></div></aside><div class="pipeline-main"><div class="dashboard-hero" style="margin-bottom:16px"><h2>TIER 4 — IVR</h2><p>Simulation-only IVR detection research. No real calls, DTMF, robocalls, OTP handling, or telecom execution occurs. Real telecom execution requires communications-secretariat orders and is never performed; all activity is audit-logged.</p></div><div class="task-input-box"><div class="tier2-fields"><div class="t2-field"><label>Scenario</label><select id="ivr-scenario"></select></div><div class="t2-field"><label>Hardware kit</label><select id="ivr-hardware"></select></div><div class="t2-field"><label>Reach model</label><select id="ivr-reach"></select></div></div><label>Objective / Brief</label><textarea id="ivr-objective" rows="2" maxlength="2000" placeholder="Model IVR abuse detection (simulation-only)…"></textarea><label class="consent-check"><input type="checkbox" id="ivr-authorized"> I attest this is an authorized, lab-only detection exercise.</label><div id="ivr-legal-proxy" class="legal-proxy-box hidden"><div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div><input type="text" id="ivr-approver" placeholder="Approver identity"><input type="text" id="ivr-auth-ref" placeholder="Authorization reference"><div class="ledger-panel"><div class="ledger-status" id="ivr-ledger-status">Ledger not loaded.</div><button class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button><button class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button><label class="btn btn-secondary btn-sm">Upload signed CSV<input type="file" id="ivr-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden></label></div></div><div class="example-tasks" id="ivr-examples-area"><p>Example objectives:</p><div class="chips" id="ivr-example-chips"></div></div><div class="controls-bar"><span class="char-count" id="ivr-char-count">0/2000 · Ctrl+Enter to run</span><div class="btns"><button class="btn btn-secondary hidden" id="ivr-btn-reset" onclick="resetIvr()">↻ New Plan</button><button class="btn btn-danger hidden" id="ivr-btn-stop" onclick="stopIvr()">⏹ Stop</button><button class="btn btn-primary" id="ivr-btn-run" onclick="runIvr()" disabled>▶ Plan IVR</button></div></div></div><div id="ivr-output-area"></div></div></div></section>
+
+    <section id="view-proxy" class="hidden"><div class="pipeline-layout"><aside class="pipeline-sidebar"><div class="pipeline-agents"><div class="pa-title">Proxy Crew</div><div id="proxy-agent-list"></div></div><div id="proxy-backend" class="framework-selector"></div><div class="session-box">Session: <span id="proxy-session-display"></span></div><div class="compliance-box" id="proxy-compliance-box"><div class="cb-title">Compliance &amp; Audit</div><div class="cb-line">Simulation-only activity is audit-logged.</div><div class="cb-stats" id="proxy-audit-stats"></div><button class="btn btn-secondary btn-sm" onclick="loadProxyAuditLog()">View audit log</button><div id="proxy-audit-log"></div></div></aside><div class="pipeline-main"><div class="dashboard-hero" style="margin-bottom:16px"><h2>TIER 4 — Proxy Rotation 4B</h2><p>Simulation-only proxy-abuse detection research. No real proxy provisioning, cloud deployment, scraping, ban-evasion, or live requests occurs. Real proxy execution requires communications-secretariat orders and is never performed; all activity is audit-logged.</p></div><div class="task-input-box"><div class="tier2-fields"><div class="t2-field"><label>Scenario</label><select id="proxy-scenario"></select></div><div class="t2-field"><label>Provider</label><select id="proxy-provider"></select></div><div class="t2-field"><label>Pool type</label><select id="proxy-pooltype"></select></div></div><label>Objective / Brief</label><textarea id="proxy-objective" rows="2" maxlength="2000" placeholder="Model proxy-abuse detection (simulation-only)…"></textarea><label class="consent-check"><input type="checkbox" id="proxy-authorized"> I attest this is an authorized, lab-only detection exercise.</label><div id="proxy-legal-proxy" class="legal-proxy-box hidden"><div class="lp-title">⚠ Legal-Proxy Override (SENSITIVE)</div><input type="text" id="proxy-approver" placeholder="Approver identity"><input type="text" id="proxy-auth-ref" placeholder="Authorization reference"><div class="ledger-panel"><div class="ledger-status" id="proxy-ledger-status">Ledger not loaded.</div><button class="btn btn-secondary btn-sm" onclick="fetchLedger('https')">Sync (HTTPS)</button><button class="btn btn-secondary btn-sm" onclick="fetchLedgerSSH()">Fetch via SSH…</button><label class="btn btn-secondary btn-sm">Upload signed CSV<input type="file" id="proxy-ledger-upload" accept=".csv,.sig" multiple onchange="uploadLedger(event)" hidden></label></div></div><div class="example-tasks" id="proxy-examples-area"><p>Example objectives:</p><div class="chips" id="proxy-example-chips"></div></div><div class="controls-bar"><span class="char-count" id="proxy-char-count">0/2000 · Ctrl+Enter to run</span><div class="btns"><button class="btn btn-secondary hidden" id="proxy-btn-reset" onclick="resetProxy()">↻ New Plan</button><button class="btn btn-danger hidden" id="proxy-btn-stop" onclick="stopProxy()">⏹ Stop</button><button class="btn btn-primary" id="proxy-btn-run" onclick="runProxy()" disabled>▶ Plan Proxy</button></div></div></div><div id="proxy-output-area"></div></div></div></section>
+
+    <!-- ═══ Scenarios view ═══ -->
+    <section id="view-scenarios" class="hidden">
+        <button class="back-btn" onclick="showDashboard()">← Back to Dashboard</button>
+        <h2 style="font-size: 20px; font-weight: 700; margin: 12px 0 20px;">Exercise Scenarios</h2>
+        <div class="scenario-grid" id="scenario-list"></div>
+    </section>
+
+    <section id="view-stealth" class="hidden"><div class="pipeline-layout"><aside class="pipeline-sidebar"><div class="pipeline-agents"><div class="pa-title">Stealth Crew</div><div id="stealth-agent-list"></div></div><div id="stealth-backend" class="framework-selector"></div><div class="session-box">Session: <span id="stealth-session-display"></span></div><div class="compliance-box"><div class="cb-title">Compliance &amp; Audit</div><div class="cb-stats" id="stealth-audit-stats"></div><button class="btn btn-secondary btn-sm" onclick="loadStealthAuditLog()">View audit log</button><div id="stealth-audit-log"></div></div></aside><div class="pipeline-main"><div class="dashboard-hero"><h2>TIER 4 — Stealth &amp; Anti-Detection</h2><p>Simulation-only stealth &amp; anti-detection research. No real browser fingerprint spoofing, Cloudflare bypass, evasion, or automated scraping occurs. Real execution requires communications-secretariat orders and is never performed; all activity is audit-logged.</p></div><div class="task-input-box"><div class="tier2-fields"><div class="t2-field"><label>Scenario</label><select id="stealth-scenario"></select></div><div class="t2-field"><label>Evasion target</label><select id="stealth-evasion-target"></select></div><div class="t2-field"><label>Browser engine</label><select id="stealth-browser-engine"></select></div></div><label>Objective / Brief</label><textarea id="stealth-objective" rows="2" maxlength="2000"></textarea><label class="consent-check"><input type="checkbox" id="stealth-authorized"> I attest this is an authorized, lab-only detection exercise.</label><div id="stealth-legal-proxy" class="legal-proxy-box hidden"><input id="stealth-approver" placeholder="Approver identity"><input id="stealth-auth-ref" placeholder="Authorization reference"></div><div class="example-tasks"><div class="chips" id="stealth-example-chips"></div></div><div class="controls-bar"><span class="char-count" id="stealth-char-count"></span><div class="btns"><button class="btn btn-secondary hidden" id="stealth-btn-reset" onclick="resetStealth()">↻ New Plan</button><button class="btn btn-danger hidden" id="stealth-btn-stop" onclick="stopStealth()">⏹ Stop</button><button class="btn btn-primary" id="stealth-btn-run" onclick="runStealth()" disabled>▶ Plan Stealth</button></div></div></div><div id="stealth-output-area"></div></div></div></section>
+    <section id="view-content" class="hidden"><div class="pipeline-layout"><aside class="pipeline-sidebar"><div class="pipeline-agents"><div class="pa-title">Content Crew</div><div id="content-agent-list"></div></div><div id="content-backend" class="framework-selector"></div><div class="session-box">Session: <span id="content-session-display"></span></div><div class="compliance-box"><div class="cb-title">Compliance &amp; Audit</div><div class="cb-stats" id="content-audit-stats"></div><button class="btn btn-secondary btn-sm" onclick="loadContentAuditLog()">View audit log</button><div id="content-audit-log"></div></div></aside><div class="pipeline-main"><div class="dashboard-hero"><h2>TIER 4 — Content Distribution</h2><p>Simulation-only content distribution &amp; marketing automation research. No real emails, social posts, CMS deployments, or drip campaigns are created. Real execution requires communications-secretariat orders and is never performed; all activity is audit-logged.</p></div><div class="task-input-box"><div class="tier2-fields"><div class="t2-field"><label>Scenario</label><select id="content-scenario"></select></div><div class="t2-field"><label>CMS platform</label><select id="content-cms-platform"></select></div><div class="t2-field"><label>Distribution channel</label><select id="content-distribution-channel"></select></div></div><label>Objective / Brief</label><textarea id="content-objective" rows="2" maxlength="2000"></textarea><label class="consent-check"><input type="checkbox" id="content-authorized"> I attest this is an authorized, lab-only detection exercise.</label><div id="content-legal-proxy" class="legal-proxy-box hidden"><input id="content-approver" placeholder="Approver identity"><input id="content-auth-ref" placeholder="Authorization reference"></div><div class="example-tasks"><div class="chips" id="content-example-chips"></div></div><div class="controls-bar"><span class="char-count" id="content-char-count"></span><div class="btns"><button class="btn btn-secondary hidden" id="content-btn-reset" onclick="resetContent()">↻ New Plan</button><button class="btn btn-danger hidden" id="content-btn-stop" onclick="stopContent()">⏹ Stop</button><button class="btn btn-primary" id="content-btn-run" onclick="runContent()" disabled>▶ Plan Content</button></div></div></div><div id="content-output-area"></div></div></div></section>
+    <section id="view-memory" class="hidden"><div class="pipeline-layout"><aside class="pipeline-sidebar"><div class="pipeline-agents"><div class="pa-title">Memory Crew</div><div id="memory-agent-list"></div></div><div id="memory-backend" class="framework-selector"></div><div class="session-box">Session: <span id="memory-session-display"></span></div><div class="compliance-box"><div class="cb-title">Compliance &amp; Audit</div><div class="cb-stats" id="memory-audit-stats"></div><button class="btn btn-secondary btn-sm" onclick="loadMemoryAuditLog()">View audit log</button><div id="memory-audit-log"></div></div></aside><div class="pipeline-main"><div class="dashboard-hero"><h2>TIER 4 — Memory &amp; Persistence</h2><p>Simulation-only memory and persistence research. No real PII or voter records are used; synthetic fixtures only. Real execution requires communications-secretariat orders and is never performed; all activity is audit-logged.</p></div><div class="task-input-box"><div class="tier2-fields"><div class="t2-field"><label>Scenario</label><select id="memory-scenario"></select></div><div class="t2-field"><label>Memory backend</label><select id="memory-store"></select></div><div class="t2-field"><label>Storage tier</label><select id="memory-tier"></select></div></div><label>Objective / Brief</label><textarea id="memory-objective" rows="2" maxlength="2000"></textarea><label class="consent-check"><input type="checkbox" id="memory-authorized"> I attest this is an authorized, lab-only detection exercise.</label><div id="memory-legal-proxy" class="legal-proxy-box hidden"><input id="memory-approver" placeholder="Approver identity"><input id="memory-auth-ref" placeholder="Authorization reference"></div><div class="example-tasks"><div class="chips" id="memory-example-chips"></div></div><div class="controls-bar"><span class="char-count" id="memory-char-count"></span><div class="btns"><button class="btn btn-secondary hidden" id="memory-btn-reset" onclick="resetMemory()">↻ New Plan</button><button class="btn btn-danger hidden" id="memory-btn-stop" onclick="stopMemory()">⏹ Stop</button><button class="btn btn-primary" id="memory-btn-run" onclick="runMemory()" disabled>▶ Plan Memory</button></div></div></div><div id="memory-output-area"></div></div></div></section>
 </main>
 
 <script src="/js/api.js"></script>
-<script src="/js/dashboard.js"></script>
-<script src="/js/lab.js"></script>
-<script src="/js/phishing.js"></script>
-<script src="/js/playground.js"></script>
-<script src="/js/uk_demo.js"></script>
-<script src="/js/legendary.js"></script>
 <script src="/js/app.js"></script>
 
 </body>

@@ -1,58 +1,91 @@
-"""SimFarm Security Lab — FastAPI Backend."""
+"""TIER 1 — Strategic Brain: Multi-Agent AI Orchestration Platform."""
 
 from __future__ import annotations
 
+import base64
 import os
-from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from backend import safety
 
-from backend.detection.engine import ANALYSIS_TOOLS
-from backend.detection.exercises import get_exercises, validate_flag
-from backend.phishing.game import (
-    GameState,
-    create_game_session,
-    get_company_directory,
-    get_game_status,
-    send_phishing_email,
-    submit_final_report,
+from backend.agents import ALL_AGENTS
+from backend.agents.workers import ALL_WORKERS
+from backend.agents.intelligence_crew import INTELLIGENCE_CREW, LANGUAGES, REGIONS
+from backend.agents.media_crew import (
+    AVATAR_TOOLS,
+    DURATIONS,
+    MEDIA_CREW,
+    TONES,
+    VIDEO_TOOLS,
+    VOICE_TOOLS,
 )
-from backend.simulator.beginner import generate_scenario as beginner_scenario
-from backend.simulator.easy import generate_scenario as easy_scenario
-from backend.simulator.legendary import generate_scenario as legendary_scenario
-from backend.simulator.models import Level
-from backend.simulator.playground import (
-    FarmConfig,
-    calculate_farm_metrics,
-    get_playground_options,
+from backend.agents.media_crew import LANGUAGES as MEDIA_LANGUAGES
+from backend.agents.video_stack import (
+    LIPSYNC_TOOLS,
+    STYLES,
+    SWAP_TOOLS,
+    VIDEO_STACK,
 )
-from backend.simulator.uk_demo import (
-    build_uk_farm,
-    calculate_uk_demo_metrics,
-    generate_simulation_events,
-    get_uk_demo_scenarios,
-    get_uk_playground_options,
+from backend.agents.video_stack import DURATIONS as VIDEO_DURATIONS
+from backend.agents.cyber_crew import (
+    CYBER_CREW,
+    DAST_TOOLS,
+    ENGAGEMENTS,
+    SCAN_TOOLS,
 )
-from backend.legendary.ttp_database import (
-    get_all_ttps,
-    get_categories,
-    get_ttp_by_id,
-    get_ttps_by_category,
+from backend.agents.persona_crew import (
+    PERSONA_CREW,
+    PLATFORMS,
+    REGIONS as PERSONA_REGIONS,
+    SCENARIOS as PERSONA_SCENARIOS,
 )
-from backend.legendary.detection_scenarios import (
-    check_answer,
-    get_all_scenarios,
-    get_scenario_detail,
+from backend.agents.infrastructure_crew import (
+    INFRASTRUCTURE_CREW, MODEM_TYPES, CARRIERS, SCENARIOS as INFRA_SCENARIOS,
 )
+from backend.agents.ivr_crew import IVR_CREW, SCENARIOS as IVR_SCENARIOS, HARDWARE_KITS, REACH_MODELS
+from backend.agents.proxy_crew import PROXY_CREW, SCENARIOS as PROXY_SCENARIOS, PROVIDERS, POOL_TYPES
+from backend.agents.stealth_crew import STEALTH_CREW, SCENARIOS as STEALTH_SCENARIOS, EVASION_TARGETS, BROWSER_ENGINES
+from backend.agents.content_crew import CONTENT_CREW, SCENARIOS as CONTENT_SCENARIOS, CMS_PLATFORMS, DISTRIBUTION_CHANNELS
+from backend.agents.memory_crew import (
+    MEMORY_CREW, SCENARIOS as MEMORY_SCENARIOS, MEMORY_BACKENDS, STORAGE_TIERS,
+)
+from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
+from backend.tools import registry
+from backend.pipeline import (
+    cyber_crew,
+    intelligence_crew,
+    ledger_scheduler,
+    legal_ledger,
+    media_crew,
+    persona_crew,
+    infrastructure_crew,
+    ivr_crew,
+    proxy_crew,
+    stealth_crew,
+    content_crew,
+    memory_crew,
+    video_stack,
+)
+from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
+from backend.pipeline.orchestrator import (
+    cancel_pipeline,
+    get_config,
+    is_llm_configured,
+    memory,
+    route_pipeline,
+)
+from backend.tools.analysis import get_all_tools, get_tools_for_agent
+
+compliance_recorder = ComplianceRecorder()
 
 app = FastAPI(
-    title="SimFarm Security Lab",
-    description="A cybersecurity training platform for SIM farm detection",
-    version="1.0.0",
+    title="TIER 1 — Strategic Brain",
+    description="Multi-agent AI orchestration for cybersecurity analysis",
+    version="2.0.0",
 )
 
 app.add_middleware(
@@ -62,419 +95,622 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# In-memory stores
-_scenarios: dict[str, dict] = {}
-_game_sessions: dict[str, GameState] = {}
+
+@app.on_event("startup")
+async def _start_ledger_scheduler() -> None:
+    safety.assert_safety_invariants()
+    ledger_scheduler.start()
 
 
-# ── Scenario endpoints ──────────────────────────────────────────────
+# ── Health ──────────────────────────────────────────────────────────
 
 
-@app.get("/api/levels")
-def list_levels():
+@app.get("/api/health")
+def health():
+    config = get_config()
     return {
-        "levels": [
-            {
-                "id": "beginner",
-                "name": "The Obvious Farm",
-                "difficulty": "Beginner",
-                "description": "Blatant SIM farm with obvious indicators. Great for learning the basics.",
-                "color": "#22c55e",
-                "icon": "🟢",
-            },
-            {
-                "id": "easy",
-                "name": "The Hidden Network",
-                "difficulty": "Easy",
-                "description": "Sophisticated farm using VPNs, IMEI rotation, and distributed towers.",
-                "color": "#f59e0b",
-                "icon": "🟡",
-            },
-            {
-                "id": "legendary",
-                "name": "The Ghost Farm",
-                "difficulty": "Legendary",
-                "description": "Statistically invisible per line. Only relationship (contact-graph) forensics surfaces a lead — and only HUMINT confirms it.",
-                "color": "#ef4444",
-                "icon": "🔴",
-            },
-        ]
+        "status": "ok",
+        "service": "tier1-strategic-brain",
+        "llm_configured": config["llm_configured"],
+        "stats": memory.get_stats(),
+        "backends": config["backends"],
+        "default_framework": config["default_framework"],
     }
 
 
-@app.post("/api/scenario/{level}")
-def generate_scenario(level: str):
-    """Generate (or retrieve cached) scenario data for a level."""
-    if level not in ("beginner", "easy", "legendary"):
-        raise HTTPException(status_code=400, detail="Invalid level")
+# ── Config ─────────────────────────────────────────────────────────
 
-    if level not in _scenarios:
-        generators = {
-            "beginner": beginner_scenario,
-            "easy": easy_scenario,
-            "legendary": legendary_scenario,
-        }
-        _scenarios[level] = generators[level]()
 
-    scenario = _scenarios[level]
-    # Return metadata without full data arrays (those are fetched separately)
+@app.get("/api/config")
+def config_endpoint():
+    return get_config()
+
+
+# ── Agent metadata ─────────────────────────────────────────────────
+
+
+@app.get("/api/agents")
+def list_agents():
     return {
-        "level": scenario["level"],
-        "name": scenario["name"],
-        "description": scenario["description"],
-        "briefing": scenario["briefing"],
-        "farm_sim_count": scenario["farm_sim_count"],
-        "legit_sim_count": scenario["legit_sim_count"],
-        "total_cdrs": scenario["total_cdrs"],
-        "cell_towers": scenario["cell_towers"],
-        "sim_count": len(scenario["sim_cards"]),
-        "cdr_count": len(scenario["cdrs"]),
+        "agents": [a.to_meta() for a in ALL_AGENTS],
+        "pipeline_order": [a.id for a in ALL_AGENTS],
     }
 
 
-@app.get("/api/scenario/{level}/sims")
-def get_sims(level: str, page: int = 1, per_page: int = 50):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-    sims = _scenarios[level]["sim_cards"]
-    start = (page - 1) * per_page
-    end = start + per_page
+@app.get("/api/agents/{agent_id}")
+def get_agent(agent_id: str):
+    for a in ALL_AGENTS:
+        if a.id == agent_id:
+            return {
+                **a.to_meta(),
+                "tools_detail": get_tools_for_agent(agent_id),
+            }
+    raise HTTPException(status_code=404, detail=f"Agent not found: {agent_id}")
+
+
+# ── Tools ──────────────────────────────────────────────────────────
+
+
+@app.get("/api/tools")
+def list_tools():
+    return {"tools": get_all_tools()}
+
+
+# ── Tool registry (executable, extensible per-tier) ────────────────
+
+
+@app.get("/api/registry")
+def registry_endpoint():
     return {
-        "sims": sims[start:end],
-        "total": len(sims),
-        "page": page,
-        "per_page": per_page,
+        "tools": [t.to_meta() for t in registry.all_tools()],
+        "workers": [w.to_meta() for w in ALL_WORKERS],
     }
 
 
-@app.get("/api/scenario/{level}/cdrs")
-def get_cdrs(level: str, page: int = 1, per_page: int = 100):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-    cdrs = _scenarios[level]["cdrs"]
-    start = (page - 1) * per_page
-    end = start + per_page
+# ── Pipeline execution ─────────────────────────────────────────────
+
+
+class PipelineRequest(BaseModel):
+    task: str = Field(..., min_length=1, max_length=4000)
+    session_id: str = Field(..., min_length=1)
+    framework: str = Field(default="", description="autogen | langgraph | direct")
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/pipeline/run")
+async def pipeline_run(req: PipelineRequest):
+    generator = route_pipeline(
+        req.task,
+        req.session_id,
+        framework=req.framework,
+        backend=req.backend,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 2 — Intelligence Crew ─────────────────────────────────────
+
+
+@app.get("/api/intelligence/config")
+def intelligence_config():
     return {
-        "cdrs": cdrs[start:end],
-        "total": len(cdrs),
-        "page": page,
-        "per_page": per_page,
+        "agents": [a.to_meta() for a in INTELLIGENCE_CREW],
+        "regions": REGIONS,
+        "languages": LANGUAGES,
+        "config": get_config(),
     }
 
 
-@app.get("/api/scenario/{level}/network-logs")
-def get_network_logs(level: str, page: int = 1, per_page: int = 100):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-    logs = _scenarios[level]["network_logs"]
-    start = (page - 1) * per_page
-    end = start + per_page
+class IntelligenceRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=4000)
+    region: str = Field(..., min_length=1)
+    language: str = Field(default="en")
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/intelligence/plan")
+async def intelligence_plan(req: IntelligenceRequest):
+    generator = intelligence_crew.route(
+        req.query,
+        req.region,
+        req.language,
+        req.session_id,
+        backend=req.backend,
+    )
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 2 — Media Crew (Duix-Avatar Pipeline) ─────────────────────
+
+
+@app.get("/api/media/config")
+def media_config():
     return {
-        "logs": logs[start:end],
-        "total": len(logs),
-        "page": page,
-        "per_page": per_page,
+        "agents": [a.to_meta() for a in MEDIA_CREW],
+        "tones": TONES,
+        "durations": DURATIONS,
+        "languages": MEDIA_LANGUAGES,
+        "voice_tools": VOICE_TOOLS,
+        "video_tools": VIDEO_TOOLS,
+        "avatar_tools": AVATAR_TOOLS,
+        "config": get_config(),
     }
 
 
-# ── Detection / Analysis endpoints ─────────────────────────────────
+class MediaRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=2000)
+    tone: str = Field(default="Professional")
+    language: str = Field(default="English")
+    language_code: str = Field(default="en")
+    duration: str = Field(default="60 seconds")
+    audience: str = Field(default="General public")
+    voice_tool: str = Field(default="chatterbox")
+    video_tool: str = Field(default="wan2")
+    avatar_tool: str = Field(default="duix")
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
 
 
-class AnalysisRequest(BaseModel):
-    tool: str
-    data_type: str = "sim_cards"  # sim_cards or cdrs
+@app.post("/api/media/produce")
+async def media_produce(req: MediaRequest):
+    inp = {
+        "topic": req.topic,
+        "tone": req.tone,
+        "language": req.language,
+        "language_code": req.language_code,
+        "duration": req.duration,
+        "audience": req.audience,
+        "voice_tool": req.voice_tool,
+        "video_tool": req.video_tool,
+        "avatar_tool": req.avatar_tool,
+    }
+    generator = media_crew.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
-@app.post("/api/analyze/{level}")
-def run_analysis(level: str, req: AnalysisRequest):
-    if level not in _scenarios:
-        raise HTTPException(status_code=404, detail="Generate scenario first")
-
-    tool_fn = ANALYSIS_TOOLS.get(req.tool)
-    if not tool_fn:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown tool: {req.tool}. Available: {list(ANALYSIS_TOOLS.keys())}",
-        )
-
-    scenario = _scenarios[level]
-    if req.tool in ("traffic_patterns", "temporal_patterns", "imei_changes", "contact_graph"):
-        data = scenario["cdrs"]
-    else:
-        data = scenario["sim_cards"]
-
-    result = tool_fn(data)
-    return {"tool": req.tool, "level": level, "result": result}
+# ── TIER 2 — Video Stack (face-swap / lip-sync) ────────────────────
 
 
-@app.get("/api/analysis-tools")
-def list_analysis_tools():
+@app.get("/api/video/config")
+def video_config():
     return {
-        "tools": [
-            {"id": "tower_distribution", "name": "Tower Distribution Analysis",
-             "description": "Count SIMs per cell tower to spot concentration anomalies.",
-             "data_type": "sim_cards"},
-            {"id": "imei_patterns", "name": "IMEI Pattern Analysis",
-             "description": "Analyze IMEI prefixes and device model distribution.",
-             "data_type": "sim_cards"},
-            {"id": "activation_dates", "name": "Activation Date Analysis",
-             "description": "Identify mass activation events and date clusters.",
-             "data_type": "sim_cards"},
-            {"id": "ip_distribution", "name": "IP Distribution Analysis",
-             "description": "Find shared IPs and VPN exit nodes.",
-             "data_type": "sim_cards"},
-            {"id": "traffic_patterns", "name": "Traffic Pattern Analysis",
-             "description": "Analyze SMS-to-voice ratios per subscriber.",
-             "data_type": "cdrs"},
-            {"id": "temporal_patterns", "name": "Temporal Pattern Analysis",
-             "description": "Detect regular/automated sending intervals.",
-             "data_type": "cdrs"},
-            {"id": "imei_changes", "name": "IMEI Change Tracking",
-             "description": "Track devices that swap IMEI numbers over time.",
-             "data_type": "cdrs"},
-            {"id": "contact_graph", "name": "Contact-Graph Analysis",
-             "description": "Relationship forensics: find lines with low contact "
-                            "reciprocity and clustering (star-shaped ego-networks). "
-                            "The key lead against the Legendary 'Ghost Farm'.",
-             "data_type": "cdrs"},
-        ]
+        "agents": [a.to_meta() for a in VIDEO_STACK],
+        "styles": STYLES,
+        "durations": VIDEO_DURATIONS,
+        "swap_tools": SWAP_TOOLS,
+        "lipsync_tools": LIPSYNC_TOOLS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
+        "config": get_config(),
     }
 
 
-# ── Exercise endpoints ──────────────────────────────────────────────
+class VideoRequest(BaseModel):
+    topic: str = Field(..., min_length=1, max_length=2000)
+    style: str = Field(default="Documentary")
+    duration: str = Field(default="60 seconds")
+    swap_tool: str = Field(default="deepfacelab")
+    lipsync_tool: str = Field(default="wav2lip")
+    consent: bool = Field(default=False, description="Lawful consent attested for any real likeness")
+    authorization_ref: str = Field(
+        default="", max_length=200,
+        description="Legal-proxy authorization reference (case no. / signed-release ID / court order)",
+    )
+    approver: str = Field(
+        default="", max_length=200,
+        description="Identity of the approving legal-proxy reviewer",
+    )
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
 
 
-@app.get("/api/exercises/{level}")
-def get_level_exercises(level: str):
+@app.post("/api/video/plan")
+async def video_plan(req: VideoRequest):
+    inp = {
+        "topic": req.topic,
+        "style": req.style,
+        "duration": req.duration,
+        "swap_tool": req.swap_tool,
+        "lipsync_tool": req.lipsync_tool,
+        "consent": req.consent,
+        "authorization_ref": req.authorization_ref,
+        "approver": req.approver,
+    }
+    generator = video_stack.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 2 — Cyber Crew (defensive security) ───────────────
+
+
+@app.get("/api/cyber/config")
+def cyber_config():
+    return {
+        "agents": [a.to_meta() for a in CYBER_CREW],
+        "engagements": ENGAGEMENTS,
+        "scan_tools": SCAN_TOOLS,
+        "dast_tools": DAST_TOOLS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
+        "config": get_config(),
+    }
+
+
+class CyberRequest(BaseModel):
+    target: str = Field(..., min_length=1, max_length=2000)
+    engagement: str = Field(default="External Network Pentest")
+    scan_tool: str = Field(default="nmap")
+    authorized: bool = Field(
+        default=False, description="Written scope authorization attested for this engagement"
+    )
+    authorization_ref: str = Field(
+        default="", max_length=200,
+        description="Legal-proxy authorization reference (case no. / signed-release ID / court order)",
+    )
+    approver: str = Field(
+        default="", max_length=200,
+        description="Identity of the approving legal-proxy reviewer",
+    )
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/cyber/plan")
+async def cyber_plan(req: CyberRequest):
+    inp = {
+        "target": req.target,
+        "engagement": req.engagement,
+        "scan_tool": req.scan_tool,
+        "authorized": req.authorized,
+        "authorization_ref": req.authorization_ref,
+        "approver": req.approver,
+    }
+    generator = cyber_crew.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 3 — Persona Orchestration (simulated) ─────────────
+
+
+@app.get("/api/persona/config")
+def persona_config():
+    return {
+        "agents": [a.to_meta() for a in PERSONA_CREW],
+        "scenarios": PERSONA_SCENARIOS,
+        "platforms": PLATFORMS,
+        "regions": PERSONA_REGIONS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
+        "config": get_config(),
+    }
+
+
+class PersonaRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = Field(default="Detection Research (blue-team)")
+    platform: str = Field(default="lab-dashboard")
+    region: str = Field(default="pk-urdu")
+    authorized: bool = Field(
+        default=False, description="Authorized research/training context attested (lab-only)"
+    )
+    authorization_ref: str = Field(
+        default="", max_length=200,
+        description="Legal-proxy authorization reference (case no. / signed authorization / order ID)",
+    )
+    approver: str = Field(
+        default="", max_length=200,
+        description="Identity of the approving legal-proxy reviewer",
+    )
+    session_id: str = Field(..., min_length=1)
+    backend: str = Field(default="", description="ollama | openai (auto-detect if empty)")
+
+
+@app.post("/api/persona/plan")
+async def persona_plan(req: PersonaRequest):
+    inp = {
+        "objective": req.objective,
+        "scenario": req.scenario,
+        "platform": req.platform,
+        "region": req.region,
+        "authorized": req.authorized,
+        "authorization_ref": req.authorization_ref,
+        "approver": req.approver,
+    }
+    generator = persona_crew.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# ── TIER 4 — Infrastructure (simulated) ────────────────────────────
+@app.get("/api/infrastructure/config")
+def infrastructure_config():
+    return {
+        "agents": [a.to_meta() for a in INFRASTRUCTURE_CREW],
+        "scenarios": INFRA_SCENARIOS,
+        "modem_types": MODEM_TYPES,
+        "carriers": CARRIERS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
+        "config": get_config(),
+    }
+
+
+class InfrastructureRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""
+    modem_type: str = ""
+    carrier: str = ""
+    authorized: bool = False
+    authorization_ref: str = ""
+    approver: str = ""
+    session_id: str = Field(..., min_length=1)
+    backend: str = ""
+
+
+@app.post("/api/infrastructure/plan")
+async def infrastructure_plan(req: InfrastructureRequest):
+    inp = req.model_dump()
+    generator = infrastructure_crew.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator, media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                 "X-Accel-Buffering": "no"},
+    )
+
+@app.get("/api/ivr/config")
+def ivr_config():
+    return {"agents":[a.to_meta() for a in IVR_CREW],"scenarios":IVR_SCENARIOS,
+            "hardware_kits":HARDWARE_KITS,"reach_models":REACH_MODELS,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class IvrRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; hardware_kit: str = ""; reach_model: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/ivr/plan")
+async def ivr_plan(req: IvrRequest):
+    generator=ivr_crew.route(req.model_dump(),req.session_id,backend=req.backend)
+    return StreamingResponse(generator,media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/proxy/config")
+def proxy_config():
+    return {"agents":[a.to_meta() for a in PROXY_CREW],"scenarios":PROXY_SCENARIOS,
+            "providers":PROVIDERS,"pool_types":POOL_TYPES,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class ProxyRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; provider: str = ""; pool_type: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/proxy/plan")
+async def proxy_plan(req: ProxyRequest):
+    generator=proxy_crew.route(req.model_dump(),req.session_id,backend=req.backend)
+    return StreamingResponse(generator,media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/stealth/config")
+def stealth_config():
+    return {"agents":[a.to_meta() for a in STEALTH_CREW],"scenarios":STEALTH_SCENARIOS,
+            "evasion_targets":EVASION_TARGETS,"browser_engines":BROWSER_ENGINES,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class StealthRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; evasion_target: str = ""; browser_engine: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/stealth/plan")
+async def stealth_plan(req: StealthRequest):
+    return StreamingResponse(stealth_crew.route(req.model_dump(),req.session_id,backend=req.backend),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/content/config")
+def content_config():
+    return {"agents":[a.to_meta() for a in CONTENT_CREW],"scenarios":CONTENT_SCENARIOS,
+            "cms_platforms":CMS_PLATFORMS,"distribution_channels":DISTRIBUTION_CHANNELS,
+            "legal_proxy_enabled":legal_proxy_enabled(),"config":get_config()}
+
+class ContentRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; cms_platform: str = ""; distribution_channel: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/content/plan")
+async def content_plan(req: ContentRequest):
+    return StreamingResponse(content_crew.route(req.model_dump(),req.session_id,backend=req.backend),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+@app.get("/api/memory/config")
+def memory_config():
+    return {"agents": [a.to_meta() for a in MEMORY_CREW], "scenarios": MEMORY_SCENARIOS,
+            "memory_backends": MEMORY_BACKENDS, "storage_tiers": STORAGE_TIERS,
+            "legal_proxy_enabled": legal_proxy_enabled(), "config": get_config()}
+
+class MemoryRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""; memory_backend: str = ""; storage_tier: str = ""
+    authorized: bool = False; authorization_ref: str = ""; approver: str = ""
+    session_id: str = Field(..., min_length=1); backend: str = ""
+
+@app.post("/api/memory/plan")
+async def memory_plan(req: MemoryRequest):
+    return StreamingResponse(memory_crew.route(req.model_dump(), req.session_id, backend=req.backend),
+                             media_type="text/event-stream",
+                             headers={"Cache-Control":"no-cache","Connection":"keep-alive","X-Accel-Buffering":"no"})
+
+
+# ── Compliance & audit ──────────────────────────────────────────────
+
+
+@app.get("/api/compliance/audit")
+def compliance_audit(session_id: str = "", limit: int = 100):
+    return {
+        "events": compliance_recorder.get_log(session_id or None, limit),
+        "stats": compliance_recorder.get_stats(),
+    }
+
+
+# ── Legal-authorization ledger ──────────────────────────────────────
+# The ledger supplies the authorization *references* a human legal-proxy approver
+# may cite. It never auto-clears a request. Every fetch is audit-logged; SSH
+# credentials are supplied at request time and never stored.
+
+
+@app.get("/api/compliance/ledger/status")
+def ledger_status():
+    if not legal_proxy_enabled():
+        raise HTTPException(status_code=403, detail="Legal-proxy role is not enabled")
+    return legal_ledger.status()
+
+
+class LedgerFetchRequest(BaseModel):
+    source: str = Field(..., description="https | ssh | upload")
+    session_id: str = Field(default="system", max_length=200)
+    approver: str = Field(default="", max_length=200)
+    # SSH-only, used transiently for a single fetch and never stored:
+    username: str = Field(default="", max_length=200)
+    password: str = Field(default="", max_length=400)
+    # upload-only:
+    csv: str = Field(default="", max_length=5_000_000)
+    signature_b64: str = Field(
+        default="", max_length=100_000,
+        description="Base64 detached signature of the CSV (required when a key is set)",
+    )
+
+
+@app.post("/api/compliance/ledger/fetch")
+def ledger_fetch(req: LedgerFetchRequest):
+    if not legal_proxy_enabled():
+        raise HTTPException(status_code=403, detail="Legal-proxy role is not enabled")
     try:
-        lvl = Level(level)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid level")
-    return {"exercises": get_exercises(lvl)}
+        if req.source == "https":
+            meta = legal_ledger.fetch_https()
+        elif req.source == "ssh":
+            meta = legal_ledger.fetch_ssh(req.username, req.password)
+        elif req.source == "upload":
+            sig = base64.b64decode(req.signature_b64) if req.signature_b64 else None
+            meta = legal_ledger.load_from_upload(req.csv.encode("utf-8"), sig)
+        else:
+            raise HTTPException(status_code=400, detail=f"unknown source '{req.source}'")
+    except HTTPException:
+        raise
+    except Exception as exc:  # log the failed fetch, then surface a safe message
+        compliance_recorder.record(
+            req.session_id, "ledger.fetch",
+            f"[ledger] fetch via {req.source} FAILED",
+            {"source": req.source},  # note: no credentials are ever recorded
+            consent_attested=True,
+        )
+        raise HTTPException(status_code=502, detail=f"ledger fetch failed: {exc}") from exc
 
-
-class FlagSubmission(BaseModel):
-    exercise_id: str
-    flag: str
-
-
-@app.post("/api/exercises/submit")
-def submit_exercise_flag(submission: FlagSubmission):
-    result = validate_flag(submission.exercise_id, submission.flag)
-    return result
-
-
-# ── Phishing Game endpoints (Legendary) ────────────────────────────
-
-
-@app.post("/api/phishing/new-game")
-def new_phishing_game():
-    state = create_game_session()
-    _game_sessions[state.session_id] = state
-    return {
-        "session_id": state.session_id,
-        "max_attempts": state.max_attempts,
-        "company_directory": get_company_directory(),
-    }
-
-
-@app.get("/api/phishing/directory")
-def phishing_directory():
-    return {"directory": get_company_directory()}
-
-
-class PhishingEmail(BaseModel):
-    session_id: str
-    target_email: str
-    subject: str
-    body: str
-    sender_alias: str = "Anonymous Researcher"
-    pretext: str = ""
-
-
-@app.post("/api/phishing/send")
-def send_phish(email: PhishingEmail):
-    state = _game_sessions.get(email.session_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Game session not found")
-
-    result = send_phishing_email(
-        state=state,
-        target_email=email.target_email,
-        subject=email.subject,
-        body=email.body,
-        sender_alias=email.sender_alias,
-        pretext=email.pretext,
+    compliance_recorder.record(
+        req.session_id, "ledger.fetch",
+        f"[ledger] fetched {meta['count']} authorizations via {meta['source']}"
+        + (f" by {req.approver}" if req.approver else ""),
+        {"source": meta["source"], "count": meta["count"], "sha256": meta["sha256"][:16]},
+        consent_attested=True,
     )
-    result["game_status"] = get_game_status(state)
-    return result
+    return {"ok": True, "status": legal_ledger.status()}
 
 
-@app.get("/api/phishing/status/{session_id}")
-def phishing_status(session_id: str):
-    state = _game_sessions.get(session_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Game session not found")
-    return get_game_status(state)
+class CancelRequest(BaseModel):
+    run_id: str
 
 
-class ReportSubmission(BaseModel):
-    session_id: str
-    report_text: str
+@app.post("/api/pipeline/cancel")
+def pipeline_cancel(req: CancelRequest):
+    success = cancel_pipeline(req.run_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Pipeline run not found or already completed")
+    return {"cancelled": True, "run_id": req.run_id}
 
 
-@app.post("/api/phishing/submit-report")
-def submit_report(submission: ReportSubmission):
-    state = _game_sessions.get(submission.session_id)
-    if not state:
-        raise HTTPException(status_code=404, detail="Game session not found")
-    return submit_final_report(state, submission.report_text)
+# ── History ────────────────────────────────────────────────────────
 
 
-# ── Playground endpoints (Attack Mode) ─────────────────────────────
+@app.get("/api/history/{session_id}")
+def get_history(session_id: str):
+    runs = memory.get_runs(session_id)
+    return {"session_id": session_id, "runs": runs}
 
 
-@app.get("/api/playground/options")
-def playground_options():
-    """Return all available configuration options for the playground."""
-    return get_playground_options()
+@app.get("/api/runs/{run_id}")
+def get_run(run_id: str):
+    run = memory.get_run(run_id)
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+    return run
 
 
-class PlaygroundBuildRequest(BaseModel):
-    name: str = "My Farm"
-    city: str = "karachi"
-    carriers: list[str] = ["jazz"]
-    acquisition_method: str = "legitimate_cnic"
-    num_cnics: int = 1
-    hardware: list[dict] = []
-    automation_tool: str = "gammu"
-    opsec_measures: list[str] = []
-    target_sims: int = 10
-    purpose: str = "otp_harvesting"
-    monthly_budget_pkr: int = 50000
+# ── Scenarios / Exercises ──────────────────────────────────────────
 
 
-@app.post("/api/playground/build")
-def build_farm(req: PlaygroundBuildRequest):
-    """Calculate metrics for a SIM farm configuration."""
-    config = FarmConfig(
-        name=req.name,
-        city=req.city,
-        carriers=req.carriers,
-        acquisition_method=req.acquisition_method,
-        num_cnics=req.num_cnics,
-        hardware=req.hardware,
-        automation_tool=req.automation_tool,
-        opsec_measures=req.opsec_measures,
-        target_sims=req.target_sims,
-        purpose=req.purpose,
-        monthly_budget_pkr=req.monthly_budget_pkr,
-    )
-    return calculate_farm_metrics(config)
-
-
-# ── UK Demo endpoints (/uk-demo slug) ──────────────────────────────
-
-
-@app.get("/api/uk-demo/scenarios")
-def uk_demo_scenarios():
-    """Return available UK demo scenarios and UK telecom context."""
-    return get_uk_demo_scenarios()
-
-
-@app.get("/api/uk-demo/run/{scenario_id}")
-def uk_demo_run(scenario_id: str):
-    """Calculate full metrics for a UK demo scenario."""
-    result = calculate_uk_demo_metrics(scenario_id)
-    if "error" in result:
-        raise HTTPException(status_code=404, detail=result["error"])
-    return result
-
-
-@app.get("/api/uk-demo/options")
-def uk_demo_options():
-    """Return UK playground configuration options (carriers, cities, hardware, etc.)."""
-    return get_uk_playground_options()
-
-
-class UkBuildRequest(BaseModel):
-    name: str = "UK Operation"
-    city: str = "london"
-    carriers: list[str] = ["giffgaff"]
-    acquisition_method: str = "payg_walk_in"
-    hardware: list[dict] = []
-    automation_tool: str = "selenium_browser"
-    opsec_measures: list[str] = []
-    platforms: list[str] = ["x_twitter", "facebook"]
-    target_sims: int = 50
-
-
-@app.post("/api/uk-demo/build")
-def uk_build_farm(req: UkBuildRequest):
-    """Calculate metrics for a custom UK SIM farm configuration."""
-    return build_uk_farm(req.model_dump())
-
-
-@app.get("/api/uk-demo/simulate/{scenario_id}")
-def uk_simulate(scenario_id: str):
-    """Generate 200 simulation events for the live dashboard."""
-    events = generate_simulation_events(scenario_id)
-    if not events:
-        raise HTTPException(status_code=404, detail=f"Unknown scenario: {scenario_id}")
-    return {"events": events, "total": len(events)}
-
-
-# ── Legendary Detection Module endpoints ───────────────────────────
-
-
-@app.get("/api/legendary/ttps")
-def legendary_ttp_list(category: Optional[str] = None):
-    """List all TTPs, optionally filtered by category."""
-    if category:
-        return {"ttps": get_ttps_by_category(category)}
-    return {"ttps": get_all_ttps()}
-
-
-@app.get("/api/legendary/ttps/categories")
-def legendary_ttp_categories():
-    """List all TTP categories with counts."""
-    return {"categories": get_categories()}
-
-
-@app.get("/api/legendary/ttps/{ttp_id}")
-def legendary_ttp_detail(ttp_id: str):
-    """Get a single TTP entry by ID."""
-    ttp = get_ttp_by_id(ttp_id)
-    if not ttp:
-        raise HTTPException(status_code=404, detail=f"TTP not found: {ttp_id}")
-    return ttp
-
-
-@app.get("/api/legendary/scenarios")
-def legendary_scenario_list():
-    """List all detection scenarios."""
+@app.get("/api/scenarios")
+def list_scenarios(difficulty: str | None = None):
+    if difficulty:
+        return {"scenarios": get_scenarios_by_difficulty(difficulty)}
     return {"scenarios": get_all_scenarios()}
 
 
-@app.get("/api/legendary/scenarios/{scenario_id}")
-def legendary_scenario_detail(scenario_id: str):
-    """Get full scenario with evidence and questions."""
-    scenario = get_scenario_detail(scenario_id)
-    if not scenario:
+@app.get("/api/scenarios/{scenario_id}")
+def scenario_detail(scenario_id: str):
+    s = get_scenario(scenario_id)
+    if not s:
         raise HTTPException(status_code=404, detail=f"Scenario not found: {scenario_id}")
-    return scenario
-
-
-class LegendaryAnswerSubmission(BaseModel):
-    scenario_id: str
-    question_id: str
-    answer: str
-
-
-@app.post("/api/legendary/scenarios/check")
-def legendary_check_answer(submission: LegendaryAnswerSubmission):
-    """Check a student's answer for a scenario question."""
-    return check_answer(submission.scenario_id, submission.question_id, submission.answer)
+    return s
 
 
 # ── Static files (frontend) ────────────────────────────────────────

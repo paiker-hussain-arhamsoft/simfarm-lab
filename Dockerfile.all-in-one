@@ -1,0 +1,53 @@
+# SimFarm Lab — All-in-One standalone image
+# Single container running FastAPI backend, Ollama (CPU), and the Tier 4
+# simulator. No Compose required after the image exists.
+#
+# Build:
+#   docker build -f Dockerfile.all-in-one -t simfarm-lab .
+#
+# Run (first start may pull the Ollama model; persist it with a volume):
+#   docker run -d -p 8000:8000 -v simfarm-ollama:/root/.ollama --name simfarm simfarm-lab
+#
+FROM ollama/ollama:0.6.7 AS ollama-bin
+
+FROM python:3.11-slim
+
+# Minimal runtime deps + supervisor for multi-process management
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        curl ca-certificates supervisor && \
+    rm -rf /var/lib/apt/lists/*
+
+# Copy Ollama binary and its runtime libraries from the official Ollama image
+COPY --from=ollama-bin /bin/ollama /usr/local/bin/ollama
+COPY --from=ollama-bin /usr/lib/ollama /usr/lib/ollama
+ENV LD_LIBRARY_PATH=/usr/lib/ollama
+
+WORKDIR /app
+
+# Install Python dependencies first for layer caching
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy the entire application
+COPY . .
+
+# Make the entrypoint executable and place the supervisor config
+RUN chmod +x /app/start-all-in-one.sh && \
+    mkdir -p /etc/supervisor/conf.d && \
+    cp /app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Runtime environment: all services live inside this container.
+# OPENAI_API_KEY and any tokens should be passed at runtime with -e, not baked in.
+ENV PYTHONUNBUFFERED=1 \
+    OLLAMA_HOST=http://127.0.0.1:11434 \
+    OLLAMA_MODEL=qwen2.5:1.5b \
+    SIMFARM_SIM_URL=http://127.0.0.1:9000 \
+    DEFAULT_FRAMEWORK=supervisor \
+    ALLOW_ONLINE_TOOLS= \
+    LEGAL_PROXY_ENABLED= \
+    OPENAI_BASE_URL=https://api.openai.com/v1 \
+    OPENAI_MODEL=gpt-4o-mini
+
+EXPOSE 8000
+
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]

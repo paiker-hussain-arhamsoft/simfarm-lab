@@ -1,16 +1,80 @@
-version: "3.8"
-
 services:
-  simfarm-lab:
+  tier4-simfarm-simulator:
     build: .
-    container_name: simfarm-lab
+    container_name: tier4-simfarm-simulator
+    command: uvicorn backend.simfarm_service.app:app --host 0.0.0.0 --port 9000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  ollama:
+    image: ollama/ollama:0.6.7
+    container_name: tier1-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
+  strategic-brain:
+    build: .
+    container_name: tier1-strategic-brain
     ports:
       - "8000:8000"
     environment:
       - PYTHONUNBUFFERED=1
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+      - OLLAMA_HOST=http://ollama:11434
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
+      - DEFAULT_FRAMEWORK=${DEFAULT_FRAMEWORK:-supervisor}
+      - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
+      # Privileged legal-proxy override role (default OFF). Even when enabled,
+      # a flagged request is only cleared with a real authorization ref + approver.
+      - LEGAL_PROXY_ENABLED=${LEGAL_PROXY_ENABLED:-}
+      # Legal-authorization ledger sync (all optional; nothing hard-coded).
+      # Provide LEGAL_LEDGER_TOKEN via a secret/.env file — never commit it.
+      - LEGAL_LEDGER_URL=${LEGAL_LEDGER_URL:-}
+      - LEGAL_LEDGER_TOKEN=${LEGAL_LEDGER_TOKEN:-}
+      - LEGAL_LEDGER_VERIFY_TLS=${LEGAL_LEDGER_VERIFY_TLS:-true}
+      # SSH fallback (manual only). Host key MUST be pinned or the fetch is refused.
+      - LEGAL_LEDGER_SSH_HOST=${LEGAL_LEDGER_SSH_HOST:-}
+      - LEGAL_LEDGER_SSH_PORT=${LEGAL_LEDGER_SSH_PORT:-22}
+      - LEGAL_LEDGER_SSH_PATH=${LEGAL_LEDGER_SSH_PATH:-}
+      - LEGAL_LEDGER_SSH_HOSTKEY=${LEGAL_LEDGER_SSH_HOSTKEY:-}
+      # Official PUBLIC key (or cert) for detached-signature verification of the
+      # ledger. When set, every ledger MUST carry a valid .sig or it is rejected.
+      # Provide the PUBLIC key only — never the private key.
+      - LEGAL_LEDGER_PUBLIC_KEY=${LEGAL_LEDGER_PUBLIC_KEY:-}
+      - LEGAL_LEDGER_PUBLIC_KEY_PATH=${LEGAL_LEDGER_PUBLIC_KEY_PATH:-}
+      # Optional per-role model overrides (default: OLLAMA_MODEL for all roles)
+      - OLLAMA_MODEL_SUPERVISOR=${OLLAMA_MODEL_SUPERVISOR:-}
+      - OLLAMA_MODEL_DIRECTOR=${OLLAMA_MODEL_DIRECTOR:-}
+      - OLLAMA_MODEL_WORKER=${OLLAMA_MODEL_WORKER:-}
+      - SIMFARM_SIM_URL=${SIMFARM_SIM_URL:-http://tier4-simfarm-simulator:9000}
+    depends_on:
+      ollama:
+        condition: service_healthy
+      tier4-simfarm-simulator:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/levels"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
       timeout: 5s
       retries: 3
+    volumes:
+      - brain-data:/app/data
+
+volumes:
+  brain-data:
+  ollama-data:
