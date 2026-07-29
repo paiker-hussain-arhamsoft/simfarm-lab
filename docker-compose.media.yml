@@ -1,18 +1,19 @@
 # Optional media-stack extension for simfarm-lab.
 #
 # Duix-Avatar, Wan2.1, Coqui, Chatterbox, InsightFace, DeepFaceLab, FaceSwap,
-# and Deep-Live-Cam have heavy or conflicting Python dependencies, so the
-# GPU-heavy engines run as separate containers orchestrated alongside the
-# main app.
+# Deep-Live-Cam, Wav2Lip, and SadTalker have heavy or conflicting Python
+# dependencies, so the GPU-heavy engines run as separate containers orchestrated
+# alongside the main app.
 #
 # Start everything in one command:
 #   docker compose -f docker-compose.yml -f docker-compose.media.yml up -d
 #
 # Notes:
-# - Duix, DeepFaceLab, FaceSwap, and Deep-Live-Cam require an NVIDIA GPU and
-#   the NVIDIA Container Toolkit (or a CPU fallback where the image supports it).
-# - Duix images are ~70 GB; DeepFaceLab, FaceSwap, and Deep-Live-Cam images are
-#   also large.
+# - Duix, DeepFaceLab, FaceSwap, Deep-Live-Cam, and SadTalker benefit from an
+#   NVIDIA GPU and the NVIDIA Container Toolkit. CPU fallbacks are configured
+#   where the image supports them.
+# - Duix images are ~70 GB; DeepFaceLab, FaceSwap, Deep-Live-Cam, and SadTalker
+#   images are also large.
 # - InsightFace is pip-installable and runs in the strategic-brain container
 #   (build with --build-arg FACE_STACK=insightface or set FACE_STACK=insightface).
 # - DeepFaceLab and FaceSwap need a trained workspace before they can one-shot
@@ -20,6 +21,12 @@
 #   matching *_COMMAND env var.
 # - Deep-Live-Cam is one-shot: its container is prebuilt with the required
 #   models and the main app execs it through DEEP_LIVE_CAM_COMMAND by default.
+# - Wav2Lip is one-shot: its container is prebuilt with the required models
+#   and the main app execs it through WAV2LIP_COMMAND by default.
+# - SadTalker is a talking-head generator (source image + audio -> video). It
+#   runs in a separate container and is called through SADTALKER_COMMAND. The
+#   default command uses CPU inference; remove --cpu and add an NVIDIA runtime
+#   for GPU inference.
 
 services:
   duix-avatar-tts:
@@ -123,8 +130,39 @@ services:
     shm_size: 8g
     command: tail -f /dev/null
 
+  wav2lip:
+    image: jwduck/wav2lip:latest
+    container_name: wav2lip
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - brain-data:/data
+      - brain-data:/app/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    command: tail -f /dev/null
+
+  sadtalker:
+    build:
+      context: ./services/sadtalker
+    image: simfarm-lab/sadtalker:latest
+    container_name: sadtalker
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - brain-data:/data
+      - brain-data:/app/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    command: tail -f /dev/null
+
   strategic-brain:
     build:
+      context: .
       args:
         FACE_STACK: ${FACE_STACK:-}
     environment:
@@ -134,6 +172,11 @@ services:
       # Default one-shot Deep-Live-Cam command. The strategic-brain container
       # mounts the host Docker socket so it can exec sibling media containers.
       - DEEP_LIVE_CAM_COMMAND=docker exec deep-live-cam python3 /app/run.py -s {source} -t {target} -o {output} --execution-provider cpu --frame-processor face_swapper
+      # Default one-shot Wav2Lip command. The container is prebuilt with models.
+      - WAV2LIP_COMMAND=docker exec wav2lip python /workspace/wav2lip/inference.py --checkpoint_path /workspace/wav2lip/checkpoints/wav2lip_gan.pth --face {video} --audio {audio} --outfile {output}
+      # Default SadTalker talking-head command. Runs on CPU by default; remove
+      # --cpu and add an NVIDIA runtime to the sadtalker service for GPU.
+      - SADTALKER_COMMAND=docker exec sadtalker /app/SadTalker/run_sadtalker.sh --driven_audio {audio} --source_image {video} --output {output}
     volumes:
       - brain-data:/code/data
       - brain-data:/data
