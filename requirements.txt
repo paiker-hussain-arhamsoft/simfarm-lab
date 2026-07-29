@@ -10,6 +10,10 @@ langchain-ollama==1.1.0
 langchain-openai==1.3.3
 # LLM
 ollama==0.6.2
+
+# Local vector indexing / RAG (offline-first, uses Ollama embeddings)
+llama-index-core>=0.12.0,<0.15.0
+llama-index-embeddings-ollama>=0.4.0,<0.10.0
 # Secure SSH fallback for the legal-authorization ledger (host-key verified)
 paramiko==3.5.0
 # Detached-signature verification of the official ledger (public key only)

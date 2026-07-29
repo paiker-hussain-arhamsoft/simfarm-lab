@@ -23,7 +23,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | Ollama (client + server binary) | **Yes** (binary copied from official image) | Yes | Default LLM backend; model is downloaded into a volume on first run. |
 | OpenAI SDK / API | **Yes** (`openai` + `langchain-openai`) | No | Used only when `OPENAI_API_KEY` is supplied (online). |
 | FastAPI / Uvicorn | **Yes** | Yes | Web backend. |
-| LlamaIndex | **No** | Yes | `index_dataset` is a stub; no `llama-index` package installed. |
+| LlamaIndex (`llama-index-core` + `llama-index-embeddings-ollama` 0.9.0) | **Yes** | Yes | `index_dataset` now uses a real `VectorStoreIndex` with Ollama embeddings. |
 | Chatterbox / Coqui / Bark | **No** | Yes | `clone_voice` / `voice_dialect_map` are stubs; no TTS packages installed. |
 | ElevenLabs SDK | **No** | No | Mentioned only as an optional online provider; no package installed. |
 | HeyGen API | **No** | No | Optional online provider only. |
@@ -46,7 +46,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 ### TIER 1 · Analysis (4)
 | Tool ID | Name | Provider represented | Offline / Online | Notes |
 |---|---|---|---|---|
-| `index_dataset` | Dataset Indexer | LlamaIndex | offline-only | Stub returns fake top matches from a `crm`/`cdr` dataset. |
+| `index_dataset` | Dataset Indexer | LlamaIndex | offline-only | **Live integration** — builds a local `VectorStoreIndex` over a synthetic sample and retrieves with Ollama embeddings. Falls back to deterministic matches if LlamaIndex is unavailable. |
 | `narrative_saturation_score` | Narrative Saturation Scorer | sentiment-engine | offline-only | Stub sentiment distribution for a target/region. |
 | `behavior_forecast` | Voter Behavior Forecaster | LightGBM | offline-only | Synthetic turnout/segment scores. |
 | `dialect_analysis` | Dialect & Culture Analyzer | Meta-Llama-3.1-8B | offline-only | Linguistic/cultural signal modeling for Shahmukhi/Saraiki. |

@@ -85,16 +85,93 @@ async def call_tool(tool_id: str, **kwargs: Any) -> dict:
 # swap these out per-tier without touching orchestrators.
 
 
-async def _index_dataset(source: str = "crm", query: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "requires_internet": False,
-        "provider": "LlamaIndex",
-        "source": source,
-        "records_indexed": 12483,
-        "top_matches": [f"record::{source}::{i}" for i in range(3)],
-        "note": "Stub — wire to LlamaIndex/vector store in the intelligence tier.",
-    }
+async def _index_dataset(source: str = "crm", query: str = "", **kwargs: Any) -> dict:
+    """Index and retrieve synthetic records using a real LlamaIndex vector store.
+
+    Uses a local Ollama embedding model, so it works offline once the Ollama
+    model is present. Falls back to a deterministic stub if LlamaIndex is not
+    installed or Ollama is unreachable.
+    """
+    try:
+        import asyncio
+        from llama_index.core import Document, VectorStoreIndex
+        from llama_index.embeddings.ollama import OllamaEmbedding
+        from backend.pipeline.llm_config import get_ollama_host, get_ollama_model
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "LlamaIndex",
+            "source": source,
+            "records_indexed": 12483,
+            "top_matches": [f"record::{source}::{i}" for i in range(3)],
+            "note": f"LlamaIndex fallback — {type(exc).__name__}: {exc}",
+        }
+
+    host = get_ollama_host()
+    model = get_ollama_model()
+    limit = max(1, int(kwargs.get("limit", 3)))
+    window = max(limit * 3, 10)
+
+    # Build a small synthetic document set for the requested source
+    docs = []
+    for i in range(window):
+        text = (
+            f"{source.upper()} record {i}. "
+            f"Synthetic record from the {source} dataset. "
+            f"Relevant to query: {query or 'general indexing'}."
+        )
+        docs.append(Document(text=text, metadata={"source": source, "record_id": i}))
+
+    def _build() -> VectorStoreIndex:
+        # Ollama embedding works offline; run the sync LlamaIndex call in a thread
+        embed_model = OllamaEmbedding(
+            model_name=model,
+            base_url=host,
+            embed_batch_size=10,
+            request_timeout=120.0,
+        )
+        return VectorStoreIndex.from_documents(docs, embed_model=embed_model)
+
+    try:
+        index = await asyncio.to_thread(_build)
+        retriever = index.as_retriever(similarity_top_k=limit)
+        if query:
+            nodes = await asyncio.to_thread(retriever.retrieve, query)
+        else:
+            # No query: return the first few indexed documents
+            stored = list(index.docstore.docs.values())
+            nodes = stored[:limit]
+            if limit > len(nodes):
+                nodes = nodes + stored[: limit - len(nodes)]
+
+        top_matches = [
+            f"record::{source}::{n.metadata.get('record_id', n.id_)}"
+            for n in nodes
+        ]
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "LlamaIndex",
+            "engine": "VectorStoreIndex",
+            "embedding_model": model,
+            "embedding_base": host,
+            "source": source,
+            "query": query,
+            "records_indexed": len(docs),
+            "top_matches": top_matches,
+            "note": "Indexed with LlamaIndex using a local Ollama embedding model.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "LlamaIndex",
+            "source": source,
+            "records_indexed": 0,
+            "top_matches": [],
+            "note": f"LlamaIndex integration error ({type(exc).__name__}); no matches returned.",
+        }
 
 
 async def _narrative_saturation_score(target: str = "", region: str = "PK", **_: Any) -> dict:
@@ -637,6 +714,7 @@ def _register_defaults() -> None:
         description="Index and query dataset records (CRM, CDR, profiles).",
         category="analysis", provider="LlamaIndex", run=_index_dataset,
         parameters={"source": "dataset name", "query": "search query"},
+        status="live",
     ))
     register(ToolSpec(
         id="narrative_saturation_score", name="Narrative Saturation Scorer",

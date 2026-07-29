@@ -123,7 +123,7 @@ Returns an SSE stream with events: `pipeline_start`, `agent_start`, `token`, `ag
 
 ## Tech Stack
 
-- **Backend**: Python 3.11, FastAPI, Pydantic, OpenAI SDK, SQLite
+- **Backend**: Python 3.11, FastAPI, Pydantic, OpenAI SDK, SQLite, LlamaIndex (local Ollama embeddings)
 - **Frontend**: Vanilla HTML/CSS/JS (no frameworks)
 - **Deployment**: Docker Compose or all-in-one container, port 8000
 
