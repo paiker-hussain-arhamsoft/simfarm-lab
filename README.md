@@ -4,6 +4,9 @@ A Docker-based multi-agent AI orchestration platform for cybersecurity analysis.
 
 Part of the **OEADS** (Orchestrated Educational AI Deployment System).
 
+See [`backend/SAFETY.md`](backend/SAFETY.md) for the hardcoded simulation
+safety invariants and runtime enforcement rules.
+
 ---
 
 ## Quick Start

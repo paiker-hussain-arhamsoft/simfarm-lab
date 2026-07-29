@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from backend import safety
 
 from backend.agents import ALL_AGENTS
 from backend.agents.workers import ALL_WORKERS
@@ -97,6 +98,7 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def _start_ledger_scheduler() -> None:
+    safety.assert_safety_invariants()
     ledger_scheduler.start()
 
 

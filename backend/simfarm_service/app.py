@@ -4,10 +4,16 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import FastAPI
+from backend import safety
 
 app = FastAPI(title="TIER 4 SIM Farm Simulator")
 _NOTE = ("SIMULATED lab model only. Real execution would require specific orders "
          "from the communications secretariat and is NOT performed here.")
+
+
+@app.on_event("startup")
+async def _assert_safety_invariants() -> None:
+    safety.assert_safety_invariants()
 
 
 def _result(kind: str, **data: Any) -> dict:

@@ -19,6 +19,7 @@ import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
+from backend import safety
 from backend.tools import simfarm_sim
 
 
@@ -75,7 +76,8 @@ async def call_tool(tool_id: str, **kwargs: Any) -> dict:
     spec = _REGISTRY.get(tool_id)
     if spec is None:
         raise ToolError(f"Unknown tool: {tool_id}")
-    return await spec.run(**kwargs)
+    result = await spec.run(**kwargs)
+    return safety.enforce_result(tool_id, result)
 
 
 # ── Stub implementations ────────────────────────────────────────────
@@ -188,9 +190,9 @@ _MEMORY_NOTE = ("Simulated only; synthetic fixtures are used and no real PII or 
                 "records are stored. Real memory/data-lake execution requires authorization "
                 "and is not performed.")
 async def _stealth_stub(provider, payload, **_):
-    return {"simulated": True, "requires_internet": False, "provider": provider, "modeled": payload, "note": _STEALTH_NOTE}
+    return {"simulated": safety.SIMULATED, "requires_internet": safety.REQUIRES_INTERNET, "provider": provider, "modeled": payload, "note": _STEALTH_NOTE}
 async def _content_stub(provider, payload, **_):
-    return {"simulated": True, "requires_internet": False, "provider": provider, "modeled": payload, "note": _CONTENT_NOTE}
+    return {"simulated": safety.SIMULATED, "requires_internet": safety.REQUIRES_INTERNET, "provider": provider, "modeled": payload, "note": _CONTENT_NOTE}
 async def _stealth_patch_model(**kw): return await _stealth_stub("playwright-extra", {"patches":["navigator","WebGL","canvas","audio","WebRTC","timezone","language","plugins","chrome-app","iframe","permissions"],"signals":["automation flags","fingerprint inconsistency"]}, **kw)
 async def _canvas_spoof_model(**kw): return await _stealth_stub("canvas-spoof (modeled)", {"noise":"bounded fixture","consistency_checks":["render hash","font metrics"]}, **kw)
 async def _webrtc_spoof_model(**kw): return await _stealth_stub("WebRTC-spoof (modeled)", {"leak_prevention":"fixture only","signals":["candidate exposure","ASN mismatch"]}, **kw)
@@ -212,7 +214,7 @@ async def _cross_platform_model(**kw): return await _content_stub("cross-platfor
 async def _content_calendar_model(**kw): return await _content_stub("calendar (modeled)", {"weeks":4,"channels":["email","social","blog","webhook"]}, **kw)
 async def _content_cost_model(**kw): return await _content_stub("cost-model (modeled)", {"monthly":{"hosting":"modeled","email":"modeled","social":"modeled","cdn":"modeled"}}, **kw)
 async def _memory_stub(provider, payload, **_):
-    return {"simulated": True, "requires_internet": False, "provider": provider,
+    return {"simulated": safety.SIMULATED, "requires_internet": safety.REQUIRES_INTERNET, "provider": provider,
             "modeled": payload, "note": _MEMORY_NOTE}
 async def _mem0_fact_extraction_model(**kw): return await _memory_stub("Mem0", {"stages":["synthetic input","fact extraction","deduplication","confidence review"],"real_records":False}, **kw)
 async def _persona_memory_isolation_model(**kw): return await _memory_stub("persona-isolation (modeled)", {"boundaries":["tenant","persona","session"],"cross_persona_access":False}, **kw)
