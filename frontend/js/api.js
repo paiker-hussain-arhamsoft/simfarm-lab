@@ -239,6 +239,29 @@ const API = {
         return res.body.getReader();
     },
 
+    async getInfrastructureConfig() {
+        const res = await fetch('/api/infrastructure/config');
+        return res.json();
+    },
+
+    async runInfrastructurePlan(opts, signal) {
+        const res = await fetch('/api/infrastructure/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                objective: opts.objective, scenario: opts.scenario,
+                modem_type: opts.modemType, carrier: opts.carrier,
+                authorized: !!opts.authorized,
+                authorization_ref: opts.authorizationRef || '',
+                approver: opts.approver || '', session_id: opts.sessionId,
+                backend: opts.backend || '',
+            }),
+            signal,
+        });
+        if (!res.ok || !res.body) throw new Error(`API error: ${res.status}`);
+        return res.body.getReader();
+    },
+
     async getComplianceAudit(sessionId) {
         const q = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : '';
         const res = await fetch(`/api/compliance/audit${q}`);

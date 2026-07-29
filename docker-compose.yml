@@ -1,4 +1,15 @@
 services:
+  tier4-simfarm-simulator:
+    build: .
+    container_name: tier4-simfarm-simulator
+    command: uvicorn backend.simfarm_service.app:app --host 0.0.0.0 --port 9000
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   ollama:
     image: ollama/ollama:0.6.7
     container_name: tier1-ollama
@@ -49,9 +60,12 @@ services:
       - OLLAMA_MODEL_SUPERVISOR=${OLLAMA_MODEL_SUPERVISOR:-}
       - OLLAMA_MODEL_DIRECTOR=${OLLAMA_MODEL_DIRECTOR:-}
       - OLLAMA_MODEL_WORKER=${OLLAMA_MODEL_WORKER:-}
+      - SIMFARM_SIM_URL=${SIMFARM_SIM_URL:-http://tier4-simfarm-simulator:9000}
     depends_on:
       ollama:
         condition: service_healthy
+      tier4-simfarm-simulator:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]

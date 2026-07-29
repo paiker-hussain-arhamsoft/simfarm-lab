@@ -42,6 +42,9 @@ from backend.agents.persona_crew import (
     REGIONS as PERSONA_REGIONS,
     SCENARIOS as PERSONA_SCENARIOS,
 )
+from backend.agents.infrastructure_crew import (
+    INFRASTRUCTURE_CREW, MODEM_TYPES, CARRIERS, SCENARIOS as INFRA_SCENARIOS,
+)
 from backend.exercises.scenarios import get_all_scenarios, get_scenario, get_scenarios_by_difficulty
 from backend.tools import registry
 from backend.pipeline import (
@@ -51,6 +54,7 @@ from backend.pipeline import (
     legal_ledger,
     media_crew,
     persona_crew,
+    infrastructure_crew,
     video_stack,
 )
 from backend.pipeline.compliance import ComplianceRecorder, legal_proxy_enabled
@@ -445,6 +449,42 @@ async def persona_plan(req: PersonaRequest):
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",
         },
+    )
+
+
+# ── TIER 4 — Infrastructure (simulated) ────────────────────────────
+@app.get("/api/infrastructure/config")
+def infrastructure_config():
+    return {
+        "agents": [a.to_meta() for a in INFRASTRUCTURE_CREW],
+        "scenarios": INFRA_SCENARIOS,
+        "modem_types": MODEM_TYPES,
+        "carriers": CARRIERS,
+        "legal_proxy_enabled": legal_proxy_enabled(),
+        "config": get_config(),
+    }
+
+
+class InfrastructureRequest(BaseModel):
+    objective: str = Field(..., min_length=1, max_length=2000)
+    scenario: str = ""
+    modem_type: str = ""
+    carrier: str = ""
+    authorized: bool = False
+    authorization_ref: str = ""
+    approver: str = ""
+    session_id: str = Field(..., min_length=1)
+    backend: str = ""
+
+
+@app.post("/api/infrastructure/plan")
+async def infrastructure_plan(req: InfrastructureRequest):
+    inp = req.model_dump()
+    generator = infrastructure_crew.route(inp, req.session_id, backend=req.backend)
+    return StreamingResponse(
+        generator, media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                 "X-Accel-Buffering": "no"},
     )
 
 

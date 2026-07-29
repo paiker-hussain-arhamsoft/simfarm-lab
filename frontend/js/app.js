@@ -1946,6 +1946,10 @@ function activeApprover() {
     if (personaView && !personaView.classList.contains('hidden')) {
         return (document.getElementById('persona-approver') || {}).value || '';
     }
+    const infrastructureView = document.getElementById('view-infrastructure');
+    if (infrastructureView && !infrastructureView.classList.contains('hidden')) {
+        return (document.getElementById('infrastructure-approver') || {}).value || '';
+    }
     const cyberView = document.getElementById('view-cyber');
     if (cyberView && !cyberView.classList.contains('hidden')) {
         return (document.getElementById('cyber-approver') || {}).value || '';
@@ -2996,3 +3000,382 @@ async function loadPersonaAuditLog() {
 document.addEventListener('DOMContentLoaded', () => {
     loadDashboard();
 });
+
+/* ── TIER 4 Infrastructure controller ─────────────────────────── */
+let infrastructureConfig = null;
+let infrastructureState = 'idle';
+let infrastructureActive = null;
+let infrastructureDone = new Set();
+let infrastructureTurns = [];
+let infrastructurePending = {};
+let infrastructureCompliance = null;
+let infrastructureAbort = null;
+let infrastructureRunId = null;
+const INFRASTRUCTURE_EXAMPLES = [
+    'Model a SIM-farm & GSM-gateway to build detection signatures for an authorized regulator lab',
+    'Map bulk-SMS fraud signals in a simulated carrier-integrity study',
+    'Create a blue-team tabletop for detecting modem-pool queue anomalies',
+];
+
+async function showInfrastructure() {
+    setView('infrastructure');
+    await setupInfrastructureView();
+}
+
+async function setupInfrastructureView() {
+    if (!infrastructureConfig) infrastructureConfig = await API.getInfrastructureConfig();
+    renderInfrastructureAgents();
+    renderInfrastructureBackend();
+    renderInfrastructureSelectors();
+    renderInfrastructureExamples();
+    renderInfrastructureOutput();
+    document.getElementById('infrastructure-session-display').textContent = sessionId.slice(0, 16) + '…';
+    updateInfrastructureCharCount();
+    updateInfrastructureButton();
+    refreshInfrastructureAuditStats();
+    const lp = document.getElementById('infrastructure-legal-proxy');
+    lp.classList.toggle('hidden', !infrastructureConfig.legal_proxy_enabled);
+    if (infrastructureConfig.legal_proxy_enabled) refreshLedgerStatus();
+    const ta = document.getElementById('infrastructure-objective');
+    if (!ta.dataset.bound) {
+        ta.dataset.bound = '1';
+        ta.oninput = () => { updateInfrastructureCharCount(); updateInfrastructureButton(); };
+        ta.onkeydown = e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) runInfrastructure(); };
+    }
+}
+
+function renderInfrastructureAgents() {
+    const list = document.getElementById('infrastructure-agent-list');
+    const agents = infrastructureConfig ? (infrastructureConfig.agents || []) : [];
+    list.innerHTML = agents.map((a, i) => `
+        <div class="pa-agent ${infrastructureActive === a.id ? 'active' : ''}" style="border-color: ${a.color}30">
+            <div class="pa-row">
+                <div class="pa-icon" style="background: ${a.color}15">${a.icon}</div>
+                <span class="pa-role">${a.role}</span>
+                <span class="pa-status">${infrastructureDone.has(a.id) ? '✓' : infrastructureActive === a.id ? 'Running' : ''}</span>
+            </div>
+            <div class="pa-desc">${a.description}</div>
+            <div class="pa-fw" style="color: ${a.color}">${a.framework}</div>
+        </div>${i < agents.length - 1 ? '<div class="pa-arrow">▼</div>' : ''}`).join('');
+}
+
+function renderInfrastructureBackend() {
+    const c = document.getElementById('infrastructure-backend');
+    const backends = (infrastructureConfig.config || {}).backends || [];
+    c.innerHTML = '<div class="fw-group"><label class="fw-label">LLM Backend</label><div class="fw-pills">'
+        + `<button class="fw-pill ${selectedBackend === '' ? 'active' : ''}" onclick="selectedBackend='';renderInfrastructureBackend()">Auto / Demo</button>`
+        + backends.filter(b => b.status === 'ready').map(b =>
+            `<button class="fw-pill ${selectedBackend === b.id ? 'active' : ''}" onclick="selectedBackend='${b.id}';renderInfrastructureBackend()">${b.id}</button>`).join('')
+        + '</div></div>';
+}
+
+function renderInfrastructureSelectors() {
+    document.getElementById('infrastructure-scenario').innerHTML = (infrastructureConfig.scenarios || []).map(x => `<option>${x}</option>`).join('');
+    document.getElementById('infrastructure-modem').innerHTML = (infrastructureConfig.modem_types || []).map(x => `<option value="${x.id}">${x.label}</option>`).join('');
+    document.getElementById('infrastructure-carrier').innerHTML = (infrastructureConfig.carriers || []).map(x => `<option value="${x.id}">${x.label}</option>`).join('');
+}
+
+function renderInfrastructureExamples() {
+    document.getElementById('infrastructure-example-chips').innerHTML = INFRASTRUCTURE_EXAMPLES.map((x, i) =>
+        `<button class="example-chip" onclick="setInfrastructureObjective(${i})">${escapeHtml(x)}</button>`).join('');
+}
+
+function setInfrastructureObjective(i) {
+    document.getElementById('infrastructure-objective').value = INFRASTRUCTURE_EXAMPLES[i];
+    updateInfrastructureCharCount();
+    updateInfrastructureButton();
+}
+
+function updateInfrastructureCharCount() {
+    const t = document.getElementById('infrastructure-objective');
+    document.getElementById('infrastructure-char-count').textContent = `${t.value.length}/2000 · Ctrl+Enter to run`;
+}
+
+function updateInfrastructureButton() {
+    const running = infrastructureState === 'running';
+    const t = document.getElementById('infrastructure-objective');
+    const run = document.getElementById('infrastructure-btn-run');
+    run.disabled = !t.value.trim() || running || infrastructureState === 'done';
+    document.getElementById('infrastructure-btn-stop').classList.toggle('hidden', !running);
+    document.getElementById('infrastructure-btn-reset').classList.toggle('hidden', !(infrastructureState === 'done' || infrastructureState === 'error'));
+    run.classList.toggle('hidden', running || infrastructureState === 'done');
+    t.disabled = running;
+}
+
+async function runInfrastructure() {
+    const objective = document.getElementById('infrastructure-objective').value.trim();
+    if (!objective || infrastructureState === 'running') return;
+
+    const approverEl = document.getElementById('infrastructure-approver');
+    const authRefEl = document.getElementById('infrastructure-auth-ref');
+    infrastructureState = 'running';
+    infrastructureTurns = [];
+    infrastructureActive = null;
+    infrastructureDone = new Set();
+    infrastructureRunId = null;
+    infrastructurePending = {};
+    infrastructureCompliance = null;
+    updateInfrastructureButton();
+    renderInfrastructureAgents();
+    renderInfrastructureOutput();
+
+    infrastructureAbort = new AbortController();
+    try {
+        const reader = await API.runInfrastructurePlan({
+            objective,
+            scenario: document.getElementById('infrastructure-scenario').value,
+            modemType: document.getElementById('infrastructure-modem').value,
+            carrier: document.getElementById('infrastructure-carrier').value,
+            authorized: document.getElementById('infrastructure-authorized').checked,
+            approver: approverEl ? approverEl.value.trim() : '',
+            authorizationRef: authRefEl ? authRefEl.value.trim() : '',
+            sessionId, backend: selectedBackend,
+        }, infrastructureAbort.signal);
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (!line.startsWith('data: ')) continue;
+                const raw = line.slice(6).trim();
+                if (!raw) continue;
+                let event;
+                try { event = JSON.parse(raw); } catch { continue; }
+                handleInfrastructureSSE(event);
+            }
+        }
+        if (infrastructureState === 'running') infrastructureState = 'done';
+    } catch (err) {
+        if (err.name !== 'AbortError') {
+            infrastructureState = 'error';
+            renderInfrastructureOutput(`Infrastructure planning interrupted: ${err.message}`);
+        } else {
+            infrastructureState = 'idle';
+        }
+    }
+    updateInfrastructureButton();
+    renderInfrastructureAgents();
+    refreshInfrastructureAuditStats();
+}
+
+function handleInfrastructureSSE(event) {
+    switch (event.type) {
+        case 'pipeline_start':
+            infrastructureRunId = event.run_id;
+            break;
+        case 'compliance':
+            infrastructureCompliance = event;
+            renderInfrastructureOutput();
+            break;
+        case 'compliance_block':
+            infrastructureCompliance = Object.assign({}, infrastructureCompliance, { blocked: true, message: event.message });
+            infrastructureState = 'error';
+            renderInfrastructureOutput();
+            break;
+        case 'tool_call':
+        case 'tool_result':
+        case 'self_heal': {
+            const w = event.worker || 'unknown';
+            if (!infrastructurePending[w]) infrastructurePending[w] = [];
+            infrastructurePending[w].push(event);
+            const existing = infrastructureTurns.find(t => t.agentId === w);
+            if (existing) {
+                existing.toolActivity = infrastructurePending[w];
+                renderInfrastructureOutput();
+            }
+            break;
+        }
+        case 'agent_start':
+            infrastructureActive = event.agent;
+            infrastructureTurns.push({
+                agentId: event.agent,
+                role: event.role,
+                color: event.color,
+                icon: event.icon || '🧰',
+                content: '',
+                done: false,
+                toolActivity: infrastructurePending[event.agent] || [],
+            });
+            renderInfrastructureAgents();
+            renderInfrastructureOutput();
+            break;
+        case 'token': {
+            const turn = infrastructureTurns.find(t => t.agentId === event.agent && !t.done);
+            if (turn) {
+                turn.content += event.content;
+                const el = document.getElementById(`infrastructure-content-${turn.agentId}`);
+                if (el) {
+                    el.innerHTML = escapeHtml(turn.content) + `<span class="am-cursor" style="background: ${turn.color}"></span>`;
+                    scrollInfrastructureToBottom();
+                }
+            }
+            break;
+        }
+        case 'agent_done': {
+            const turn = infrastructureTurns.find(t => t.agentId === event.agent);
+            if (turn) turn.done = true;
+            infrastructureDone.add(event.agent);
+            infrastructureActive = null;
+            renderInfrastructureAgents();
+            renderInfrastructureOutput();
+            break;
+        }
+        case 'done':
+            infrastructureState = event.blocked ? 'error' : 'done';
+            updateInfrastructureButton();
+            renderInfrastructureAgents();
+            renderInfrastructureOutput();
+            break;
+        case 'error':
+            infrastructureState = 'error';
+            updateInfrastructureButton();
+            renderInfrastructureOutput(event.message);
+            break;
+        case 'cancelled':
+            infrastructureState = 'idle';
+            updateInfrastructureButton();
+            break;
+    }
+}
+
+function stopInfrastructure() {
+    if (infrastructureAbort) infrastructureAbort.abort();
+    infrastructureState = 'idle';
+    infrastructureActive = null;
+    updateInfrastructureButton();
+    renderInfrastructureAgents();
+}
+
+function resetInfrastructure() {
+    infrastructureTurns = [];
+    infrastructureActive = null;
+    infrastructureDone = new Set();
+    infrastructureRunId = null;
+    infrastructureState = 'idle';
+    infrastructureCompliance = null;
+    document.getElementById('infrastructure-objective').value = '';
+    updateInfrastructureCharCount();
+    updateInfrastructureButton();
+    renderInfrastructureAgents();
+    renderInfrastructureExamples();
+    renderInfrastructureOutput();
+}
+
+function renderInfrastructureComplianceBanner() {
+    if (!infrastructureCompliance) return '';
+    if (infrastructureCompliance.blocked) {
+        return `<div class="compliance-banner flagged">
+            <strong>⛔ Flagged — access limited.</strong> ${escapeHtml(infrastructureCompliance.message || '')}
+            <div class="cb-audit">Audit ID: ${infrastructureCompliance.audit_id}</div>
+        </div>`;
+    }
+    if (infrastructureCompliance.flagged) {
+        return `<div class="compliance-banner flagged">
+            <strong>⚠ Flagged for review.</strong> ${escapeHtml((infrastructureCompliance.reasons || []).join('; '))}
+            <div class="cb-audit">Audit ID: ${infrastructureCompliance.audit_id}</div>
+        </div>`;
+    }
+    return `<div class="compliance-banner ok">
+        <strong>✓ Cleared &amp; logged.</strong> Recorded for legal review — audit ID ${infrastructureCompliance.audit_id}.
+    </div>`;
+}
+
+function renderInfrastructureOutput(errorMsg) {
+    const area = document.getElementById('infrastructure-output-area');
+    const crew = infrastructureConfig ? (infrastructureConfig.agents || []) : [];
+    const banner = renderInfrastructureComplianceBanner();
+
+    if (infrastructureTurns.length === 0 && !errorMsg && !banner) {
+        area.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">🧰</div>
+                <h3>Ready to model infrastructure</h3>
+                <p>Simulation-only. Pick a scenario, modem topology and carrier model, describe the authorized lab-only objective, and the Infrastructure Crew produces an audit-logged SIM-farm / GSM-gateway detection plan. No real SIM activation, modem control, SMS/OTP sending, carrier access, or Celery execution occurs.</p>
+                <div class="agent-dots">
+                    ${crew.map(a => `<span class="dot"><span class="dot-circle" style="background: ${a.color}"></span> ${a.role}</span>`).join('')}
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    let html = banner;
+    if (errorMsg) html += `<div class="error-banner">${errorMsg}</div>`;
+
+    html += '<div class="output-log" id="infrastructure-output-log">';
+    for (const turn of infrastructureTurns) {
+        const cursorHtml = !turn.done ? `<span class="am-cursor" style="background: ${turn.color}"></span>` : '';
+        html += `
+            <div class="agent-message" id="infrastructure-msg-${turn.agentId}">
+                <div class="am-header">
+                    <div class="am-icon" style="background: ${turn.color}15; border: 1px solid ${turn.color}30">${turn.icon}</div>
+                    <span class="am-role" style="color: ${turn.color}">${turn.role}</span>
+                    ${!turn.done ? '<span class="spinner" style="width:10px;height:10px"></span>' : ''}
+                    ${turn.done ? `<button class="am-copy" onclick="copyInfrastructureContent('${turn.agentId}')">📋</button>` : ''}
+                </div>
+                ${renderToolActivity(turn.toolActivity)}
+                <div class="am-content" id="infrastructure-content-${turn.agentId}" style="background: ${turn.color}06; border-color: ${turn.color}18">${escapeHtml(turn.content)}${cursorHtml}</div>
+            </div>
+        `;
+    }
+    if (infrastructureState === 'done') {
+        html += '<div class="pipeline-complete">Infrastructure plan complete</div>';
+    }
+    html += '</div>';
+
+    area.innerHTML = html;
+    scrollInfrastructureToBottom();
+}
+
+function scrollInfrastructureToBottom() {
+    const log = document.getElementById('infrastructure-output-log');
+    if (log) log.scrollTop = log.scrollHeight;
+}
+
+function copyInfrastructureContent(agentId) {
+    const turn = infrastructureTurns.find(t => t.agentId === agentId);
+    if (turn) navigator.clipboard.writeText(turn.content);
+}
+
+async function refreshInfrastructureAuditStats() {
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const el = document.getElementById('infrastructure-audit-stats');
+        if (el && data.stats) {
+            el.textContent = `${data.stats.total_events} events logged · ${data.stats.flagged_events} flagged`;
+        }
+    } catch (err) {
+        console.error('Audit stats error:', err);
+    }
+}
+
+async function loadInfrastructureAuditLog() {
+    const container = document.getElementById('infrastructure-audit-log');
+    try {
+        const data = await API.getComplianceAudit(sessionId);
+        const events = data.events || [];
+        if (events.length === 0) {
+            container.innerHTML = '<div class="audit-empty">No recorded activity yet.</div>';
+            return;
+        }
+        container.innerHTML = events.map(e => {
+            const when = new Date(e.created_at * 1000).toLocaleTimeString();
+            let cls = 'ok';
+            if (e.sensitivity === 'red' || e.verdict === 'pre_cleared_legal_proxy') cls = 'sensitive';
+            else if (e.verdict === 'flagged') cls = 'flagged';
+            const reasons = e.reasons && e.reasons.length ? ` — ${escapeHtml(e.reasons.join('; '))}` : '';
+            const approver = e.approver ? ` [approver: ${escapeHtml(e.approver)}]` : '';
+            return `<div class="audit-row ${cls}">
+                <span class="audit-when">${when}</span>
+                <span class="audit-action">${escapeHtml(e.action)}</span>
+                <span class="audit-verdict">${e.verdict}${approver}${reasons}</span>
+            </div>`;
+        }).join('');
+    } catch (err) {
+        container.innerHTML = `<div class="audit-empty">Failed to load audit log: ${err.message}</div>`;
+    }
+}

@@ -19,6 +19,7 @@ import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
+from backend.tools import simfarm_sim
 
 
 class ToolError(Exception):
@@ -511,6 +512,17 @@ async def _fleet_orchestrate(count: int = 0, platform: str = "", **_: Any) -> di
                 "Intended for scale modeling and detection research.",
     }
 
+# ── TIER 4 · SIM farm / GSM gateway simulator adapters ─────────────
+async def _modem_topology(**kwargs): return await simfarm_sim.modem_topology(**kwargs)
+async def _smsgate_config(**kwargs): return await simfarm_sim.gateway_config(**kwargs)
+async def _modem_control(**kwargs): return await simfarm_sim.modem_control(**kwargs)
+async def _sim_provision_plan(**kwargs): return await simfarm_sim.provision_plan(**kwargs)
+async def _sim_activate(**kwargs): return await simfarm_sim.sim_activate(**kwargs)
+async def _carrier_access(**kwargs): return await simfarm_sim.carrier_access(**kwargs)
+async def _campaign_orchestrate(**kwargs): return await simfarm_sim.campaign_orchestrate(**kwargs)
+async def _sms_send(**kwargs): return await simfarm_sim.sms_send(**kwargs)
+async def _celery_dispatch(**kwargs): return await simfarm_sim.celery_dispatch(**kwargs)
+
 
 def _register_defaults() -> None:
     if _REGISTRY:
@@ -683,6 +695,21 @@ def _register_defaults() -> None:
         category="persona", provider="ElizaOS / Socioboard", run=_fleet_orchestrate,
         parameters={"count": "fleet size (modeled)", "platform": "platform"},
     ))
+    tier4 = [
+        ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),
+        ("smsgate_config", "SMSGate Config", "SMSgate · Gammu", _smsgate_config, {"gateway":"gateway","pool_size":"pool size"}),
+        ("modem_control", "Modem Control", "Gammu", _modem_control, {"command":"modeled command"}),
+        ("sim_provision_plan", "SIM Provision Plan", "carrier-provisioning (modeled)", _sim_provision_plan, {"count":"modeled count","carriers":"carrier list"}),
+        ("sim_activate", "SIM Activate", "carrier-provisioning (modeled)", _sim_activate, {"iccid":"lab ICCID"}),
+        ("carrier_access", "Carrier Access", "carrier-API (modeled)", _carrier_access, {"carrier":"carrier"}),
+        ("campaign_orchestrate", "Campaign Orchestrator", "Celery", _campaign_orchestrate, {"tasks":"modeled tasks","schedule":"schedule"}),
+        ("sms_send", "SMS Send", "SMSgate", _sms_send, {"to":"lab sink","body":"fixture body"}),
+        ("celery_dispatch", "Celery Dispatch", "Celery", _celery_dispatch, {"task":"modeled task"}),
+    ]
+    for ident, name, provider, fn, params in tier4:
+        register(ToolSpec(id=ident, name=name,
+            description="Simulated infrastructure action; real telecom execution requires communications-secretariat orders and is not performed.",
+            category="infrastructure", provider=provider, run=fn, parameters=params))
 
 
 _register_defaults()
