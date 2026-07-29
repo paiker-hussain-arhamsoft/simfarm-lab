@@ -12,7 +12,10 @@ FROM ollama/ollama:0.6.7 AS ollama-bin
 
 FROM python:3.11-slim
 
-# Runtime deps + audio build deps for Chatterbox TTS + supervisor for multi-process management
+ARG VOICE_STACK=chatterbox
+ARG COQUI_TOS_AGREED=
+
+# Runtime deps + audio build deps for Chatterbox/Coqui TTS + supervisor for multi-process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates supervisor build-essential git \
         libsndfile1 libsndfile1-dev ffmpeg \
@@ -27,9 +30,13 @@ ENV LD_LIBRARY_PATH=/usr/lib/ollama
 WORKDIR /app
 
 # Install Python dependencies first for layer caching; voice deps are heavy so keep them separate
-COPY requirements.txt requirements-voice.txt ./
+COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir -r requirements-voice.txt
+    if [ "$VOICE_STACK" = "coqui" ]; then \
+        pip install --no-cache-dir -r requirements-voice-coqui.txt; \
+    else \
+        pip install --no-cache-dir -r requirements-voice.txt; \
+    fi
 
 # Copy the entire application
 COPY . .
@@ -48,6 +55,7 @@ ENV PYTHONUNBUFFERED=1 \
     DEFAULT_FRAMEWORK=supervisor \
     ALLOW_ONLINE_TOOLS= \
     LEGAL_PROXY_ENABLED= \
+    COQUI_TOS_AGREED=${COQUI_TOS_AGREED} \
     OPENAI_BASE_URL=https://api.openai.com/v1 \
     OPENAI_MODEL=gpt-4o-mini
 

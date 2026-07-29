@@ -493,13 +493,78 @@ async def _generate_chatterbox_voice(script: str, language: str, reference_audio
     return out_path
 
 
+# ── Coqui TTS integration (with stub fallback) ───────────────────────
+
+_COQUI_SUPPORTED_LANGS = {
+    "ar", "cs", "de", "en", "es", "fr", "hi", "hu", "it", "ja", "ko",
+    "nl", "pl", "pt", "ru", "tr", "zh", "zh-cn",
+}
+
+_COQUI_LANG_MAP = {
+    "zh": "zh-cn",
+}
+
+_COQUI_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
+_COQUI_MODEL: Any = None
+_COQUI_LOCK = asyncio.Lock()
+
+
+def _is_coqui_available() -> bool:
+    """Return True if the coqui-tts package is installed."""
+    import importlib.util
+    return importlib.util.find_spec("TTS") is not None
+
+
+async def _load_coqui_model() -> Any:
+    """Load and cache the Coqui XTTS v2 model in a worker thread."""
+    global _COQUI_MODEL
+    if _COQUI_MODEL is not None:
+        return _COQUI_MODEL
+    async with _COQUI_LOCK:
+        if _COQUI_MODEL is None:
+            from TTS.api import TTS
+            device = _chatterbox_device()
+            _COQUI_MODEL = await asyncio.to_thread(TTS, _COQUI_MODEL_NAME)
+            _COQUI_MODEL = _COQUI_MODEL.to(device)
+    return _COQUI_MODEL
+
+
+async def _generate_coqui_voice(script: str, language: str, reference_audio: str = "") -> str:
+    """Generate a WAV with Coqui XTTS v2 and return the local file path."""
+    if os.environ.get("COQUI_TOS_AGREED", "") != "1":
+        raise ToolError(
+            "Coqui XTTS requires accepting the CPML terms. "
+            "Set COQUI_TOS_AGREED=1 to enable."
+        )
+
+    coqui_lang = _COQUI_LANG_MAP.get(language, language)
+    if coqui_lang not in _COQUI_SUPPORTED_LANGS:
+        raise ToolError(f"Language '{language}' is not supported by Coqui XTTS v2")
+
+    model = await _load_coqui_model()
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.wav")
+
+    kwargs = {"text": script, "language": coqui_lang, "file_path": out_path}
+    if reference_audio:
+        kwargs["speaker_wav"] = reference_audio
+    elif model.speakers:
+        kwargs["speaker"] = model.speakers[0]
+    else:
+        raise ToolError("Coqui XTTS v2 has no default speaker and no reference audio was provided")
+
+    await asyncio.to_thread(model.tts_to_file, **kwargs)
+    return out_path
+
+
 async def _clone_voice(tool: str = "chatterbox", language: str = "en",
                        script: str = "", reference_audio: str = "", **_: Any) -> dict:
     p = _VOICE_PROVIDERS.get(tool, _VOICE_PROVIDERS["chatterbox"])
     if p["online"] and not _online_available():
         raise ToolError(f"{p['provider']} requires internet; fall back to an offline voice tool.")
 
-    chatterbox_error: str | None = None
+    real_error: str | None = None
+
     if tool == "chatterbox" and _is_chatterbox_available() and language in _CHATTERBOX_SUPPORTED_LANGS and script:
         try:
             artifact_path = await _generate_chatterbox_voice(script, language, reference_audio)
@@ -514,11 +579,27 @@ async def _clone_voice(tool: str = "chatterbox", language: str = "en",
                 "note": f"Generated locally with {p['provider']} ({'with reference clip' if reference_audio else 'default voice'}).",
             }
         except Exception as exc:
-            chatterbox_error = str(exc)
+            real_error = f"Chatterbox failed: {exc}"
+
+    elif tool == "coqui" and _is_coqui_available() and language in _COQUI_SUPPORTED_LANGS and script:
+        try:
+            artifact_path = await _generate_coqui_voice(script, language, reference_audio)
+            return {
+                "simulated": True,
+                "provider": p["provider"],
+                "license": p["license"],
+                "requires_internet": False,
+                "language": language,
+                "reference_audio_sec": 5 if reference_audio else 0,
+                "artifact": artifact_path,
+                "note": f"Generated locally with {p['provider']} ({'with reference clip' if reference_audio else 'built-in speaker'}).",
+            }
+        except Exception as exc:
+            real_error = f"Coqui failed: {exc}"
 
     note = f"Stub — wire to {p['provider']} for real voice cloning ({'online' if p['online'] else 'offline/local'})."
-    if chatterbox_error:
-        note = f"Chatterbox failed ({chatterbox_error}); {note}"
+    if real_error:
+        note = f"{real_error}; {note}"
     return {
         "simulated": True,
         "provider": p["provider"],
@@ -874,7 +955,7 @@ def _register_defaults() -> None:
         description="Zero-shot voice cloning / TTS (Chatterbox, Coqui, Bark offline; ElevenLabs online).",
         category="media", provider="Chatterbox / Coqui / Bark", run=_clone_voice,
         parameters={"tool": "chatterbox|coqui|bark|elevenlabs", "language": "lang", "script": "text", "reference_audio": "optional path to a 5-20s reference WAV"},
-        status="live" if _is_chatterbox_available() else "stub",
+        status="live" if (_is_chatterbox_available() or _is_coqui_available()) else "stub",
     ))
     register(ToolSpec(
         id="generate_video", name="Video Generator",
