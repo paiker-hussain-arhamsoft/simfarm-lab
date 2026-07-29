@@ -1,15 +1,21 @@
 # Optional media-stack extension for simfarm-lab.
 #
-# Duix-Avatar, like Coqui and Wan2.1, has heavy or conflicting Python dependencies,
-# so it runs as separate GPU containers orchestrated alongside the main app.
+# Duix-Avatar, Wan2.1, Coqui, Chatterbox, InsightFace, and DeepFaceLab have heavy
+# or conflicting Python dependencies, so the GPU-heavy engines run as separate
+# containers orchestrated alongside the main app.
 #
 # Start everything in one command:
 #   docker compose -f docker-compose.yml -f docker-compose.media.yml up -d
 #
-# The Duix video-generation service requires an NVIDIA GPU and the NVIDIA
-# Container Toolkit. Images are large (~70 GB total download). Provide a
-# reference video in the shared brain-data volume and call render_avatar with
-# tool="duix", photo="<relative path under DUIX_DATA_DIR>", and script="text".
+# Notes:
+# - Duix and DeepFaceLab require an NVIDIA GPU and the NVIDIA Container Toolkit.
+# - Duix images are ~70 GB; DeepFaceLab image is also large.
+# - InsightFace is pip-installable and runs in the strategic-brain container
+#   (build with --build-arg FACE_STACK=insightface or set FACE_STACK=insightface).
+# - DeepFaceLab is a multi-step extract/train/merge workflow. This compose file
+#   starts the container with its workspace on the shared brain-data volume; the
+#   user runs the DeepFaceLab scripts inside the container and then wires a
+#   non-interactive merge into `face_swap` via `DEEPFACELAB_COMMAND` if desired.
 
 services:
   duix-avatar-tts:
@@ -55,9 +61,37 @@ services:
               capabilities: [gpu]
     command: python /code/app_local.py
 
+  deepfacelab:
+    image: xychelsea/deepfacelab:latest
+    container_name: deepfacelab
+    restart: unless-stopped
+    runtime: nvidia
+    privileged: true
+    volumes:
+      - brain-data:/data
+    environment:
+      - DEEPFACELAB_PATH=/usr/local/deepfacelab
+      - DEEPFACELAB_WORKSPACE=/data/deepfacelab_workspace
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: /bin/bash -c "mkdir -p /data/deepfacelab_workspace && echo 'DeepFaceLab workspace ready at /data/deepfacelab_workspace' && tail -f /dev/null"
+
   strategic-brain:
+    build:
+      args:
+        FACE_STACK: ${FACE_STACK:-}
     environment:
       - DUIX_VIDEO_HOST=http://duix-avatar-gen-video:8383
       - DUIX_DATA_DIR=/code/data
+      - INSIGHTFACE_HOME=${INSIGHTFACE_HOME:-/opt/insightface}
     volumes:
       - brain-data:/code/data
+      - brain-data:/data

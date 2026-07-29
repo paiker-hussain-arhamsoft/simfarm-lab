@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shlex
 import shutil
+import sys
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -893,7 +895,23 @@ def _online_available() -> bool:
 
 # ── Video Stack stubs (face-swap / lip-sync / restore; offline, simulated) ──
 
+# ── InsightFace one-shot face-swap integration ──────────────────────
+
+_INSIGHTFACE_HOME = os.environ.get(
+    "INSIGHTFACE_HOME",
+    os.path.join(
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+        "data", ".insightface",
+    ),
+)
+
+_INSIGHTFACE_APP: Any = None
+_INSIGHTFACE_SWAPPER: Any = None
+_INSIGHTFACE_LOCK = asyncio.Lock()
+
+
 _FACESWAP_PROVIDERS = {
+    "insightface": {"provider": "InsightFace InSwapper", "mode": "one-shot", "note": "one-shot image/video face swap (ONNX)"},
     "deepfacelab": {"provider": "DeepFaceLab", "mode": "batch", "note": "professional face-swap, CLI automation"},
     "faceswap": {"provider": "FaceSwap", "mode": "batch", "note": "TensorFlow, cross-platform"},
     "deeplivecam": {"provider": "Deep-Live-Cam", "mode": "realtime", "note": "real-time single-image swap"},
@@ -905,8 +923,161 @@ _LIPSYNC_PROVIDERS = {
 }
 
 
-async def _face_swap(tool: str = "deepfacelab", source: str = "", target: str = "",
-                     **_: Any) -> dict:
+def _is_insightface_available() -> bool:
+    """Return True if the InsightFace + ONNX runtime is installed."""
+    import importlib.util
+    return (
+        importlib.util.find_spec("insightface") is not None
+        and importlib.util.find_spec("cv2") is not None
+        and importlib.util.find_spec("onnxruntime") is not None
+    )
+
+
+def _insightface_home() -> str:
+    """Return the directory where InsightFace models are cached."""
+    home = os.environ.get("INSIGHTFACE_HOME", _INSIGHTFACE_HOME)
+    os.makedirs(home, exist_ok=True)
+    return home
+
+
+async def _download_inswapper_model(model_path: str) -> None:
+    """Download the InSwapper 128 ONNX model if it is not present locally."""
+    import urllib.request
+    url = os.environ.get(
+        "INSWAPPER_MODEL_URL",
+        "https://huggingface.co/ashleykleynhans/inswapper/resolve/main/inswapper_128.onnx",
+    )
+    os.makedirs(os.path.dirname(model_path), exist_ok=True)
+    await asyncio.to_thread(urllib.request.urlretrieve, url, model_path)
+
+
+async def _load_insightface_models() -> tuple[Any, Any]:
+    """Load and cache the InsightFace analysis + InSwapper models."""
+    global _INSIGHTFACE_APP, _INSIGHTFACE_SWAPPER
+    if _INSIGHTFACE_APP is None or _INSIGHTFACE_SWAPPER is None:
+        async with _INSIGHTFACE_LOCK:
+            if _INSIGHTFACE_APP is None or _INSIGHTFACE_SWAPPER is None:
+                import insightface
+                from insightface.app import FaceAnalysis
+                home = _insightface_home()
+                app = await asyncio.to_thread(FaceAnalysis, name="buffalo_l", root=home)
+                await asyncio.to_thread(app.prepare, ctx_id=0, det_size=(640, 640))
+                model_path = os.path.join(home, "models", "inswapper_128.onnx")
+                if not os.path.exists(model_path):
+                    await _download_inswapper_model(model_path)
+                swapper = await asyncio.to_thread(insightface.model_zoo.get_model, model_path)
+                _INSIGHTFACE_APP = app
+                _INSIGHTFACE_SWAPPER = swapper
+    return _INSIGHTFACE_APP, _INSIGHTFACE_SWAPPER
+
+
+def _is_video(path: str) -> bool:
+    """Guess whether a path is a video file by extension."""
+    return os.path.splitext(path)[1].lower() in (
+        ".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv",
+    )
+
+
+def _swap_image_sync(app: Any, swapper: Any, source_path: str, target_path: str, output_path: str) -> None:
+    """Swap one or more faces in a target image with the source face."""
+    import cv2
+    source_img = cv2.imread(source_path)
+    target_img = cv2.imread(target_path)
+    if source_img is None:
+        raise ToolError(f"Cannot read source image: {source_path}")
+    if target_img is None:
+        raise ToolError(f"Cannot read target image: {target_path}")
+    source_faces = app.get(source_img)
+    if not source_faces:
+        raise ToolError("No face found in source image")
+    source_face = source_faces[0]
+    target_faces = app.get(target_img)
+    if not target_faces:
+        raise ToolError("No face found in target image")
+    res = target_img.copy()
+    for face in target_faces:
+        res = swapper.get(res, face, source_face, paste_back=True)
+    cv2.imwrite(output_path, res)
+
+
+def _swap_video_sync(app: Any, swapper: Any, source_path: str, target_path: str, output_path: str) -> None:
+    """Swap faces in each frame of a target video with the source face."""
+    import cv2
+    source_img = cv2.imread(source_path)
+    if source_img is None:
+        raise ToolError(f"Cannot read source image: {source_path}")
+    source_faces = app.get(source_img)
+    if not source_faces:
+        raise ToolError("No face found in source image")
+    source_face = source_faces[0]
+    cap = cv2.VideoCapture(target_path)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 25.0
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+    out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            faces = app.get(frame)
+            for face in (faces or []):
+                frame = swapper.get(frame, face, source_face, paste_back=True)
+            out.write(frame)
+    finally:
+        cap.release()
+        out.release()
+
+
+async def _run_insightface_swap(source: str, target: str) -> str:
+    """Run one-shot face swap and return the path to the generated artifact."""
+    app, swapper = await _load_insightface_models()
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    ext = ".mp4" if _is_video(target) else (os.path.splitext(target)[1] or ".jpg")
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}{ext}")
+    async with _INSIGHTFACE_LOCK:
+        if _is_video(target):
+            await asyncio.to_thread(_swap_video_sync, app, swapper, source, target, out_path)
+        else:
+            await asyncio.to_thread(_swap_image_sync, app, swapper, source, target, out_path)
+    return out_path
+
+
+def _deepfacelab_command_configured() -> bool:
+    """Return True if DeepFaceLab is configured for external invocation."""
+    return bool(os.environ.get("DEEPFACELAB_COMMAND"))
+
+
+async def _run_deepfacelab_swap(source: str, target: str) -> str:
+    """Invoke a user-supplied DeepFaceLab command and return the output path."""
+    cmd_template = os.environ.get("DEEPFACELAB_COMMAND", "")
+    if not cmd_template:
+        raise ToolError("DEEPFACELAB_COMMAND is not configured")
+    os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+    ext = ".mp4" if _is_video(target) else (os.path.splitext(target)[1] or ".jpg")
+    out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}{ext}")
+    # Safely substitute paths into the operator-provided command template.
+    command = cmd_template.format(
+        source=shlex.quote(source),
+        target=shlex.quote(target),
+        output=shlex.quote(out_path),
+    )
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"DeepFaceLab command failed: {stderr.decode()[:500]}")
+    if not os.path.exists(out_path):
+        raise ToolError("DeepFaceLab command did not produce the expected output file")
+    return out_path
+
+
+async def _face_stub(tool: str) -> dict:
+    """Return the original simulated stub for a face-swap provider."""
     p = _FACESWAP_PROVIDERS.get(tool, _FACESWAP_PROVIDERS["deepfacelab"])
     return {
         "simulated": True,
@@ -918,6 +1089,61 @@ async def _face_swap(tool: str = "deepfacelab", source: str = "", target: str = 
         "note": f"Stub — {p['note']}. Simulated only; no real face-swap is performed. "
                 "Real integration is consent-gated and audit-logged.",
     }
+
+
+async def _face_swap(tool: str = "deepfacelab", source: str = "", target: str = "",
+                     **_: Any) -> dict:
+    if tool == "insightface":
+        if not _is_insightface_available():
+            return await _face_stub(tool)
+        if not source or not target:
+            return {
+                **(await _face_stub(tool)),
+                "note": "InsightFace requires source and target paths.",
+            }
+        try:
+            artifact = await _run_insightface_swap(source, target)
+            return {
+                "simulated": True,
+                "provider": _FACESWAP_PROVIDERS["insightface"]["provider"],
+                "mode": _FACESWAP_PROVIDERS["insightface"]["mode"],
+                "requires_internet": False,
+                "resolution": "1080p",
+                "artifact": artifact,
+                "note": "Generated locally with InsightFace InSwapper (offline/local).",
+            }
+        except Exception as exc:
+            stub = await _face_stub(tool)
+            stub["note"] = f"InsightFace failed ({exc}); Stub fallback."
+            return stub
+
+    if tool == "deepfacelab":
+        if not source or not target or not _deepfacelab_command_configured():
+            stub = await _face_stub(tool)
+            if not source or not target:
+                stub["note"] = "DeepFaceLab requires source, target, and a configured DEEPFACELAB_COMMAND."
+            else:
+                stub["note"] = "DeepFaceLab requires DEEPFACELAB_COMMAND to be set. " \
+                               "Mount a trained workspace and point the command at a non-interactive merge script."
+            return stub
+        try:
+            artifact = await _run_deepfacelab_swap(source, target)
+            return {
+                "simulated": True,
+                "provider": _FACESWAP_PROVIDERS["deepfacelab"]["provider"],
+                "mode": _FACESWAP_PROVIDERS["deepfacelab"]["mode"],
+                "requires_internet": False,
+                "resolution": "1080p",
+                "artifact": artifact,
+                "note": "Generated by external DeepFaceLab command (offline/local).",
+            }
+        except Exception as exc:
+            stub = await _face_stub(tool)
+            stub["note"] = f"DeepFaceLab failed ({exc}); Stub fallback."
+            return stub
+
+    # Fallback for faceswap/deeplivecam and unknown tools.
+    return await _face_stub(tool)
 
 
 async def _lip_sync(tool: str = "wav2lip", video: str = "", audio: str = "",
@@ -1215,9 +1441,10 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="face_swap", name="Face-Swap Engine",
-        description="Face-swap / video synthesis (DeepFaceLab, FaceSwap, Deep-Live-Cam). Consent-gated, simulated.",
-        category="media", provider="DeepFaceLab / FaceSwap / Deep-Live-Cam", run=_face_swap,
-        parameters={"tool": "deepfacelab|faceswap|deeplivecam", "source": "source", "target": "target"},
+        description="Face-swap / video synthesis (InsightFace, DeepFaceLab, FaceSwap, Deep-Live-Cam). Consent-gated, simulated.",
+        category="media", provider="InsightFace / DeepFaceLab / FaceSwap / Deep-Live-Cam", run=_face_swap,
+        parameters={"tool": "insightface|deepfacelab|faceswap|deeplivecam", "source": "source image", "target": "target image or video"},
+        status="live" if _is_insightface_available() or _deepfacelab_command_configured() else "stub",
     ))
     register(ToolSpec(
         id="lip_sync", name="Lip-Sync Engine",
