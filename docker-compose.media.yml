@@ -1,15 +1,24 @@
 # Optional media-stack extension for simfarm-lab.
 #
-# Duix-Avatar, like Coqui and Wan2.1, has heavy or conflicting Python dependencies,
-# so it runs as separate GPU containers orchestrated alongside the main app.
+# Duix-Avatar, Wan2.1, Coqui, Chatterbox, InsightFace, DeepFaceLab, FaceSwap,
+# and Deep-Live-Cam have heavy or conflicting Python dependencies, so the
+# GPU-heavy engines run as separate containers orchestrated alongside the
+# main app.
 #
 # Start everything in one command:
 #   docker compose -f docker-compose.yml -f docker-compose.media.yml up -d
 #
-# The Duix video-generation service requires an NVIDIA GPU and the NVIDIA
-# Container Toolkit. Images are large (~70 GB total download). Provide a
-# reference video in the shared brain-data volume and call render_avatar with
-# tool="duix", photo="<relative path under DUIX_DATA_DIR>", and script="text".
+# Notes:
+# - Duix, DeepFaceLab, FaceSwap, and Deep-Live-Cam require an NVIDIA GPU and
+#   the NVIDIA Container Toolkit (or a CPU fallback where the image supports it).
+# - Duix images are ~70 GB; DeepFaceLab, FaceSwap, and Deep-Live-Cam images are
+#   also large.
+# - InsightFace is pip-installable and runs in the strategic-brain container
+#   (build with --build-arg FACE_STACK=insightface or set FACE_STACK=insightface).
+# - DeepFaceLab, FaceSwap, and Deep-Live-Cam are multi-step or GUI tools. This
+#   compose file starts their containers with workspaces on the shared brain-data
+#   volume; the operator runs training/setup inside the container and then wires a
+#   non-interactive command into `face_swap` via the relevant *_COMMAND env var.
 
 services:
   duix-avatar-tts:
@@ -55,9 +64,81 @@ services:
               capabilities: [gpu]
     command: python /code/app_local.py
 
+  deepfacelab:
+    image: xychelsea/deepfacelab:latest
+    container_name: deepfacelab
+    restart: unless-stopped
+    runtime: nvidia
+    privileged: true
+    volumes:
+      - brain-data:/data
+    environment:
+      - DEEPFACELAB_PATH=/usr/local/deepfacelab
+      - DEEPFACELAB_WORKSPACE=/data/deepfacelab_workspace
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    command: /bin/bash -c "mkdir -p /data/deepfacelab_workspace && echo 'DeepFaceLab workspace ready at /data/deepfacelab_workspace' && tail -f /dev/null"
+
+  faceswap:
+    image: faceswap/faceswap:latest
+    container_name: faceswap
+    restart: unless-stopped
+    runtime: nvidia
+    privileged: true
+    volumes:
+      - brain-data:/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    entrypoint: ["/bin/bash", "-c"]
+    command: "mkdir -p /data/faceswap_workspace && echo 'FaceSwap workspace ready at /data/faceswap_workspace' && tail -f /dev/null"
+
+  deep-live-cam:
+    image: madkne/deep-live-cam:latest
+    container_name: deep-live-cam
+    restart: unless-stopped
+    runtime: nvidia
+    privileged: true
+    volumes:
+      - brain-data:/data
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video,display
+    shm_size: 8g
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    entrypoint: ["/bin/bash", "-c"]
+    command: "echo 'Deep-Live-Cam ready. exec into the container and run python run.py -s <source> -t <target> -o <output> --execution-provider cuda' && tail -f /dev/null"
+
   strategic-brain:
+    build:
+      args:
+        FACE_STACK: ${FACE_STACK:-}
     environment:
       - DUIX_VIDEO_HOST=http://duix-avatar-gen-video:8383
       - DUIX_DATA_DIR=/code/data
+      - INSIGHTFACE_HOME=${INSIGHTFACE_HOME:-/opt/insightface}
     volumes:
       - brain-data:/code/data
+      - brain-data:/data

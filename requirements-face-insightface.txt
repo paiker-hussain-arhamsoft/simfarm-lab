@@ -1,0 +1,16 @@
+# Optional one-shot face-swap stack (InsightFace InSwapper).
+# Installed with --no-deps because insightface pulls opencv-python (GUI),
+# which is replaced by opencv-python-headless for server/container use.
+insightface>=0.7
+onnxruntime
+onnx
+numpy
+requests
+scikit-image
+scipy
+tqdm
+opencv-python-headless
+# Keep the base ASGI stack pinned so insightface does not override it
+fastapi==0.115.6
+pydantic>=2.10.4,<3.0.0
+uvicorn[standard]==0.34.0
