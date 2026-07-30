@@ -202,6 +202,7 @@ services:
       context: .
       args:
         FACE_STACK: ${FACE_STACK:-}
+        BROWSER_STACK: ${BROWSER_STACK:-playwright}
     environment:
       - DUIX_VIDEO_HOST=http://duix-avatar-gen-video:8383
       - DUIX_DATA_DIR=/code/data
@@ -217,6 +218,8 @@ services:
       # Default VideoRetalking lip-sync command. CPU inference is very slow;
       # add an NVIDIA runtime to the videoretalking service for GPU.
       - VIDEORETALKING_COMMAND=docker exec videoretalking /video-retalking/run_videoretalking.sh --face {video} --audio {audio} --output {output}
+      # Allow Playwright browser automation to visit remote URLs when explicitly enabled.
+      - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
       # Default GFPGAN face restoration/upscale command. Supports images and video.
       - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
     volumes:
