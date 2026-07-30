@@ -3755,14 +3755,24 @@ async def _run_command_hook(env_var: str, **params: Any) -> dict:
     if proc.returncode != 0:
         output = (stdout.decode() + "\n" + stderr.decode()).strip()
         raise ToolError(f"{env_var} failed ({proc.returncode}): {output[:500]}")
-    text = stdout.decode().strip()
-    try:
-        payload = json.loads(text)
-    except Exception:
-        payload = {"raw_output": text}
+    text = stdout.decode()
+    payload = None
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith(("{", "[")):
+            try:
+                payload = json.loads(line)
+                break
+            except Exception:
+                continue
+    if payload is None:
+        payload = {"raw_output": text.strip()}
     if not isinstance(payload, dict):
         payload = {"value": payload}
-    return {"simulated": True, "provider": env_var, "requires_internet": False, **payload}
+    # Safety invariant: all command-hook outputs are still marked simulated True.
+    # The caller can inspect `provider` to know which engine was invoked.
+    payload["simulated"] = True
+    return {"provider": env_var, "requires_internet": False, **payload}
 
 
 async def _try_command_hook(env_var: str, **params: Any) -> dict | None:
@@ -3840,7 +3850,7 @@ async def _carrier_access(carrier: str = "", **_: Any) -> dict:
 async def _campaign_orchestrate(tasks: list | None = None, schedule: str = "modeled", tool: str = "", **_: Any) -> dict:
     ivr_env = _select_ivr_command(tool)
     if ivr_env:
-        result = await _try_command_hook(ivr_env, action="campaign", tasks=tasks or [], schedule=schedule)
+        result = await _try_command_hook(ivr_env, action="campaign", tasks=json.dumps(tasks or []), schedule=schedule)
         if result is not None:
             return result
     return await simfarm_sim.campaign_orchestrate(tasks=tasks, schedule=schedule)
