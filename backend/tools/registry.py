@@ -3769,7 +3769,8 @@ async def _run_command_hook(env_var: str, **params: Any) -> dict:
     template = os.environ.get(env_var, "")
     if not template:
         raise ToolError(f"{env_var} is not set")
-    mapping = {k: str(v) for k, v in params.items()}
+    # Quote values so multi-word values (e.g. a video prompt) stay as one token.
+    mapping = {k: shlex.quote(str(v)) for k, v in params.items()}
 
     def _replacer(match: Any) -> str:
         key = match.group(1)

@@ -24,8 +24,17 @@ async function loadConfig() {
             opt.textContent = s;
             styleEl.appendChild(opt);
         });
+
+        if (!cfg.ready) {
+            generateBtn.disabled = true;
+            statusEl.textContent = 'Not ready: ' + (cfg.not_ready_reason || 'Check Wan2.1 / Ollama setup.');
+        } else {
+            generateBtn.disabled = false;
+            statusEl.textContent = 'Ready. Enter a prompt or paste a script and click Generate.';
+        }
     } catch (err) {
         statusEl.textContent = 'Failed to load config: ' + (err.message || String(err));
+        generateBtn.disabled = true;
     }
 }
 

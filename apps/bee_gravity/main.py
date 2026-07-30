@@ -43,12 +43,23 @@ async def index() -> HTMLResponse:
 @app.get("/api/config")
 async def api_config() -> dict:
     """Runtime configuration and health."""
+    ollama_ready = await ollama.is_ready()
+    wan2_available = wan2.is_available()
+    ready = wan2_available and (ollama_ready or True)  # script can bypass Ollama
+    not_ready_reason = ""
+    if not wan2_available:
+        not_ready_reason = (
+            "Wan2.1 is not available. Build the image with --build-arg VIDEO_STACK=wan "
+            "or set WAN2_COMMAND to a working wan2-generate binary."
+        )
     return {
         "ollama_host": config.OLLAMA_HOST,
         "ollama_model": config.OLLAMA_MODEL,
-        "ollama_ready": await ollama.is_ready(),
+        "ollama_ready": ollama_ready,
         "wan2_command": config.WAN2_COMMAND,
-        "wan2_available": wan2.is_available(),
+        "wan2_available": wan2_available,
+        "ready": wan2_available,
+        "not_ready_reason": not_ready_reason,
         "styles": config.STYLES,
     }
 
@@ -59,10 +70,25 @@ async def api_generate(req: GenerateRequest) -> dict:
     if not req.prompt.strip() and not req.script.strip():
         raise HTTPException(status_code=400, detail="Provide a prompt or paste a script.")
 
+    if not wan2.is_available():
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Wan2.1 is not available. Build the image with --build-arg VIDEO_STACK=wan "
+                "or set WAN2_COMMAND to a working wan2-generate binary."
+            ),
+        )
+
     script = req.script.strip()
     if not script:
         if not await ollama.is_ready():
-            await ollama.pull_model()
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Ollama is not reachable. Paste a script directly or start Ollama "
+                    f"at {config.OLLAMA_HOST}."
+                ),
+            )
         try:
             script = await ollama.generate_script(req.prompt, req.style)
         except Exception as exc:

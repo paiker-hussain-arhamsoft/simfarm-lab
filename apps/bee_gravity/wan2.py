@@ -109,35 +109,33 @@ async def generate_video(
         has_placeholders = any("{script}" in t or "{duration}" in t for t in tokens)
 
         if has_placeholders:
-            mapping = {
-                "script": shlex.quote(script),
-                "duration": shlex.quote(duration),
-            }
+            mapping = {"script": script, "duration": duration}
             cmd = [
                 re.sub(r"\{([a-zA-Z_]+)\}", lambda m: mapping.get(m.group(1), m.group(0)), t)
                 for t in tokens
             ]
-            # Make sure we can control the output destination.
-            if "--output-dir" not in " ".join(cmd):
-                cmd.extend(["--output-dir", shlex.quote(output_dir)])
-            else:
-                cmd.extend(["--output-dir", shlex.quote(output_dir)])
         else:
-            cmd = [
-                *tokens,
-                "--script", script,
-                "--duration", duration,
-                "--output-dir", output_dir,
-            ]
+            cmd = list(tokens)
+
+        # Ensure the required args are present and that we control the output dir.
+        if "--script" not in cmd:
+            cmd.extend(["--script", script])
+        if "--duration" not in cmd:
+            cmd.extend(["--duration", duration])
+        # Append an overriding --output-dir so the artifact lands in the app dir.
+        cmd.extend(["--output-dir", output_dir])
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout, stderr = await asyncio.wait_for(
-            proc.communicate(), timeout=config.WAN2_TIMEOUT
-        )
+        if config.WAN2_TIMEOUT and config.WAN2_TIMEOUT > 0:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(), timeout=config.WAN2_TIMEOUT
+            )
+        else:
+            stdout, stderr = await proc.communicate()
         if proc.returncode != 0:
             raise RuntimeError(
                 f"WAN2_COMMAND failed (exit {proc.returncode}): {stderr.decode()[:500]}"
