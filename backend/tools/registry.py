@@ -410,6 +410,7 @@ _VIDEO_PROVIDERS = {
 _AVATAR_PROVIDERS = {
     "duix": {"provider": "Duix-Avatar", "license": "open", "online": False},
     "wav2lip": {"provider": "Wav2Lip", "license": "open", "online": False},
+    "videoretalking": {"provider": "VideoRetalking", "license": "open", "online": False},
     "roop": {"provider": "Roop", "license": "open", "online": False},
     "sadtalker": {"provider": "SadTalker", "license": "open", "online": False},
 }
@@ -794,7 +795,7 @@ async def _render_avatar(tool: str = "duix", photo: str = "", script: str = "", 
                          language: str = "en", **_: Any) -> dict:
     p = _AVATAR_PROVIDERS.get(tool, _AVATAR_PROVIDERS["duix"])
 
-    if tool in ("wav2lip", "roop", "sadtalker"):
+    if tool in ("wav2lip", "videoretalking", "roop", "sadtalker"):
         if not photo or not _external_lip_sync_command_configured(tool):
             return {
                 "simulated": True,
@@ -1630,12 +1631,13 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="render_avatar", name="Digital Human Renderer",
-        description="Photo+script or photo+audio lip-synced digital human (Duix-Avatar, Wav2Lip, Roop, SadTalker).",
-        category="media", provider="Duix-Avatar / Wav2Lip / Roop / SadTalker", run=_render_avatar,
-        parameters={"tool": "duix|wav2lip|roop|sadtalker", "photo": "reference video or image", "script": "text", "audio": "optional audio file path", "language": "lang"},
+        description="Photo+script or photo+audio lip-synced digital human (Duix-Avatar, Wav2Lip, VideoRetalking, Roop, SadTalker).",
+        category="media", provider="Duix-Avatar / Wav2Lip / VideoRetalking / Roop / SadTalker", run=_render_avatar,
+        parameters={"tool": "duix|wav2lip|videoretalking|roop|sadtalker", "photo": "reference video or image", "script": "text", "audio": "optional audio file path", "language": "lang"},
         status="live" if (
             _duix_video_host()
             or _external_lip_sync_command_configured("wav2lip")
+            or _external_lip_sync_command_configured("videoretalking")
             or _external_lip_sync_command_configured("roop")
             or _external_lip_sync_command_configured("sadtalker")
         ) else "stub",
@@ -1654,7 +1656,7 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="lip_sync", name="Lip-Sync Engine",
-        description="Lip-sync deepfake anchors (Wav2Lip, VideoRetalking). Simulated.",
+        description="Lip-sync deepfake anchors (Wav2Lip, VideoRetalking).",
         category="media", provider="Wav2Lip / VideoRetalking", run=_lip_sync,
         parameters={"tool": "wav2lip|videoretalking", "video": "video", "audio": "audio"},
         status="live" if (
