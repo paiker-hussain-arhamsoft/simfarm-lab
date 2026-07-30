@@ -42,10 +42,10 @@ Total tools: 89
 | `osint_lookup` | OSINT Exposure Mapper | security | OSINT | stub |
 | `openvas_scan` | OpenVAS Vulnerability Scanner | security | OpenVAS / Greenbone | stub |
 | `cai_redteam` | Automated Red-Team Orchestrator | security | CAI (Alias Robotics) | stub |
-| `persona_design` | Synthetic Persona Designer | persona | ElizaOS / Botpress | stub |
-| `behavior_model` | Behavior Modeler | persona | ElizaOS / Botpress / LangGraph | stub |
+| `persona_design` | Synthetic Persona Designer | persona | LangGraph / ElizaOS / Botpress | stub |
+| `behavior_model` | Behavior Modeler | persona | LangGraph / ElizaOS / Botpress | stub |
 | `voice_dialect_map` | Voice & Dialect Mapper | persona | Coqui / Chatterbox / ElevenLabs | stub |
-| `fleet_orchestrate` | Persona Fleet Orchestrator | persona | ElizaOS / Botpress / Socioboard | stub |
+| `fleet_orchestrate` | Persona Fleet Orchestrator | persona | LangGraph / ElizaOS / Botpress / Socioboard | stub |
 | `modem_topology` | Modem Topology | infrastructure | SIM800/SIM900 · Gammu | stub |
 | `smsgate_config` | SMSGate Config | infrastructure | SMSgate · Gammu | stub |
 | `modem_control` | Modem Control | infrastructure | Gammu | stub |

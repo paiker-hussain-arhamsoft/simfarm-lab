@@ -3035,11 +3035,150 @@ async def _call_botpress(method: str, path: str, json_data: dict | None = None, 
         raise ToolError(f"Botpress API call failed: {exc}")
 
 
-# ── TIER 3 · Persona Orchestration (ElizaOS / Botpress-backed) ───────
-# These tools call the ElizaOS or Botpress REST API when the relevant
-# container is reachable. They fall back to the original modeled stubs when
-# no engine is configured or the call fails, so no real agents are
-# provisioned without an available provider.
+def _is_langgraph_available() -> bool:
+    """Return True if LangGraph and a usable LLM backend are available."""
+    try:
+        from backend.pipeline.llm_config import detect_llm_backend
+        return detect_llm_backend() is not None
+    except Exception:
+        return False
+
+
+async def _langgraph_persona_design(archetype: str, region: str, name: str) -> dict:
+    """Use a LangGraph + LangChain LLM workflow to design a synthetic persona."""
+    from backend.pipeline.llm_config import LLMBackend, create_langchain_llm, detect_llm_backend
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langgraph.graph import END, StateGraph
+    from typing import TypedDict
+
+    class PersonaState(TypedDict):
+        archetype: str
+        region: str
+        name: str
+        persona: dict
+
+    backend = detect_llm_backend() or LLMBackend.OLLAMA
+    llm = create_langchain_llm(backend)
+
+    async def design_node(state: PersonaState) -> dict:
+        prompt = (
+            f"Design a synthetic research persona. Archetype: {state['archetype']}. "
+            f"Region: {state['region']}. Name: {state['name']}. "
+            "Return ONLY a valid JSON object with keys: persona_id (string), name (string), "
+            "archetype (string), region (string), layers (list of 7 strings), bio (string), "
+            "goals (list of strings), voice (string), and digital_footprint (string). "
+            "No markdown, no commentary."
+        )
+        messages = [
+            SystemMessage(content="You are a persona-design engine. Output valid JSON only."),
+            HumanMessage(content=prompt),
+        ]
+        response = await llm.ainvoke(messages)
+        text = response.content or "{}"
+        try:
+            persona = json.loads(text)
+        except Exception:
+            # Fallback: try to extract JSON from markdown code block
+            match = re.search(r'```(?:json)?\s*({.*?})\s*```', text, re.DOTALL)
+            if match:
+                persona = json.loads(match.group(1))
+            else:
+                # Last resort: wrap text into a structured stub
+                persona = {
+                    "persona_id": f"lang-{state['name']}-{uuid.uuid4().hex[:8]}",
+                    "name": state["name"],
+                    "archetype": state["archetype"],
+                    "region": state["region"],
+                    "bio": text[:500],
+                }
+        return {"persona": persona}
+
+    graph = StateGraph(PersonaState)
+    graph.add_node("design", design_node)
+    graph.set_entry_point("design")
+    graph.add_edge("design", END)
+    app = graph.compile()
+
+    final_state = await app.ainvoke({
+        "archetype": archetype or "generic",
+        "region": region or "lab",
+        "name": name or (archetype or "generic").replace(" ", "-").lower(),
+    })
+    persona = final_state.get("persona", {})
+    persona.setdefault("persona_id", f"lang-{persona.get('name', 'unknown')}-{uuid.uuid4().hex[:8]}")
+    return {
+        "simulated": True,
+        "requires_internet": backend == LLMBackend.OPENAI,
+        "provider": f"LangGraph ({backend.value})",
+        "persona_id": persona.get("persona_id"),
+        "character": persona,
+        "archetype": archetype,
+        "region": region,
+        "note": "LangGraph generated a synthetic persona. Result is marked simulated per safety policy.",
+    }
+
+
+async def _langgraph_behavior_model(persona_id: str, goal: str, message: str, character: dict) -> dict:
+    """Use a LangGraph + LangChain LLM workflow to simulate a persona reply."""
+    from backend.pipeline.llm_config import LLMBackend, create_langchain_llm, detect_llm_backend
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langgraph.graph import END, StateGraph
+    from typing import TypedDict
+
+    class ChatState(TypedDict):
+        persona_id: str
+        goal: str
+        message: str
+        character: dict
+        reply: str
+
+    backend = detect_llm_backend() or LLMBackend.OLLAMA
+    llm = create_langchain_llm(backend)
+
+    bio = character.get("bio", "") if isinstance(character, dict) else ""
+    archetype = character.get("archetype", "a synthetic persona") if isinstance(character, dict) else "a synthetic persona"
+
+    async def respond_node(state: ChatState) -> dict:
+        prompt = (
+            f"You are {archetype}. Bio: {bio}.\n"
+            f"Goal: {state['goal'] or 'respond naturally'}.\n"
+            f"User says: {state['message']}\n"
+            "Reply briefly in character as this synthetic research persona."
+        )
+        messages = [
+            SystemMessage(content="You are a synthetic persona in a controlled research lab. Stay in character."),
+            HumanMessage(content=prompt),
+        ]
+        response = await llm.ainvoke(messages)
+        return {"reply": response.content or ""}
+
+    graph = StateGraph(ChatState)
+    graph.add_node("respond", respond_node)
+    graph.set_entry_point("respond")
+    graph.add_edge("respond", END)
+    app = graph.compile()
+
+    final_state = await app.ainvoke({
+        "persona_id": persona_id,
+        "goal": goal,
+        "message": message or goal or "Hello, please describe your current goal.",
+        "character": character,
+    })
+    return {
+        "simulated": True,
+        "requires_internet": backend == LLMBackend.OPENAI,
+        "provider": f"LangGraph ({backend.value})",
+        "persona_id": persona_id,
+        "goal": goal,
+        "reply": final_state.get("reply", ""),
+        "note": "LangGraph generated a behavioral reply. Result is marked simulated per safety policy.",
+    }
+
+
+# ── TIER 3 · Persona Orchestration (ElizaOS / Botpress / LangGraph-backed) ───────
+# These tools call the ElizaOS, Botpress, or LangGraph backend when available.
+# They fall back to the original modeled stubs when no engine is configured or
+# the call fails, so no real agents are provisioned without an available provider.
 
 async def _persona_design(
     tool: str = "",
@@ -3048,9 +3187,34 @@ async def _persona_design(
     name: str = "",
     **_: Any,
 ) -> dict:
-    """Create a synthetic persona character in ElizaOS or Botpress, or return the stub."""
+    """Create a synthetic persona character using LangGraph, ElizaOS, or Botpress, or return the stub."""
     chosen = (tool or "").strip().lower()
+    use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
     use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_langgraph:
+        if not _is_langgraph_available():
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "layers": ["identity", "backstory", "demographics", "psychographics",
+                           "digital-footprint", "voice", "goals"],
+                "archetype": archetype or "generic-lab-persona",
+                "note": "LangGraph is not available (no LLM backend reachable). Returning modeled persona stub.",
+            }
+        try:
+            return await _langgraph_persona_design(archetype, region, name)
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "archetype": archetype,
+                "note": f"LangGraph persona creation failed ({exc}); returning modeled stub.",
+            }
 
     if use_botpress:
         if not _is_botpress_available():
@@ -3154,11 +3318,44 @@ async def _behavior_model(
     persona_id: str = "",
     goal: str = "",
     message: str = "",
+    character: dict | None = None,
     **_: Any,
 ) -> dict:
-    """Send a message to an ElizaOS or Botpress agent and observe its generated reply."""
+    """Send a message to a LangGraph, ElizaOS, or Botpress agent and observe its generated reply."""
     chosen = (tool or "").strip().lower()
+    use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
     use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_langgraph:
+        if not _is_langgraph_available():
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": persona_id or "sim-persona-0001",
+                "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                             "interaction style (modeled)"],
+                "note": "LangGraph is not available (no LLM backend reachable). Returning modeled behavior stub.",
+            }
+        if not persona_id:
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "note": "persona_id is required to query a LangGraph persona.",
+            }
+        try:
+            return await _langgraph_behavior_model(persona_id, goal, message, character or {})
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "goal": goal,
+                "note": f"LangGraph behavior query failed ({exc}); returning modeled stub.",
+            }
 
     if use_botpress:
         if not _is_botpress_available():
@@ -3283,9 +3480,42 @@ async def _fleet_orchestrate(
     region: str = "",
     **_: Any,
 ) -> dict:
-    """List existing ElizaOS agents or Botpress bots and optionally create a batch."""
+    """List existing ElizaOS agents / Botpress bots or create a LangGraph persona batch for fleet modeling."""
     chosen = (tool or "").strip().lower()
+    use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
     use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_langgraph:
+        if not _is_langgraph_available():
+            return {
+                "simulated": True,
+                "provider": "LangGraph / Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+                "note": "LangGraph is not available (no LLM backend reachable). Returning modeled fleet stub.",
+            }
+
+        created_ids: list[str] = []
+        if count and archetype:
+            for i in range(int(count)):
+                try:
+                    persona = await _langgraph_persona_design(archetype, region or "lab", f"{archetype}-{i}")
+                    pid = persona.get("persona_id")
+                    if pid:
+                        created_ids.append(pid)
+                except Exception:
+                    break
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "LangGraph",
+            "platform": platform or "lab-dashboard",
+            "created_persona_ids": created_ids,
+            "requested_count": int(count),
+            "note": "LangGraph fleet created in-process. Result is marked simulated per safety policy.",
+        }
 
     if use_botpress:
         if not _is_botpress_available():
@@ -3621,17 +3851,17 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="persona_design", name="Synthetic Persona Designer",
-        description="Create a synthetic persona character through the ElizaOS or Botpress API, or fall back to the modeled stub. Use tool='botpress' to force Botpress.",
-        category="persona", provider="ElizaOS / Botpress", run=_persona_design,
-        parameters={"tool": "elizaos|botpress", "archetype": "persona archetype", "region": "target region", "name": "optional character name"},
-        status="live" if (_is_elizaos_available() or _is_botpress_available()) else "stub",
+        description="Create a synthetic persona character through the LangGraph LLM workflow, ElizaOS, or Botpress API, or fall back to the modeled stub. Use tool='langgraph'|'botpress' to force a provider.",
+        category="persona", provider="LangGraph / ElizaOS / Botpress", run=_persona_design,
+        parameters={"tool": "langgraph|elizaos|botpress", "archetype": "persona archetype", "region": "target region", "name": "optional character name"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available()) else "stub",
     ))
     register(ToolSpec(
         id="behavior_model", name="Behavior Modeler",
-        description="Send a message to an ElizaOS or Botpress agent and observe its generated reply, or fall back to the modeled stub. Use tool='botpress' to force Botpress.",
-        category="persona", provider="ElizaOS / Botpress / LangGraph", run=_behavior_model,
-        parameters={"tool": "elizaos|botpress", "persona_id": "persona id", "goal": "objective", "message": "message to send to the agent"},
-        status="live" if (_is_elizaos_available() or _is_botpress_available()) else "stub",
+        description="Send a message to a LangGraph, ElizaOS, or Botpress agent and observe its generated reply, or fall back to the modeled stub. Use tool='langgraph'|'botpress' to force a provider.",
+        category="persona", provider="LangGraph / ElizaOS / Botpress", run=_behavior_model,
+        parameters={"tool": "langgraph|elizaos|botpress", "persona_id": "persona id", "goal": "objective", "message": "message to send to the agent"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available()) else "stub",
     ))
     register(ToolSpec(
         id="voice_dialect_map", name="Voice & Dialect Mapper",
@@ -3664,10 +3894,10 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="fleet_orchestrate", name="Persona Fleet Orchestrator",
-        description="List or create a batch of ElizaOS or Botpress personas/bots, or fall back to the modeled stub. Use tool='botpress' to force Botpress.",
-        category="persona", provider="ElizaOS / Botpress / Socioboard", run=_fleet_orchestrate,
-        parameters={"tool": "elizaos|botpress", "count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
-        status="live" if (_is_elizaos_available() or _is_botpress_available()) else "stub",
+        description="List or create a batch of LangGraph, ElizaOS, or Botpress personas/bots, or fall back to the modeled stub. Use tool='langgraph'|'botpress' to force a provider.",
+        category="persona", provider="LangGraph / ElizaOS / Botpress / Socioboard", run=_fleet_orchestrate,
+        parameters={"tool": "langgraph|elizaos|botpress", "count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available()) else "stub",
     ))
     tier4 = [
         ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),
