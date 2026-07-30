@@ -1,0 +1,3 @@
+# Browser automation stack for persona/stealth tools.
+# Installed when BROWSER_STACK=playwright.
+playwright==1.42.0

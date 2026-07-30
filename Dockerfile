@@ -18,7 +18,8 @@ WORKDIR /app
 ARG VOICE_STACK=chatterbox
 ARG VIDEO_STACK=
 ARG FACE_STACK=
-COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt ./
+ARG BROWSER_STACK=
+COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
     if [ "$VOICE_STACK" = "coqui" ]; then \
         pip install --no-cache-dir -r requirements-voice-coqui.txt; \
@@ -30,6 +31,14 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     fi && \
     if [ "$FACE_STACK" = "insightface" ]; then \
         pip install --no-cache-dir --no-deps -r requirements-face-insightface.txt; \
+    fi && \
+    if [ "$BROWSER_STACK" = "playwright" ] || [ "$BROWSER_STACK" = "all" ]; then \
+        pip install --no-cache-dir -r requirements-browser-playwright.txt && \
+        playwright install chromium && \
+        playwright install-deps chromium; \
+    fi && \
+    if [ "$BROWSER_STACK" = "selenium" ] || [ "$BROWSER_STACK" = "all" ]; then \
+        pip install --no-cache-dir -r requirements-browser-selenium.txt; \
     fi
 
 # Pre-download InsightFace models into the image when the face stack is enabled.

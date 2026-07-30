@@ -16,6 +16,7 @@ the orchestrators.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import shlex
 import shutil
@@ -380,15 +381,539 @@ async def _social_targeting(platform: str = "facebook", region: str = "", **_: A
     }
 
 
+def _is_playwright_available() -> bool:
+    """Return True if the Playwright Python package is installed."""
+    import importlib.util
+    return importlib.util.find_spec("playwright") is not None
+
+
+def _is_selenium_available() -> bool:
+    """Return True if Selenium and webdriver-manager are installed."""
+    import importlib.util
+    return (
+        importlib.util.find_spec("selenium") is not None
+        and importlib.util.find_spec("webdriver_manager") is not None
+    )
+
+
+def _is_puppeteer_configured() -> bool:
+    """Return True if a Puppeteer external command is configured."""
+    return bool(os.environ.get("PUPPETEER_COMMAND", ""))
+
+
+_BROWSER_ARTIFACT_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    "data", "artifacts", "browser"
+)
+
+
+def _is_target_url(target: str) -> bool:
+    """Return True if the target looks like a URL or about:blank."""
+    return bool(target and (target.startswith(("http://", "https://", "file://")) or "://" in target or target == "about:blank"))
+
+
+def _normalize_browser_target(target: str) -> str:
+    """Convert a local file path to a file:// URL; leave real URLs unchanged."""
+    if _is_target_url(target):
+        return target
+    if target and os.path.exists(target):
+        return "file://" + os.path.abspath(target)
+    return ""
+
+
+def _is_headless_true(value: Any) -> bool:
+    """Coerce a string/bool headless parameter to a boolean."""
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in ("true", "1", "yes", "on")
+
+
+def _find_playwright_chromium() -> tuple[str, str]:
+    """Locate the Playwright Chromium binary and return (path, version)."""
+    import glob
+    import re
+    import subprocess
+
+    cache = os.path.expanduser("~/.cache/ms-playwright")
+    paths = sorted(glob.glob(os.path.join(cache, "chromium-*/chrome-linux/chrome")))
+    if not paths:
+        raise ToolError("Playwright Chromium not found; run 'playwright install chromium'")
+    binary = paths[-1]
+    try:
+        out = subprocess.check_output([binary, "--version"], stderr=subprocess.DEVNULL, timeout=10).decode()
+    except Exception as exc:
+        raise ToolError(f"Could not determine Chromium version: {exc}")
+    m = re.search(r"Chromium ([0-9.]+)", out)
+    version = m.group(1) if m else ""
+    return binary, version
+
+
+async def _run_selenium_session(
+    target: str,
+    action: str = "navigate",
+    script: str = "",
+    selector: str = "",
+    value: str = "",
+    headless: bool = True,
+    screenshot: bool = False,
+    output: str = "",
+    browser: str = "chromium",
+) -> dict:
+    """Run a Selenium browser session using the Playwright Chromium binary."""
+    import subprocess
+
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
+    from selenium.webdriver.common.by import By
+    from webdriver_manager.chrome import ChromeDriverManager
+
+    binary, version = _find_playwright_chromium()
+    target_url = _normalize_browser_target(target)
+    if not target_url:
+        raise ToolError("target must be a URL or existing file path")
+
+    is_remote = target_url.startswith(("http://", "https://"))
+    if is_remote and not _online_available():
+        raise ToolError("Remote URLs require ALLOW_ONLINE_TOOLS=1")
+
+    os.makedirs(_BROWSER_ARTIFACT_DIR, exist_ok=True)
+    out_path = output
+    if not out_path:
+        ext = ".png" if screenshot else ".json"
+        out_path = os.path.join(_BROWSER_ARTIFACT_DIR, f"{uuid.uuid4()}{ext}")
+    elif not os.path.isabs(out_path):
+        out_path = os.path.join(_duix_data_dir(), out_path)
+    out_path = os.path.normpath(os.path.abspath(out_path))
+
+    options = Options()
+    options.binary_location = binary
+    if headless:
+        options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1280,720")
+
+    driver_path = ChromeDriverManager(driver_version=version).install()
+    service = Service(driver_path)
+
+    def _run() -> dict:
+        from selenium import webdriver
+        driver = webdriver.Chrome(service=service, options=options)
+        try:
+            driver.get(target_url)
+            result: dict = {
+                "target": target_url,
+                "action": action,
+                "headless": headless,
+                "title": driver.title,
+                "url": driver.current_url,
+                "status": None,
+            }
+
+            action_clean = (action or "navigate").lower()
+
+            if action_clean == "stealth":
+                signals = driver.execute_script("""return {
+                    userAgent: navigator.userAgent,
+                    webdriver: navigator.webdriver,
+                    plugins: navigator.plugins ? navigator.plugins.length : null,
+                    languages: navigator.languages,
+                    platform: navigator.platform,
+                    hardwareConcurrency: navigator.hardwareConcurrency,
+                    deviceMemory: navigator.deviceMemory,
+                    maxTouchPoints: navigator.maxTouchPoints,
+                    chrome: typeof window.chrome !== 'undefined',
+                    chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime,
+                    notificationPermissions: typeof Notification !== 'undefined',
+                }""")
+                result["signals"] = signals
+                flags = []
+                if signals.get("webdriver"):
+                    flags.append("navigator.webdriver === true")
+                if signals.get("plugins") == 0:
+                    flags.append("zero_plugins")
+                if not signals.get("chrome"):
+                    flags.append("window.chrome_missing")
+                result["flags"] = flags
+                result["stealth_grade"] = "A" if len(flags) == 0 else ("B" if len(flags) == 1 else "C")
+
+            elif action_clean == "screenshot":
+                driver.save_screenshot(out_path)
+                result["screenshot"] = out_path
+
+            elif action_clean == "evaluate":
+                if not script:
+                    raise ToolError("evaluate action requires a 'script' parameter")
+                result["evaluate_result"] = driver.execute_script(script)
+
+            elif action_clean == "click":
+                if not selector:
+                    raise ToolError("click action requires a 'selector' parameter")
+                driver.find_element(By.CSS_SELECTOR, selector).click()
+                result["clicked"] = selector
+
+            elif action_clean == "type":
+                if not selector or value is None:
+                    raise ToolError("type action requires 'selector' and 'value' parameters")
+                driver.find_element(By.CSS_SELECTOR, selector).send_keys(value)
+                result["filled"] = selector
+
+            elif action_clean == "get_text":
+                result["text"] = driver.find_element(By.TAG_NAME, "body").text[:10000]
+
+            elif action_clean == "html":
+                result["html"] = driver.page_source[:10000]
+
+            elif action_clean in ("navigate", "goto"):
+                pass
+
+            else:
+                raise ToolError(f"Unsupported browser action: {action}")
+
+            if screenshot and action_clean != "screenshot":
+                driver.save_screenshot(out_path)
+                result["screenshot"] = out_path
+
+            return result
+        finally:
+            driver.quit()
+
+    return await asyncio.to_thread(_run)
+
+
+def _is_puppeteer_output_json(output: str) -> bool:
+    """Return True if the output path is intended for Puppeteer's result JSON."""
+    return bool(output and output.lower().endswith(".json"))
+
+
+async def _run_puppeteer_command(
+    target: str,
+    action: str = "navigate",
+    script: str = "",
+    selector: str = "",
+    value: str = "",
+    headless: bool = True,
+    screenshot: bool = False,
+    output: str = "",
+    browser: str = "chromium",
+) -> dict:
+    """Run the configured external Puppeteer command and parse its JSON result."""
+    cmd_template = os.environ.get("PUPPETEER_COMMAND", "")
+    if not cmd_template:
+        raise ToolError("PUPPETEER_COMMAND is not configured")
+
+    os.makedirs(_BROWSER_ARTIFACT_DIR, exist_ok=True)
+    out_path = output
+    if not out_path:
+        out_path = os.path.join(_BROWSER_ARTIFACT_DIR, f"{uuid.uuid4()}.json")
+    elif not os.path.isabs(out_path):
+        out_path = os.path.join(_duix_data_dir(), out_path)
+    out_path = os.path.normpath(os.path.abspath(out_path))
+
+    command = cmd_template.format(
+        target=shlex.quote(target),
+        action=shlex.quote(action or "navigate"),
+        script=shlex.quote(script or ""),
+        selector=shlex.quote(selector or ""),
+        value=shlex.quote(str(value) if value is not None else ""),
+        headless="true" if _is_headless_true(headless) else "false",
+        screenshot="true" if _is_headless_true(screenshot) else "false",
+        output=shlex.quote(out_path),
+        browser=shlex.quote(browser or "chromium"),
+    )
+
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"Puppeteer command failed: {stderr.decode()[:500]}")
+    if not os.path.exists(out_path):
+        raise ToolError("Puppeteer command did not produce the expected output file")
+
+    try:
+        with open(out_path, "r", encoding="utf-8") as f:
+            result = json.loads(f.read())
+    except Exception:
+        result = {"raw_output": out_path}
+    return result
+
+
+async def _run_playwright_session(
+    target: str,
+    action: str = "navigate",
+    script: str = "",
+    selector: str = "",
+    value: str = "",
+    headless: bool = True,
+    screenshot: bool = False,
+    output: str = "",
+    browser: str = "chromium",
+) -> dict:
+    """Launch a Playwright browser session and execute the requested action.
+
+    This is a defensive-automation helper: it can drive a real headless browser,
+    but it never claims the result is non-simulated and it respects the
+    offline-first `ALLOW_ONLINE_TOOLS` policy for external URLs.
+    """
+    from playwright.async_api import async_playwright
+
+    target_url = _normalize_browser_target(target)
+    if not target_url:
+        raise ToolError("target must be a URL (http/https/file) or an existing file path")
+
+    is_remote = target_url.startswith(("http://", "https://"))
+    if is_remote and not _online_available():
+        raise ToolError("Remote URLs require ALLOW_ONLINE_TOOLS=1")
+
+    os.makedirs(_BROWSER_ARTIFACT_DIR, exist_ok=True)
+    out_path = output
+    if not out_path:
+        ext = ".png" if screenshot else ".json"
+        out_path = os.path.join(_BROWSER_ARTIFACT_DIR, f"{uuid.uuid4()}{ext}")
+    elif not os.path.isabs(out_path):
+        out_path = os.path.join(_duix_data_dir(), out_path)
+    out_path = os.path.normpath(os.path.abspath(out_path))
+
+    result: dict = {"target": target_url, "action": action, "headless": headless}
+
+    async with async_playwright() as p:
+        browser_launcher = getattr(p, browser, p.chromium)
+        browser_obj = await browser_launcher.launch(headless=headless)
+        try:
+            context = await browser_obj.new_context(
+                viewport={"width": 1280, "height": 720},
+                user_agent=(
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+            )
+            page = await context.new_page()
+            response = await page.goto(target_url, wait_until="networkidle" if is_remote else "domcontentloaded")
+            result["status"] = response.status if response else None
+            result["title"] = await page.title()
+            result["url"] = page.url
+
+            action_clean = (action or "navigate").lower()
+
+            if action_clean == "stealth":
+                signals = await page.evaluate("""() => ({
+                    userAgent: navigator.userAgent,
+                    webdriver: navigator.webdriver,
+                    plugins: navigator.plugins ? navigator.plugins.length : null,
+                    languages: navigator.languages,
+                    platform: navigator.platform,
+                    hardwareConcurrency: navigator.hardwareConcurrency,
+                    deviceMemory: navigator.deviceMemory,
+                    maxTouchPoints: navigator.maxTouchPoints,
+                    chrome: typeof window.chrome !== 'undefined',
+                    chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime,
+                    notificationPermissions: typeof Notification !== 'undefined',
+                })""")
+                result["signals"] = signals
+                flags = []
+                if signals.get("webdriver"):
+                    flags.append("navigator.webdriver === true")
+                if signals.get("plugins") == 0:
+                    flags.append("zero_plugins")
+                if not signals.get("chrome"):
+                    flags.append("window.chrome_missing")
+                if signals.get("languages") and len(signals.get("languages", [])) == 0:
+                    flags.append("no_languages")
+                result["flags"] = flags
+                # Grade: A if no obvious flags, B if one, C if more.
+                if len(flags) == 0:
+                    result["stealth_grade"] = "A"
+                elif len(flags) == 1:
+                    result["stealth_grade"] = "B"
+                else:
+                    result["stealth_grade"] = "C"
+
+            elif action_clean == "screenshot":
+                await page.screenshot(path=out_path, full_page=False)
+                result["screenshot"] = out_path
+
+            elif action_clean == "evaluate":
+                if not script:
+                    raise ToolError("evaluate action requires a 'script' parameter")
+                eval_result = await page.evaluate(script)
+                result["evaluate_result"] = eval_result
+
+            elif action_clean == "click":
+                if not selector:
+                    raise ToolError("click action requires a 'selector' parameter")
+                await page.click(selector)
+                result["clicked"] = selector
+
+            elif action_clean == "type":
+                if not selector or value is None:
+                    raise ToolError("type action requires 'selector' and 'value' parameters")
+                await page.fill(selector, value)
+                result["filled"] = selector
+
+            elif action_clean == "get_text":
+                text = await page.inner_text("body")
+                result["text"] = text[:10000]
+
+            elif action_clean == "html":
+                html = await page.content()
+                result["html"] = html[:10000]
+
+            elif action_clean in ("navigate", "goto"):
+                # result already populated with title/url/status
+                pass
+
+            else:
+                raise ToolError(f"Unsupported browser action: {action}")
+
+            if screenshot and action_clean != "screenshot":
+                await page.screenshot(path=out_path, full_page=False)
+                result["screenshot"] = out_path
+        finally:
+            await browser_obj.close()
+
+    return result
+
+
 async def _playwright_stealth_check(endpoint: str = "", **_: Any) -> dict:
+    """Launch a real Playwright session and report automation-detection signals."""
+    if not _is_playwright_available():
+        return {
+            "simulated": True,
+            "provider": "Playwright",
+            "endpoint": endpoint,
+            "stealth_grade": "B",
+            "flags": ["webdriver_present"],
+            "note": "Stub — Playwright package not installed.",
+        }
+
+    try:
+        target = endpoint or "about:blank"
+        session = await _run_playwright_session(
+            target=target,
+            action="stealth",
+            headless=True,
+        )
+        return {
+            "simulated": True,
+            "provider": "Playwright",
+            "endpoint": endpoint,
+            "stealth_grade": session.get("stealth_grade", "B"),
+            "flags": session.get("flags", []),
+            "signals": session.get("signals", {}),
+            "url": session.get("url"),
+            "note": "Real Playwright session launched; signals collected for defensive detection research.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "Playwright",
+            "endpoint": endpoint,
+            "stealth_grade": "B",
+            "flags": ["webdriver_present"],
+            "note": f"Playwright failed ({exc}); falling back to modeled signals.",
+        }
+
+
+def _browser_provider_available(tool: str) -> bool:
+    """Return True if the requested browser automation provider is usable."""
+    if tool == "playwright":
+        return _is_playwright_available()
+    if tool == "selenium":
+        return _is_selenium_available()
+    if tool == "puppeteer":
+        return _is_puppeteer_configured()
+    return False
+
+
+def _browser_plan_stub(tool: str, target: str, action: str, note: str) -> dict:
+    """Return the original plan-style stub for browser automation."""
     return {
         "simulated": True,
-        "provider": "Playwright",
-        "endpoint": endpoint,
-        "stealth_grade": "B",
-        "flags": ["webdriver_present"],
-        "note": "Stub — automated-session posture check; simulated only.",
+        "provider": "Playwright / Puppeteer / Selenium",
+        "requires_internet": False,
+        "tool": tool or "playwright",
+        "target": target,
+        "action": action or "navigate",
+        "capabilities": ["headless session", "auto-waiting", "multi-browser (chromium)",
+                         "navigate", "screenshot", "evaluate", "click", "type", "get_text", "html"],
+        "note": note,
     }
+
+
+async def _browser_automation_plan(
+    target: str = "",
+    tool: str = "playwright",
+    action: str = "navigate",
+    script: str = "",
+    selector: str = "",
+    value: str = "",
+    headless: bool = True,
+    screenshot: bool = False,
+    output: str = "",
+    **_: Any,
+) -> dict:
+    """Headless browser automation with Playwright, Selenium, or Puppeteer."""
+    tool = (tool or "playwright").lower()
+    if tool not in ("playwright", "selenium", "puppeteer"):
+        return _browser_plan_stub(
+            tool, target, action,
+            f"Tool '{tool}' is not supported; use 'playwright', 'selenium', or 'puppeteer'."
+        )
+
+    valid_target = bool(target and (_is_target_url(target) or os.path.exists(target)))
+    if not _browser_provider_available(tool) or not valid_target:
+        return _browser_plan_stub(
+            tool, target, action,
+            f"{tool.title()} plan stub. Pass a URL/file target and set action='navigate' (or install/configure the engine) to execute a real browser session."
+        )
+
+    try:
+        if tool == "playwright":
+            session = await _run_playwright_session(
+                target=target, action=action, script=script, selector=selector, value=value,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+            )
+        elif tool == "selenium":
+            session = await _run_selenium_session(
+                target=target, action=action, script=script, selector=selector, value=value,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+            )
+        else:  # puppeteer
+            session = await _run_puppeteer_command(
+                target=target, action=action, script=script, selector=selector, value=value,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+            )
+
+        return {
+            "simulated": True,
+            "provider": tool.title(),
+            "requires_internet": False,
+            "tool": tool,
+            "target": session.get("target"),
+            "action": session.get("action"),
+            "title": session.get("title"),
+            "url": session.get("url"),
+            "status": session.get("status"),
+            "screenshot": session.get("screenshot"),
+            "evaluate_result": session.get("evaluate_result"),
+            "filled": session.get("filled"),
+            "clicked": session.get("clicked"),
+            "text": session.get("text"),
+            "html": session.get("html"),
+            "signals": session.get("signals"),
+            "flags": session.get("flags"),
+            "stealth_grade": session.get("stealth_grade"),
+            "note": f"Real {tool.title()} browser session executed.",
+        }
+    except Exception as exc:
+        return _browser_plan_stub(
+            tool, target, action,
+            f"{tool.title()} execution failed ({exc}); falling back to plan stub."
+        )
 
 
 # ── Media Crew stubs (offline-first; online providers opt in) ───────
@@ -1367,15 +1892,108 @@ async def _gfpgan_upscale(input_path: str = "", scale: int = 2, **_: Any) -> dic
         }
 
 
-async def _ffmpeg_pipeline(steps: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "FFmpeg",
-        "requires_internet": False,
-        "steps": steps or "trim,concat,scale,mux",
-        "artifact": "/artifacts/video/final_stub.mp4",
-        "note": "Stub — deterministic FFmpeg compositing/mux pipeline (offline/local).",
-    }
+def _is_ffmpeg_available() -> bool:
+    """Return True if the ffmpeg binary is present on this machine."""
+    return shutil.which("ffmpeg") is not None
+
+
+async def _run_ffmpeg_pipeline(
+    input_paths: list[str], output_path: str, command: str = ""
+) -> str:
+    """Run ffmpeg with the supplied inputs, options, and output path."""
+    args = ["ffmpeg", "-y"]
+    for path in input_paths:
+        args += ["-i", path]
+    if command:
+        args += shlex.split(command)
+    args += [output_path]
+
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"ffmpeg failed: {stderr.decode()[:500]}")
+    if not os.path.exists(output_path):
+        raise ToolError("ffmpeg did not produce the expected output file")
+    return output_path
+
+
+async def _ffmpeg_pipeline(
+    steps: str = "",
+    inputs: Any = None,
+    output: str = "",
+    command: str = "",
+    **_: Any,
+) -> dict:
+    """Deterministic FFmpeg compositing / muxing pipeline.
+
+    Real execution requires either:
+      - `command` (FFmpeg options/filters, e.g. "-vf scale=1280:720 -c:a copy")
+        plus `inputs` and optionally `output`, or
+      - a `steps` value that starts with a dash (treated as FFmpeg options).
+
+    If no actionable command/inputs are supplied, the original stub is returned.
+    """
+    p = {"provider": "FFmpeg", "requires_internet": False}
+    effective_command = command or (steps if steps and steps.startswith("-") else "")
+
+    if not _is_ffmpeg_available() or not inputs or not effective_command:
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "requires_internet": False,
+            "steps": steps or "trim,concat,scale,mux",
+            "artifact": "/artifacts/video/final_stub.mp4",
+            "note": "Stub — deterministic FFmpeg compositing/mux pipeline (offline/local). "
+                    "Pass inputs and command (or a steps string starting with '-') to run real ffmpeg.",
+        }
+
+    try:
+        if isinstance(inputs, str):
+            input_paths = [p.strip() for p in inputs.split(",") if p.strip()]
+        elif isinstance(inputs, list):
+            input_paths = [str(p) for p in inputs]
+        else:
+            input_paths = [str(inputs)]
+
+        data_dir = _duix_data_dir()
+        resolved_inputs: list[str] = []
+        for path in input_paths:
+            path = path if os.path.isabs(path) else os.path.join(data_dir, path)
+            path = os.path.normpath(path)
+            if not os.path.exists(path):
+                raise ToolError(f"Input file not found: {path}")
+            resolved_inputs.append(path)
+
+        os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+        if output:
+            out_path = output if os.path.isabs(output) else os.path.join(data_dir, output)
+            out_path = os.path.normpath(out_path)
+        else:
+            out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.mp4")
+        out_path = os.path.abspath(out_path)
+
+        artifact = await _run_ffmpeg_pipeline(resolved_inputs, out_path, effective_command)
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "requires_internet": False,
+            "steps": steps or effective_command,
+            "artifact": artifact,
+            "note": f"Processed with FFmpeg: {effective_command}",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "requires_internet": False,
+            "steps": steps or "trim,concat,scale,mux",
+            "artifact": "/artifacts/video/final_stub.mp4",
+            "note": f"FFmpeg failed ({exc}); Stub — deterministic FFmpeg compositing/mux pipeline (offline/local).",
+        }
 
 
 # ── Cyber Crew stubs (defensive security; simulated, offline) ───────
@@ -1515,20 +2133,6 @@ async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) ->
         "calibration": {"pitch": "modeled", "cadence": "modeled", "register": "modeled"},
         "note": "Stub — regional dialect calibration & voice-engine mapping concept. "
                 "Simulated only; no audio is synthesized here. Offline engines preferred.",
-    }
-
-
-async def _browser_automation_plan(target: str = "", tool: str = "playwright", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "Playwright / Puppeteer / Selenium",
-        "requires_internet": False,
-        "tool": tool or "playwright",
-        "capabilities": ["headless session (concept)", "auto-waiting (concept)",
-                         "multi-browser (concept)"],
-        "note": "Stub — headless-automation PLAN only. Simulated; no browser is launched, no "
-                "site is visited, and NO stealth / anti-detection / fingerprint-evasion is "
-                "performed. Any real automation must respect site terms and platform integrity.",
     }
 
 
@@ -1675,7 +2279,13 @@ def _register_defaults() -> None:
         id="ffmpeg_pipeline", name="FFmpeg Pipeline",
         description="Deterministic FFmpeg compositing / muxing pipeline.",
         category="media", provider="FFmpeg", run=_ffmpeg_pipeline,
-        parameters={"steps": "comma-separated steps"},
+        parameters={
+            "steps": "comma-separated steps or raw FFmpeg options",
+            "inputs": "input file path(s) (string or list)",
+            "output": "optional output path",
+            "command": "FFmpeg options/filters (e.g. -vf scale=1280:720 -c:a copy)",
+        },
+        status="live" if _is_ffmpeg_available() else "stub",
     ))
     register(ToolSpec(
         id="recon_scan", name="Attack-Surface Scanner",
@@ -1715,9 +2325,10 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="playwright_stealth_check", name="Automation Posture Check",
-        description="Check automated-session detection posture for an endpoint.",
+        description="Launch a real Playwright session and collect automation-detection signals for an endpoint.",
         category="stealth", provider="Playwright", run=_playwright_stealth_check,
-        parameters={"endpoint": "target endpoint"},
+        parameters={"endpoint": "target endpoint or about:blank"},
+        status="live" if _is_playwright_available() else "stub",
     ))
     register(ToolSpec(
         id="persona_design", name="Synthetic Persona Designer",
@@ -1739,9 +2350,24 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="browser_automation_plan", name="Browser Automation Planner",
-        description="Headless-automation plan concept (Playwright/Puppeteer/Selenium). Simulated; no stealth/evasion.",
-        category="persona", provider="Playwright / Puppeteer / Selenium", run=_browser_automation_plan,
-        parameters={"target": "authorized target", "tool": "playwright|puppeteer|selenium"},
+        description="Headless browser automation with Playwright, Selenium, or Puppeteer (navigate, screenshot, evaluate, click, type, get_text, html). Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
+        category="persona", provider="Playwright / Selenium / Puppeteer", run=_browser_automation_plan,
+        parameters={
+            "target": "URL or local file path",
+            "tool": "playwright|selenium|puppeteer",
+            "action": "navigate|screenshot|evaluate|click|type|get_text|html",
+            "script": "JavaScript expression for evaluate",
+            "selector": "CSS selector for click/type",
+            "value": "text value for type action",
+            "headless": "true|false",
+            "screenshot": "true|false",
+            "output": "optional output path for screenshot/result JSON",
+        },
+        status="live" if (
+            _is_playwright_available()
+            or _is_selenium_available()
+            or _is_puppeteer_configured()
+        ) else "stub",
     ))
     register(ToolSpec(
         id="fleet_orchestrate", name="Persona Fleet Orchestrator",

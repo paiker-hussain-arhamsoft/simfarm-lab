@@ -24,13 +24,13 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | OpenAI SDK / API | **Yes** (`openai` + `langchain-openai`) | No | Used only when `OPENAI_API_KEY` is supplied (online). |
 | FastAPI / Uvicorn | **Yes** | Yes | Web backend. |
 | LlamaIndex (`llama-index-core` + `llama-index-embeddings-ollama` 0.9.0) | **Yes** | Yes | `index_dataset` now uses a real `VectorStoreIndex` with Ollama embeddings. |
-| Chatterbox / Coqui / Bark | **No** | Yes | `clone_voice` / `voice_dialect_map` are stubs; no TTS packages installed. |
+| Chatterbox / Coqui / Bark | Mixed | Yes | `clone_voice` supports Chatterbox and Coqui XTTS v2 with stub fallback; `voice_dialect_map` remains a stub. |
 | ElevenLabs SDK | **No** | No | Mentioned only as an optional online provider; no package installed. |
 | HeyGen API | **No** | No | Optional online provider only. |
-| Wan2.1 / CogVideoX / Open-Sora | **No** | Yes (with GPU) | `generate_video` is a stub; no video-generation packages installed. |
-| Duix-Avatar / Wav2Lip / Roop / GFPGAN / DeepFaceLab / FaceSwap / Deep-Live-Cam / VideoRetalking | **No** | Yes (with GPU) | Media avatar/face/lip-sync tools are all simulated stubs. |
-| FFmpeg binary | **No** | Yes | `ffmpeg_pipeline` returns a fake artifact; FFmpeg is not installed in the image. |
-| Playwright / Puppeteer / Selenium | **No** | Yes | Browser automation tools are stubs; no browser driver installed. |
+| Wan2.1 / CogVideoX / Open-Sora | Mixed | Yes (with GPU) | `generate_video(tool='wan2')` is wired to `diffusers` WanPipeline with stub fallback; CogVideoX/Open-Sora remain stubs. |
+| Duix-Avatar / Wav2Lip / VideoRetalking / Roop / GFPGAN / DeepFaceLab / FaceSwap / Deep-Live-Cam | Mixed | Yes (with GPU) | InsightFace, Deep-Live-Cam, Wav2Lip, SadTalker, VideoRetalking, and GFPGAN are wired to real containers or packages with stub fallbacks; DeepFaceLab/FaceSwap/Roop require pre-trained workspaces. |
+| FFmpeg binary | **Yes** | Yes | `ffmpeg_pipeline` runs real `ffmpeg` commands when `inputs` and `command` (or a `steps` string starting with `-`) are supplied; the base image includes `ffmpeg`. |
+| Playwright / Puppeteer / Selenium | **Yes** | Yes | Playwright and Selenium are wired to `browser_automation_plan` with stub fallback; `playwright_stealth_check` uses Playwright; Puppeteer runs in its own sibling container. |
 | Scrapoxy / Browserbase | **No** | Online proxy/cloud | `rotate_proxy`, `fingerprint_pool_model`, `scrapoxy_deploy` are stubs; no proxy service installed. |
 | FlareSolverr | **No** | Online (challenge solver) | `flaresolverr_model` is a stub; no FlareSolverr container installed. |
 | Nmap / OpenVAS / OWASP ZAP / Burp Suite / Metasploit / CAI (Alias Robotics) | **No** | Mixed | Cyber crew tools are simulated; no security scanners installed. |
