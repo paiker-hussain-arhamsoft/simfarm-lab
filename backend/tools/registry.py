@@ -1367,15 +1367,108 @@ async def _gfpgan_upscale(input_path: str = "", scale: int = 2, **_: Any) -> dic
         }
 
 
-async def _ffmpeg_pipeline(steps: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "FFmpeg",
-        "requires_internet": False,
-        "steps": steps or "trim,concat,scale,mux",
-        "artifact": "/artifacts/video/final_stub.mp4",
-        "note": "Stub — deterministic FFmpeg compositing/mux pipeline (offline/local).",
-    }
+def _is_ffmpeg_available() -> bool:
+    """Return True if the ffmpeg binary is present on this machine."""
+    return shutil.which("ffmpeg") is not None
+
+
+async def _run_ffmpeg_pipeline(
+    input_paths: list[str], output_path: str, command: str = ""
+) -> str:
+    """Run ffmpeg with the supplied inputs, options, and output path."""
+    args = ["ffmpeg", "-y"]
+    for path in input_paths:
+        args += ["-i", path]
+    if command:
+        args += shlex.split(command)
+    args += [output_path]
+
+    proc = await asyncio.create_subprocess_exec(
+        *args,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"ffmpeg failed: {stderr.decode()[:500]}")
+    if not os.path.exists(output_path):
+        raise ToolError("ffmpeg did not produce the expected output file")
+    return output_path
+
+
+async def _ffmpeg_pipeline(
+    steps: str = "",
+    inputs: Any = None,
+    output: str = "",
+    command: str = "",
+    **_: Any,
+) -> dict:
+    """Deterministic FFmpeg compositing / muxing pipeline.
+
+    Real execution requires either:
+      - `command` (FFmpeg options/filters, e.g. "-vf scale=1280:720 -c:a copy")
+        plus `inputs` and optionally `output`, or
+      - a `steps` value that starts with a dash (treated as FFmpeg options).
+
+    If no actionable command/inputs are supplied, the original stub is returned.
+    """
+    p = {"provider": "FFmpeg", "requires_internet": False}
+    effective_command = command or (steps if steps and steps.startswith("-") else "")
+
+    if not _is_ffmpeg_available() or not inputs or not effective_command:
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "requires_internet": False,
+            "steps": steps or "trim,concat,scale,mux",
+            "artifact": "/artifacts/video/final_stub.mp4",
+            "note": "Stub — deterministic FFmpeg compositing/mux pipeline (offline/local). "
+                    "Pass inputs and command (or a steps string starting with '-') to run real ffmpeg.",
+        }
+
+    try:
+        if isinstance(inputs, str):
+            input_paths = [p.strip() for p in inputs.split(",") if p.strip()]
+        elif isinstance(inputs, list):
+            input_paths = [str(p) for p in inputs]
+        else:
+            input_paths = [str(inputs)]
+
+        data_dir = _duix_data_dir()
+        resolved_inputs: list[str] = []
+        for path in input_paths:
+            path = path if os.path.isabs(path) else os.path.join(data_dir, path)
+            path = os.path.normpath(path)
+            if not os.path.exists(path):
+                raise ToolError(f"Input file not found: {path}")
+            resolved_inputs.append(path)
+
+        os.makedirs(_VOICE_ARTIFACT_DIR, exist_ok=True)
+        if output:
+            out_path = output if os.path.isabs(output) else os.path.join(data_dir, output)
+            out_path = os.path.normpath(out_path)
+        else:
+            out_path = os.path.join(_VOICE_ARTIFACT_DIR, f"{uuid.uuid4()}.mp4")
+        out_path = os.path.abspath(out_path)
+
+        artifact = await _run_ffmpeg_pipeline(resolved_inputs, out_path, effective_command)
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "requires_internet": False,
+            "steps": steps or effective_command,
+            "artifact": artifact,
+            "note": f"Processed with FFmpeg: {effective_command}",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": p["provider"],
+            "requires_internet": False,
+            "steps": steps or "trim,concat,scale,mux",
+            "artifact": "/artifacts/video/final_stub.mp4",
+            "note": f"FFmpeg failed ({exc}); Stub — deterministic FFmpeg compositing/mux pipeline (offline/local).",
+        }
 
 
 # ── Cyber Crew stubs (defensive security; simulated, offline) ───────
@@ -1675,7 +1768,13 @@ def _register_defaults() -> None:
         id="ffmpeg_pipeline", name="FFmpeg Pipeline",
         description="Deterministic FFmpeg compositing / muxing pipeline.",
         category="media", provider="FFmpeg", run=_ffmpeg_pipeline,
-        parameters={"steps": "comma-separated steps"},
+        parameters={
+            "steps": "comma-separated steps or raw FFmpeg options",
+            "inputs": "input file path(s) (string or list)",
+            "output": "optional output path",
+            "command": "FFmpeg options/filters (e.g. -vf scale=1280:720 -c:a copy)",
+        },
+        status="live" if _is_ffmpeg_available() else "stub",
     ))
     register(ToolSpec(
         id="recon_scan", name="Attack-Surface Scanner",
