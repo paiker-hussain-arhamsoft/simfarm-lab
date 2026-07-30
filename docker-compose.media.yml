@@ -304,6 +304,44 @@ services:
       retries: 3
       start_period: 10s
 
+  verboice-db:
+    image: mysql:5.7
+    container_name: verboice-db
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=verboice
+      - MYSQL_DATABASE=verboice
+      - MYSQL_USER=verboice
+      - MYSQL_PASSWORD=verboice
+    volumes:
+      - brain-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-uverboice", "-pverboice", "--silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  verboice:
+    build:
+      context: ./services/verboice
+    container_name: verboice
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=mysql2://verboice:verboice@verboice-db:3306/verboice?reconnect=true
+      - RAILS_ENV=production
+      - SECRET_KEY_BASE=${VERBOICE_SECRET_KEY_BASE:-change-me-verboice-secret}
+      - VERBOICE_CHANNEL=${VERBOICE_CHANNEL:-}
+    depends_on:
+      verboice-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-u", "admin@lab.local:admin123", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   elizaos:
     build:
       context: ./services/elizaos
@@ -415,7 +453,7 @@ services:
       - GAMMU_COMMAND=${GAMMU_COMMAND:-docker exec gammu gammu -c /etc/gammu/gammurc {command}}
       - SMSGATE_COMMAND=${SMSGATE_COMMAND:-docker exec gammu gammu -c /etc/gammu/gammurc sendsms TEXT {to} -text \"{body}\"}
       - RASP_IVR_COMMAND=${RASP_IVR_COMMAND:-}
-      - VERBOICE_COMMAND=${VERBOICE_COMMAND:-}
+      - VERBOICE_COMMAND=${VERBOICE_COMMAND:-docker exec verboice bundle exec ruby /usr/local/bin/verboice_tool.rb {action} '{scenario}' '{objective}' '{tasks}' '{schedule}'}
       - VBVOICE_COMMAND=${VBVOICE_COMMAND:-}
     volumes:
       - brain-data:/code/data
