@@ -391,6 +391,12 @@ services:
       - SOCIOBOARD_COMMAND=${SOCIOBOARD_COMMAND:-}
       - SOCIOBOARD_URL=${SOCIOBOARD_URL:-}
       - SOCIOBOARD_API_KEY=${SOCIOBOARD_API_KEY:-}
+      # GSM/SMS/IVR command hooks. Set these to scripts that call Gammu, SMSgate, RASP-IVR, Verboice, or VBVoice.
+      - GAMMU_COMMAND=${GAMMU_COMMAND:-}
+      - SMSGATE_COMMAND=${SMSGATE_COMMAND:-}
+      - RASP_IVR_COMMAND=${RASP_IVR_COMMAND:-}
+      - VERBOICE_COMMAND=${VERBOICE_COMMAND:-}
+      - VBVOICE_COMMAND=${VBVOICE_COMMAND:-}
     volumes:
       - brain-data:/code/data
       - brain-data:/data

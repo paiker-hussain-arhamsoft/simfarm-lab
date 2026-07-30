@@ -35,7 +35,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | FlareSolverr | **Yes** | Online (challenge solver) | `flaresolverr_model` is wired to the `flaresolverr` container at `http://flaresolverr:8191`; falls back to stub when the container is missing or unhealthy. |
 | Nmap / OpenVAS / OWASP ZAP / Burp Suite / Metasploit / CAI (Alias Robotics) | **Partial** | Mixed | `nmap_scan` is wired to system `nmap`; `openvas_scan` is wired to the `immauss/openvas` container via `gvm-cli`; `dast_scan(tool='zap')` is wired to the `zaproxy/zap-stable` container via `zap-baseline.py`/`zap-full-scan.py`/`zap-api-scan.py`. All fall back to stubs when unavailable or unauthorized. Burp/Metasploit/CAI remain simulated. |
 | ElizaOS / Botpress / LangGraph (framework only) / Socioboard | **Partial** | Yes (self-hosted) | `persona_design`, `behavior_model`, and `fleet_orchestrate` can use LangGraph (in-process LLM graph), ElizaOS, Botpress, or Socioboard. `tool='langgraph'|'botpress'|'elizaos'|'socioboard'` forces a provider; otherwise the first configured available provider is used. `fleet_orchestrate(tool='socioboard')` runs the `SOCIOBOARD_COMMAND` hook to call an external Socioboard instance. All fall back to modeled stubs. |
-| SMSgate / Gammu / SIM800/SIM900 / RASP-IVR / Verboice / VBVoice | **No** | Yes (on-prem hardware) | SIM/IVR tools are simulated; no GSM/SIP libraries or hardware drivers installed. |
+| SMSgate / Gammu / SIM800/SIM900 / RASP-IVR / Verboice / VBVoice | **Partial** | Yes (on-prem hardware) | `modem_topology`, `smsgate_config`, `modem_control`, `sim_provision_plan`, `sim_activate`, `carrier_access`, and `sms_send` prefer configured `GAMMU_COMMAND` and `SMSGATE_COMMAND` hooks. `ivr_hardware_setup`, `call_flow_design`, and `dtmf_handler` prefer configured `RASP_IVR_COMMAND`, `VERBOICE_COMMAND`, and `VBVOICE_COMMAND` hooks. `campaign_orchestrate` can use any configured IVR command hook. All fall back to the modeled simulator. |
 | Mautic / Strapi / Postiz | **No** | Yes (self-hosted Docker) | Content-distribution tools are stubs; no CMS/marketing containers installed. |
 | Mem0 / Qdrant / Neo4j / Redis / PostgreSQL+pgvector / Apache Kafka / Cassandra / Trino | **No** | Yes (self-hosted) | Memory/data-lake tools are stubs; no database services installed. |
 | PySpark | **No** | Yes | `pyspark_bulk_load_model` is a stub; no Spark installed. |
@@ -87,14 +87,14 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 ### TIER 4 · Infrastructure / SIM Farm (11)
 | Tool ID | Name | Provider represented | Offline / Online | Notes |
 |---|---|---|---|---|
-| `modem_topology` | Modem Topology | SIM800/SIM900 · Gammu | offline-only | Physical USB-HUB/modem topology. |
-| `smsgate_config` | SMSGate Config | SMSgate · Gammu | offline-only | Gateway configuration concept. |
-| `modem_control` | Modem Control | Gammu | offline-only | Modeled AT/PDU commands. |
-| `sim_provision_plan` | SIM Provision Plan | carrier-provisioning | offline-only | Number provisioning concept. |
-| `sim_activate` | SIM Activate | carrier-provisioning | offline-only | SIM activation concept. |
-| `carrier_access` | Carrier Access | carrier-API | offline-only | Carrier API access concept. |
-| `campaign_orchestrate` | Campaign Orchestrator | Celery | offline-only | Campaign queue orchestration concept. |
-| `sms_send` | SMS Send | SMSgate | offline-only | SMS send concept. |
+| `modem_topology` | Modem Topology | SIM800/SIM900 · Gammu | offline-only | Uses `GAMMU_COMMAND` hook if configured; otherwise modeled topology. |
+| `smsgate_config` | SMSGate Config | SMSgate · Gammu | offline-only | Uses `SMSGATE_COMMAND` hook if configured; otherwise modeled config. |
+| `modem_control` | Modem Control | Gammu | offline-only | Uses `GAMMU_COMMAND` hook if configured; otherwise modeled AT/PDU commands. |
+| `sim_provision_plan` | SIM Provision Plan | Gammu | offline-only | Uses `GAMMU_COMMAND` hook if configured; otherwise modeled provisioning. |
+| `sim_activate` | SIM Activate | Gammu | offline-only | Uses `GAMMU_COMMAND` hook if configured; otherwise modeled activation. |
+| `carrier_access` | Carrier Access | Gammu | offline-only | Uses `GAMMU_COMMAND` hook if configured; otherwise modeled carrier access. |
+| `campaign_orchestrate` | Campaign Orchestrator | RASP-IVR · Verboice · VBVoice | offline-only | Uses configured IVR command hook (`RASP_IVR_COMMAND`/`VERBOICE_COMMAND`/`VBVOICE_COMMAND`) if set; otherwise modeled campaign queue. |
+| `sms_send` | SMS Send | SMSgate · Gammu | offline-only | Uses `SMSGATE_COMMAND` or `GAMMU_COMMAND` hook if configured; otherwise modeled send. |
 | `celery_dispatch` | Celery Dispatch | Celery | offline-only | Celery worker dispatch concept. |
 | `adjust_load_balancer` | Load Balancer Controller | infra-control | offline-only | Cloud LB strategy concept. |
 | `rotate_proxy` | Proxy Rotator | ProxyRotator / Scrapoxy | online-optional | Returns a live `proxy-rotator` URL when the container is healthy; falls back to simulated vector otherwise. |
@@ -102,9 +102,9 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 ### TIER 4 · IVR (6)
 | Tool ID | Name | Provider represented | Offline / Online | Notes |
 |---|---|---|---|---|
-| `ivr_hardware_setup` | IVR Hardware Setup | Raspberry Pi · GSM · RASP-IVR | offline-only | Hardware topology concept. |
-| `call_flow_design` | Call Flow Designer | Verboice | offline-only | Call tree / IVR menu design. |
-| `dtmf_handler` | DTMF Handler | VBVoice | offline-only | DTMF handling policy concept. |
+| `ivr_hardware_setup` | IVR Hardware Setup | RASP-IVR | offline-only | Uses `RASP_IVR_COMMAND` hook if configured; otherwise modeled hardware topology. |
+| `call_flow_design` | Call Flow Designer | Verboice | offline-only | Uses `VERBOICE_COMMAND` hook if configured; otherwise modeled call tree. |
+| `dtmf_handler` | DTMF Handler | VBVoice | offline-only | Uses `VBVOICE_COMMAND` hook if configured; otherwise modeled DTMF policy. |
 | `rural_reach_model` | Rural Reach Model | rural-reach | offline-only | Low-bandwidth/feature-phone targeting. |
 | `call_route_plan` | Call Route Planner | call-routing | offline-only | Call routing / queue concept. |
 | `ivr_cost_model` | IVR Cost Model | cost-model | offline-only | Per-call cost model. |

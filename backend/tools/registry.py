@@ -328,15 +328,28 @@ _TELECOM_NOTE = ("Simulated only; real telecom execution requires specific "
 _PROXY_NOTE = ("Simulated only; real proxy/cloud execution requires specific "
                "communications-secretariat orders and is not performed.")
 
-async def _ivr_hardware_setup(hardware_kit="", scenario="", **_):
+async def _ivr_hardware_setup(hardware_kit="", scenario="", **kwargs):
+    result = await _try_command_hook("RASP_IVR_COMMAND", action="hardware_setup", hardware_kit=hardware_kit, scenario=scenario)
+    if result is not None:
+        return result
     return {"simulated": True, "requires_internet": False, "provider": "Raspberry Pi · GSM · RASP-IVR",
             "hardware_kit": hardware_kit, "topology": {"controller": "virtual-rpi", "gsm_channels": "modeled", "physical": False},
             "detection_telemetry": ["channel occupancy", "retry bursts", "clock skew"], "note": _TELECOM_NOTE}
-async def _call_flow_design(scenario="", objective="", **_):
+
+
+async def _call_flow_design(scenario="", objective="", **kwargs):
+    result = await _try_command_hook("VERBOICE_COMMAND", action="call_flow", scenario=scenario, objective=objective)
+    if result is not None:
+        return result
     return {"simulated": True, "requires_internet": False, "provider": "Verboice",
             "menu_tree": {"root": "welcome (modeled)", "branches": ["information", "help", "end"], "dtmf": "modeled"},
             "scenario": scenario, "objective": objective, "real_calls": False, "note": _TELECOM_NOTE}
-async def _dtmf_handler(scenario="", objective="", **_):
+
+
+async def _dtmf_handler(scenario="", objective="", **kwargs):
+    result = await _try_command_hook("VBVOICE_COMMAND", action="dtmf", scenario=scenario, objective=objective)
+    if result is not None:
+        return result
     return {"simulated": True, "requires_internet": False, "provider": "VBVoice",
             "dtmf_policy": {"digits": "synthetic fixtures only", "timeouts": "modeled", "secrets": False},
             "detection_signals": ["repeated invalid digits", "automation timing"], "note": _TELECOM_NOTE}
@@ -3710,15 +3723,138 @@ async def _fleet_orchestrate(
         }
 
 # ── TIER 4 · SIM farm / GSM gateway simulator adapters ─────────────
-async def _modem_topology(**kwargs): return await simfarm_sim.modem_topology(**kwargs)
-async def _smsgate_config(**kwargs): return await simfarm_sim.gateway_config(**kwargs)
-async def _modem_control(**kwargs): return await simfarm_sim.modem_control(**kwargs)
-async def _sim_provision_plan(**kwargs): return await simfarm_sim.provision_plan(**kwargs)
-async def _sim_activate(**kwargs): return await simfarm_sim.sim_activate(**kwargs)
-async def _carrier_access(**kwargs): return await simfarm_sim.carrier_access(**kwargs)
-async def _campaign_orchestrate(**kwargs): return await simfarm_sim.campaign_orchestrate(**kwargs)
-async def _sms_send(**kwargs): return await simfarm_sim.sms_send(**kwargs)
-async def _celery_dispatch(**kwargs): return await simfarm_sim.celery_dispatch(**kwargs)
+# These functions prefer real command hooks (Gammu, SMSgate, RASP-IVR,
+# Verboice, VBVoice) when configured, and fall back to the offline simulator.
+
+def _is_command_hook(env_var: str) -> bool:
+    """Return True if an external command hook is configured."""
+    return bool(os.environ.get(env_var, ""))
+
+
+async def _run_command_hook(env_var: str, **params: Any) -> dict:
+    """Run a configured external command hook with brace-style substitution."""
+    import shlex
+    template = os.environ.get(env_var, "")
+    if not template:
+        raise ToolError(f"{env_var} is not set")
+    mapping = {k: str(v) for k, v in params.items()}
+
+    def _replacer(match: Any) -> str:
+        key = match.group(1)
+        return mapping.get(key, match.group(0))
+
+    cmd = re.sub(r"\{([a-zA-Z_]+)\}", _replacer, template)
+    parsed = shlex.split(cmd)
+    proc = await asyncio.create_subprocess_exec(
+        *parsed,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    if proc.returncode != 0:
+        raise ToolError(f"{env_var} failed ({proc.returncode}): {stderr.decode()[:500]}")
+    text = stdout.decode().strip()
+    try:
+        payload = json.loads(text)
+    except Exception:
+        payload = {"raw_output": text}
+    if not isinstance(payload, dict):
+        payload = {"value": payload}
+    return {"simulated": True, "provider": env_var, "requires_internet": False, **payload}
+
+
+async def _try_command_hook(env_var: str, **params: Any) -> dict | None:
+    """Try a command hook; return None so the caller can fall back on failure."""
+    if not _is_command_hook(env_var):
+        return None
+    try:
+        return await _run_command_hook(env_var, **params)
+    except Exception:
+        return None
+
+
+def _select_ivr_command(tool: str = "") -> str:
+    """Pick the configured IVR command hook based on explicit tool or availability."""
+    chosen = (tool or "").strip().lower()
+    if chosen:
+        for env_var, key in [
+            ("RASP_IVR_COMMAND", "raspivr"),
+            ("RASP_IVR_COMMAND", "rasp-ivr"),
+            ("RASP_IVR_COMMAND", "rasp"),
+            ("VERBOICE_COMMAND", "verboice"),
+            ("VBVOICE_COMMAND", "vbvoice"),
+        ]:
+            if chosen.startswith(key) and _is_command_hook(env_var):
+                return env_var
+        return ""
+    for env_var in ("RASP_IVR_COMMAND", "VERBOICE_COMMAND", "VBVOICE_COMMAND"):
+        if _is_command_hook(env_var):
+            return env_var
+    return ""
+
+
+async def _modem_topology(modem_type: str = "", ports: int = 8, hub_layout: str = "modeled", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="topology", modem_type=modem_type, ports=ports, hub_layout=hub_layout)
+    if result is not None:
+        return result
+    return await simfarm_sim.modem_topology(modem_type=modem_type, ports=ports, hub_layout=hub_layout)
+
+
+async def _smsgate_config(gateway: str = "SMSgate", pool_size: int = 8, **_: Any) -> dict:
+    result = await _try_command_hook("SMSGATE_COMMAND", action="config", gateway=gateway, pool_size=pool_size)
+    if result is not None:
+        return result
+    return await simfarm_sim.gateway_config(gateway=gateway, pool_size=pool_size)
+
+
+async def _modem_control(command: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="control", command=command)
+    if result is not None:
+        return result
+    return await simfarm_sim.modem_control(command=command)
+
+
+async def _sim_provision_plan(count: int = 0, carriers: list | None = None, **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="provision", count=count, carriers=carriers or [])
+    if result is not None:
+        return result
+    return await simfarm_sim.provision_plan(count=count, carriers=carriers)
+
+
+async def _sim_activate(iccid: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="activate", iccid=iccid)
+    if result is not None:
+        return result
+    return await simfarm_sim.sim_activate(iccid=iccid)
+
+
+async def _carrier_access(carrier: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="carrier", carrier=carrier)
+    if result is not None:
+        return result
+    return await simfarm_sim.carrier_access(carrier=carrier)
+
+
+async def _campaign_orchestrate(tasks: list | None = None, schedule: str = "modeled", tool: str = "", **_: Any) -> dict:
+    ivr_env = _select_ivr_command(tool)
+    if ivr_env:
+        result = await _try_command_hook(ivr_env, action="campaign", tasks=tasks or [], schedule=schedule)
+        if result is not None:
+            return result
+    return await simfarm_sim.campaign_orchestrate(tasks=tasks, schedule=schedule)
+
+
+async def _sms_send(to: str = "", body: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("SMSGATE_COMMAND", action="send", to=to, body=body)
+    if result is None and _is_command_hook("GAMMU_COMMAND"):
+        result = await _try_command_hook("GAMMU_COMMAND", action="send", to=to, body=body)
+    if result is not None:
+        return result
+    return await simfarm_sim.sms_send(to=to, body=body)
+
+
+async def _celery_dispatch(task: str = "", **_: Any) -> dict:
+    return await simfarm_sim.celery_dispatch(task=task)
 
 
 def _register_defaults() -> None:
@@ -3976,40 +4112,40 @@ def _register_defaults() -> None:
         status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available() or _is_socioboard_available()) else "stub",
     ))
     tier4 = [
-        ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),
-        ("smsgate_config", "SMSGate Config", "SMSgate · Gammu", _smsgate_config, {"gateway":"gateway","pool_size":"pool size"}),
-        ("modem_control", "Modem Control", "Gammu", _modem_control, {"command":"modeled command"}),
-        ("sim_provision_plan", "SIM Provision Plan", "carrier-provisioning (modeled)", _sim_provision_plan, {"count":"modeled count","carriers":"carrier list"}),
-        ("sim_activate", "SIM Activate", "carrier-provisioning (modeled)", _sim_activate, {"iccid":"lab ICCID"}),
-        ("carrier_access", "Carrier Access", "carrier-API (modeled)", _carrier_access, {"carrier":"carrier"}),
-        ("campaign_orchestrate", "Campaign Orchestrator", "Celery", _campaign_orchestrate, {"tasks":"modeled tasks","schedule":"schedule"}),
-        ("sms_send", "SMS Send", "SMSgate", _sms_send, {"to":"lab sink","body":"fixture body"}),
-        ("celery_dispatch", "Celery Dispatch", "Celery", _celery_dispatch, {"task":"modeled task"}),
+        ("modem_topology", "Modem Topology", "Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("smsgate_config", "SMSGate Config", "SMSgate", _smsgate_config, {"gateway":"gateway","pool_size":"pool size"}, "live" if _is_command_hook("SMSGATE_COMMAND") else "stub"),
+        ("modem_control", "Modem Control", "Gammu", _modem_control, {"command":"modeled command"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("sim_provision_plan", "SIM Provision Plan", "Gammu", _sim_provision_plan, {"count":"modeled count","carriers":"carrier list"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("sim_activate", "SIM Activate", "Gammu", _sim_activate, {"iccid":"lab ICCID"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("carrier_access", "Carrier Access", "Gammu", _carrier_access, {"carrier":"carrier"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("campaign_orchestrate", "Campaign Orchestrator", "RASP-IVR · Verboice · VBVoice", _campaign_orchestrate, {"tasks":"modeled tasks","schedule":"schedule","tool":"raspivr|verboice|vbvoice"}, "live" if _select_ivr_command() else "stub"),
+        ("sms_send", "SMS Send", "SMSgate · Gammu", _sms_send, {"to":"lab sink","body":"fixture body"}, "live" if (_is_command_hook("SMSGATE_COMMAND") or _is_command_hook("GAMMU_COMMAND")) else "stub"),
+        ("celery_dispatch", "Celery Dispatch", "Celery", _celery_dispatch, {"task":"modeled task"}, "stub"),
     ]
-    for ident, name, provider, fn, params in tier4:
+    for ident, name, provider, fn, params, status in tier4:
         register(ToolSpec(id=ident, name=name,
-            description="Simulated infrastructure action; real telecom execution requires communications-secretariat orders and is not performed.",
-            category="infrastructure", provider=provider, run=fn, parameters=params))
+            description=f"SIM/telecom action; executes the configured {provider} command hook if available, otherwise falls back to the modeled simulator.",
+            category="infrastructure", provider=provider, run=fn, parameters=params, status=status))
     tier4_local = [
-        ("ivr_hardware_setup","IVR Hardware Setup","Raspberry Pi · GSM · RASP-IVR",_ivr_hardware_setup,{"hardware_kit":"hardware kit","scenario":"scenario"}),
-        ("call_flow_design","Call Flow Designer","Verboice",_call_flow_design,{"scenario":"scenario","objective":"objective"}),
-        ("dtmf_handler","DTMF Handler","VBVoice",_dtmf_handler,{"scenario":"scenario","objective":"objective"}),
-        ("rural_reach_model","Rural Reach Model","rural-reach (modeled)",_rural_reach_model,{"reach_model":"reach model","scenario":"scenario"}),
-        ("call_route_plan","Call Route Planner","call-routing (modeled)",_call_route_plan,{"scenario":"scenario","objective":"objective"}),
-        ("ivr_cost_model","IVR Cost Model","cost-model (modeled)",_ivr_cost_model,{"scenario":"scenario","objective":"objective"}),
-        ("scrapoxy_deploy","Scrapoxy Deploy","Scrapoxy · Docker",_scrapoxy_deploy,{"provider":"provider","scenario":"scenario"}),
-        ("cloud_connector","Cloud Connector","cloud-connectors (modeled)",_cloud_connector,{"provider":"provider","scenario":"scenario"}),
-        ("proxy_pool_size","Proxy Pool Sizer","pool-sizing (modeled)",_proxy_pool_size,{"pool_type":"pool type","objective":"objective"}),
-        ("proxy_health_monitor","Proxy Health Monitor","health-monitor (modeled)",_proxy_health_monitor,{"pool_type":"pool type","scenario":"scenario"}),
-        ("proxy_integration_plan","Proxy Integration Planner","Playwright · Puppeteer · requests",_proxy_integration_plan,{"provider":"provider","objective":"objective"}),
-        ("proxy_cost_model","Proxy Cost Model","cost-model (modeled)",_proxy_cost_model,{"provider":"provider","pool_type":"pool type"}),
-        ("proxy_deployment_synth","Proxy Deployment Synthesizer","deployment (modeled)",_proxy_deployment_synth,{"provider":"provider","scenario":"scenario"}),
+        ("ivr_hardware_setup","IVR Hardware Setup","RASP-IVR",_ivr_hardware_setup,{"hardware_kit":"hardware kit","scenario":"scenario"}, "live" if _is_command_hook("RASP_IVR_COMMAND") else "stub"),
+        ("call_flow_design","Call Flow Designer","Verboice",_call_flow_design,{"scenario":"scenario","objective":"objective"}, "live" if _is_command_hook("VERBOICE_COMMAND") else "stub"),
+        ("dtmf_handler","DTMF Handler","VBVoice",_dtmf_handler,{"scenario":"scenario","objective":"objective"}, "live" if _is_command_hook("VBVOICE_COMMAND") else "stub"),
+        ("rural_reach_model","Rural Reach Model","rural-reach (modeled)",_rural_reach_model,{"reach_model":"reach model","scenario":"scenario"}, "stub"),
+        ("call_route_plan","Call Route Planner","call-routing (modeled)",_call_route_plan,{"scenario":"scenario","objective":"objective"}, "stub"),
+        ("ivr_cost_model","IVR Cost Model","cost-model (modeled)",_ivr_cost_model,{"scenario":"scenario","objective":"objective"}, "stub"),
+        ("scrapoxy_deploy","Scrapoxy Deploy","Scrapoxy · Docker",_scrapoxy_deploy,{"provider":"provider","scenario":"scenario"}, "stub"),
+        ("cloud_connector","Cloud Connector","cloud-connectors (modeled)",_cloud_connector,{"provider":"provider","scenario":"scenario"}, "stub"),
+        ("proxy_pool_size","Proxy Pool Sizer","pool-sizing (modeled)",_proxy_pool_size,{"pool_type":"pool type","objective":"objective"}, "stub"),
+        ("proxy_health_monitor","Proxy Health Monitor","health-monitor (modeled)",_proxy_health_monitor,{"pool_type":"pool type","scenario":"scenario"}, "stub"),
+        ("proxy_integration_plan","Proxy Integration Planner","Playwright · Puppeteer · requests",_proxy_integration_plan,{"provider":"provider","objective":"objective"}, "stub"),
+        ("proxy_cost_model","Proxy Cost Model","cost-model (modeled)",_proxy_cost_model,{"provider":"provider","pool_type":"pool type"}, "stub"),
+        ("proxy_deployment_synth","Proxy Deployment Synthesizer","deployment (modeled)",_proxy_deployment_synth,{"provider":"provider","scenario":"scenario"}, "stub"),
     ]
-    for ident, name, provider, fn, params in tier4_local:
+    for ident, name, provider, fn, params, status in tier4_local:
         category = "ivr" if ident.startswith(("ivr_", "call_", "dtmf_", "rural_")) else "proxy"
         register(ToolSpec(id=ident, name=name,
-            description="Simulated only; real execution requires communications-secretariat orders and is not performed.",
-            category=category, provider=provider, run=fn, parameters=params))
+            description=f"IVR/telecom action; executes the configured {provider} command hook if available, otherwise falls back to the modeled simulator.",
+            category=category, provider=provider, run=fn, parameters=params, status=status))
     stealth_local = [
         ("stealth_patch_model","Stealth Patch Model","playwright-extra",_stealth_patch_model),
         ("canvas_spoof_model","Canvas Spoof Model","canvas-spoof (modeled)",_canvas_spoof_model),

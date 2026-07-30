@@ -46,16 +46,16 @@ Total tools: 89
 | `behavior_model` | Behavior Modeler | persona | LangGraph / ElizaOS / Botpress | stub |
 | `voice_dialect_map` | Voice & Dialect Mapper | persona | Coqui / Chatterbox / ElevenLabs | stub |
 | `fleet_orchestrate` | Persona Fleet Orchestrator | persona | LangGraph / ElizaOS / Botpress / Socioboard | stub |
-| `modem_topology` | Modem Topology | infrastructure | SIM800/SIM900 · Gammu | stub |
-| `smsgate_config` | SMSGate Config | infrastructure | SMSgate · Gammu | stub |
+| `modem_topology` | Modem Topology | infrastructure | Gammu | stub |
+| `smsgate_config` | SMSGate Config | infrastructure | SMSgate | stub |
 | `modem_control` | Modem Control | infrastructure | Gammu | stub |
-| `sim_provision_plan` | SIM Provision Plan | infrastructure | carrier-provisioning (modeled) | stub |
-| `sim_activate` | SIM Activate | infrastructure | carrier-provisioning (modeled) | stub |
-| `carrier_access` | Carrier Access | infrastructure | carrier-API (modeled) | stub |
-| `campaign_orchestrate` | Campaign Orchestrator | infrastructure | Celery | stub |
-| `sms_send` | SMS Send | infrastructure | SMSgate | stub |
+| `sim_provision_plan` | SIM Provision Plan | infrastructure | Gammu | stub |
+| `sim_activate` | SIM Activate | infrastructure | Gammu | stub |
+| `carrier_access` | Carrier Access | infrastructure | Gammu | stub |
+| `campaign_orchestrate` | Campaign Orchestrator | infrastructure | RASP-IVR · Verboice · VBVoice | stub |
+| `sms_send` | SMS Send | infrastructure | SMSgate · Gammu | stub |
 | `celery_dispatch` | Celery Dispatch | infrastructure | Celery | stub |
-| `ivr_hardware_setup` | IVR Hardware Setup | ivr | Raspberry Pi · GSM · RASP-IVR | stub |
+| `ivr_hardware_setup` | IVR Hardware Setup | ivr | RASP-IVR | stub |
 | `call_flow_design` | Call Flow Designer | ivr | Verboice | stub |
 | `dtmf_handler` | DTMF Handler | ivr | VBVoice | stub |
 | `rural_reach_model` | Rural Reach Model | ivr | rural-reach (modeled) | stub |
