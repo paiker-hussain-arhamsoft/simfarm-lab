@@ -285,6 +285,25 @@ services:
       retries: 3
       start_period: 30s
 
+  gammu:
+    build:
+      context: ./services/gammu
+    container_name: gammu
+    restart: unless-stopped
+    # Keep the container alive so strategic-brain can docker exec into it.
+    command: ["/bin/bash", "-c", "while true; do sleep 30; done"]
+    environment:
+      - GAMMU_CONFIG=/etc/gammu/gammurc
+    # Uncomment and set the host modem device path to enable real GSM hardware.
+    # devices:
+    #   - /dev/ttyUSB0:/dev/mobile
+    healthcheck:
+      test: ["CMD", "gammu", "-c", "/etc/gammu/gammurc", "--help"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
   elizaos:
     build:
       context: ./services/elizaos
@@ -392,8 +411,9 @@ services:
       - SOCIOBOARD_URL=${SOCIOBOARD_URL:-}
       - SOCIOBOARD_API_KEY=${SOCIOBOARD_API_KEY:-}
       # GSM/SMS/IVR command hooks. Set these to scripts that call Gammu, SMSgate, RASP-IVR, Verboice, or VBVoice.
-      - GAMMU_COMMAND=${GAMMU_COMMAND:-}
-      - SMSGATE_COMMAND=${SMSGATE_COMMAND:-}
+      # Defaults below target the sibling `gammu` container built from ./services/gammu.
+      - GAMMU_COMMAND=${GAMMU_COMMAND:-docker exec gammu gammu -c /etc/gammu/gammurc {command}}
+      - SMSGATE_COMMAND=${SMSGATE_COMMAND:-docker exec gammu gammu -c /etc/gammu/gammurc sendsms TEXT {to} -text \"{body}\"}
       - RASP_IVR_COMMAND=${RASP_IVR_COMMAND:-}
       - VERBOICE_COMMAND=${VERBOICE_COMMAND:-}
       - VBVOICE_COMMAND=${VBVOICE_COMMAND:-}

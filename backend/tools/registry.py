@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -3752,7 +3753,8 @@ async def _run_command_hook(env_var: str, **params: Any) -> dict:
     )
     stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
     if proc.returncode != 0:
-        raise ToolError(f"{env_var} failed ({proc.returncode}): {stderr.decode()[:500]}")
+        output = (stdout.decode() + "\n" + stderr.decode()).strip()
+        raise ToolError(f"{env_var} failed ({proc.returncode}): {output[:500]}")
     text = stdout.decode().strip()
     try:
         payload = json.loads(text)
