@@ -257,6 +257,9 @@ services:
       # Rotating proxy endpoint. Browser automation and HTTP clients can use this.
       - PROXY_ROTATOR_URL=http://${PROXY_ROTATOR_USERNAME:-admin}:${PROXY_ROTATOR_PASSWORD:-secret}@proxy-rotator:3128
       - PROXY_ROTATOR_API=http://proxy-rotator:8080
+      # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
+      - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
+      - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}
       # Default Puppeteer command. The puppeteer container mounts brain-data and runs
       # a Node wrapper around the official puppeteer package.
       - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser} --proxy {proxy}

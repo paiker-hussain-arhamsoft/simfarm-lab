@@ -269,10 +269,51 @@ async def _rotate_proxy(pool: str = "proxy_rotator", reason: str = "", **_: Any)
                 "note": f"Proxy-rotator test failed ({exc}); returning endpoint for retry but engine may not be healthy.",
             }
 
+    if pool == "browserbase":
+        if not _is_browserbase_available():
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Browserbase",
+                "pool": pool,
+                "new_vector": "browserbase session (simulated)",
+                "reason": reason,
+                "note": "Browserbase proxy rotation requires BROWSERBASE_API_KEY.",
+            }
+        try:
+            from browserbase import AsyncBrowserbase
+            bb = AsyncBrowserbase(api_key=os.environ["BROWSERBASE_API_KEY"])
+            project_id = os.environ.get("BROWSERBASE_PROJECT_ID") or None
+            session = await bb.sessions.create(
+                project_id=project_id,
+                proxies=True,
+                browser_settings={"viewport": {"width": 1280, "height": 720}},
+            )
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Browserbase",
+                "pool": pool,
+                "new_vector": getattr(session, "connect_url", ""),
+                "session_id": getattr(session, "id", ""),
+                "reason": reason,
+                "note": "Browserbase cloud session created with managed proxies enabled. Use the connect_url with a Playwright/CDP client or pass proxy='browserbase' to browser_automation_plan(tool='browserbase').",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Browserbase",
+                "pool": pool,
+                "new_vector": "browserbase session (simulated)",
+                "reason": reason,
+                "note": f"Browserbase session creation failed ({exc}); set BROWSERBASE_API_KEY and try again.",
+            }
+
     return {
         "simulated": True,
         "requires_internet": False,
-        "provider": "Scrapoxy / ProxyRotator",
+        "provider": "Scrapoxy / ProxyRotator / Browserbase",
         "pool": pool,
         "new_vector": "10.x.x.x (simulated)",
         "reason": reason,
@@ -462,6 +503,15 @@ def _is_selenium_available() -> bool:
 def _is_puppeteer_configured() -> bool:
     """Return True if a Puppeteer external command is configured."""
     return bool(os.environ.get("PUPPETEER_COMMAND", ""))
+
+
+def _is_browserbase_available() -> bool:
+    """Return True if the browserbase package is installed and an API key is configured."""
+    import importlib.util
+    return (
+        importlib.util.find_spec("browserbase") is not None
+        and bool(os.environ.get("BROWSERBASE_API_KEY", ""))
+    )
 
 
 _BROWSER_ARTIFACT_DIR = os.path.join(
@@ -722,6 +772,165 @@ async def _run_puppeteer_command(
     return result
 
 
+async def _run_browserbase_session(
+    target: str,
+    action: str = "navigate",
+    script: str = "",
+    selector: str = "",
+    value: str = "",
+    headless: bool = True,
+    screenshot: bool = False,
+    output: str = "",
+    proxy: str = "",
+    **_: Any,
+) -> dict:
+    """Run a Browserbase cloud browser session via the Browserbase API + Playwright CDP."""
+    from browserbase import AsyncBrowserbase
+    from playwright.async_api import async_playwright
+
+    api_key = os.environ.get("BROWSERBASE_API_KEY", "")
+    if not api_key:
+        raise ToolError("BROWSERBASE_API_KEY is not configured")
+
+    target_url = _normalize_browser_target(target)
+    if not target_url:
+        raise ToolError("target must be a URL (http/https/file) or an existing file path")
+
+    is_remote = target_url.startswith(("http://", "https://"))
+    if is_remote and not _online_available():
+        raise ToolError("Remote URLs require ALLOW_ONLINE_TOOLS=1")
+
+    os.makedirs(_BROWSER_ARTIFACT_DIR, exist_ok=True)
+    out_path = output
+    if not out_path:
+        ext = ".png" if screenshot else ".json"
+        out_path = os.path.join(_BROWSER_ARTIFACT_DIR, f"{uuid.uuid4()}{ext}")
+    elif not os.path.isabs(out_path):
+        out_path = os.path.join(_duix_data_dir(), out_path)
+    out_path = os.path.normpath(os.path.abspath(out_path))
+
+    bb = AsyncBrowserbase(api_key=api_key)
+    project_id = os.environ.get("BROWSERBASE_PROJECT_ID") or None
+
+    proxies: Any = False
+    if proxy:
+        if proxy.lower() in ("browserbase", "true", "1", "yes"):
+            proxies = True
+        elif proxy.startswith(("http://", "https://")):
+            parsed = _parse_proxy_url(proxy)
+            proxies = [{
+                "type": "external",
+                "server": parsed["server"],
+                "username": parsed["username"] or None,
+                "password": parsed["password"] or None,
+            }]
+        else:
+            proxies = True
+
+    create_kwargs: dict = {
+        "project_id": project_id,
+        "proxies": proxies,
+    }
+    # Only pass browser_settings if we have a viewport or proxy-related flags.
+    browser_settings: dict = {
+        "viewport": {"width": 1280, "height": 720},
+    }
+    create_kwargs["browser_settings"] = browser_settings
+
+    session = await bb.sessions.create(**create_kwargs)
+    result: dict = {
+        "target": target_url,
+        "action": action,
+        "headless": headless,
+        "session_id": getattr(session, "id", None),
+        "provider": "Browserbase",
+    }
+
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp(session.connect_url)
+        try:
+            context = browser.contexts[0]
+            page = context.pages[0] if context.pages else await context.new_page()
+            response = await page.goto(
+                target_url,
+                wait_until="networkidle" if is_remote else "domcontentloaded",
+            )
+            result["status"] = response.status if response else None
+            result["title"] = await page.title()
+            result["url"] = page.url
+
+            action_clean = (action or "navigate").lower()
+
+            if action_clean == "stealth":
+                signals = await page.evaluate("""() => ({
+                    userAgent: navigator.userAgent,
+                    webdriver: navigator.webdriver,
+                    plugins: navigator.plugins ? navigator.plugins.length : null,
+                    languages: navigator.languages,
+                    platform: navigator.platform,
+                    hardwareConcurrency: navigator.hardwareConcurrency,
+                    deviceMemory: navigator.deviceMemory,
+                    maxTouchPoints: navigator.maxTouchPoints,
+                    chrome: typeof window.chrome !== 'undefined',
+                    chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime,
+                    notificationPermissions: typeof Notification !== 'undefined',
+                })""")
+                result["signals"] = signals
+                flags = []
+                if signals.get("webdriver"):
+                    flags.append("navigator.webdriver === true")
+                if signals.get("plugins") == 0:
+                    flags.append("zero_plugins")
+                if not signals.get("chrome"):
+                    flags.append("window.chrome_missing")
+                result["flags"] = flags
+                result["stealth_grade"] = "A" if len(flags) == 0 else ("B" if len(flags) == 1 else "C")
+
+            elif action_clean == "screenshot":
+                await page.screenshot(path=out_path, full_page=False)
+                result["screenshot"] = out_path
+
+            elif action_clean == "evaluate":
+                if not script:
+                    raise ToolError("evaluate action requires a 'script' parameter")
+                result["evaluate_result"] = await page.evaluate(script)
+
+            elif action_clean == "click":
+                if not selector:
+                    raise ToolError("click action requires a 'selector' parameter")
+                await page.click(selector)
+                result["clicked"] = selector
+
+            elif action_clean == "type":
+                if not selector or value is None:
+                    raise ToolError("type action requires 'selector' and 'value' parameters")
+                await page.fill(selector, value)
+                result["filled"] = selector
+
+            elif action_clean == "get_text":
+                text = await page.inner_text("body")
+                result["text"] = text[:10000]
+
+            elif action_clean == "html":
+                html = await page.content()
+                result["html"] = html[:10000]
+
+            elif action_clean in ("navigate", "goto"):
+                pass
+
+            else:
+                raise ToolError(f"Unsupported browser action: {action}")
+
+            if screenshot and action_clean != "screenshot":
+                await page.screenshot(path=out_path, full_page=False)
+                result["screenshot"] = out_path
+
+        finally:
+            await browser.close()
+
+    return result
+
+
 async def _run_playwright_session(
     target: str,
     action: str = "navigate",
@@ -916,6 +1125,8 @@ def _browser_provider_available(tool: str) -> bool:
         return _is_selenium_available()
     if tool == "puppeteer":
         return _is_puppeteer_configured()
+    if tool == "browserbase":
+        return _is_browserbase_available()
     return False
 
 
@@ -928,7 +1139,7 @@ def _browser_plan_stub(tool: str, target: str, action: str, note: str) -> dict:
         "tool": tool or "playwright",
         "target": target,
         "action": action or "navigate",
-        "capabilities": ["headless session", "auto-waiting", "multi-browser (chromium)",
+        "capabilities": ["headless session", "auto-waiting", "multi-browser (chromium)", "cloud (Browserbase)",
                          "navigate", "screenshot", "evaluate", "click", "type", "get_text", "html"],
         "note": note,
     }
@@ -947,12 +1158,12 @@ async def _browser_automation_plan(
     proxy: str = "",
     **_: Any,
 ) -> dict:
-    """Headless browser automation with Playwright, Selenium, or Puppeteer."""
+    """Headless browser automation with Playwright, Selenium, Puppeteer, or Browserbase."""
     tool = (tool or "playwright").lower()
-    if tool not in ("playwright", "selenium", "puppeteer"):
+    if tool not in ("playwright", "selenium", "puppeteer", "browserbase"):
         return _browser_plan_stub(
             tool, target, action,
-            f"Tool '{tool}' is not supported; use 'playwright', 'selenium', or 'puppeteer'."
+            f"Tool '{tool}' is not supported; use 'playwright', 'selenium', 'puppeteer', or 'browserbase'."
         )
 
     valid_target = bool(target and (_is_target_url(target) or os.path.exists(target)))
@@ -970,6 +1181,11 @@ async def _browser_automation_plan(
             )
         elif tool == "selenium":
             session = await _run_selenium_session(
+                target=target, action=action, script=script, selector=selector, value=value,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
+            )
+        elif tool == "browserbase":
+            session = await _run_browserbase_session(
                 target=target, action=action, script=script, selector=selector, value=value,
                 headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
@@ -2276,13 +2492,13 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="rotate_proxy", name="Proxy Rotator",
-        description="Return a live rotating proxy URL from the configured proxy-rotator (or a stub when no proxy engine is available).",
-        category="infrastructure", provider="ProxyRotator / Scrapoxy", run=_rotate_proxy,
+        description="Return a live rotating proxy URL from the configured proxy-rotator (or a stub when no proxy engine is available). Browserbase is also supported as a cloud proxy source when BROWSERBASE_API_KEY is set.",
+        category="infrastructure", provider="ProxyRotator / Scrapoxy / Browserbase", run=_rotate_proxy,
         parameters={
             "pool": "proxy_rotator|scrapoxy|proxyguard|browserbase",
             "reason": "why rotating",
         },
-        status="live" if _proxy_rotator_url() else "stub",
+        status="live" if (_proxy_rotator_url() or _is_browserbase_available()) else "stub",
     ))
     register(ToolSpec(
         id="adjust_load_balancer", name="Load Balancer Controller",
@@ -2445,11 +2661,11 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="browser_automation_plan", name="Browser Automation Planner",
-        description="Headless browser automation with Playwright, Selenium, or Puppeteer (navigate, screenshot, evaluate, click, type, get_text, html). Can route through an HTTP proxy (e.g. proxy-rotator). Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
-        category="persona", provider="Playwright / Selenium / Puppeteer", run=_browser_automation_plan,
+        description="Headless browser automation with Playwright, Selenium, Puppeteer, or Browserbase (navigate, screenshot, evaluate, click, type, get_text, html). Browserbase is a cloud browser requiring BROWSERBASE_API_KEY. Can route through an HTTP proxy (e.g. proxy-rotator) or Browserbase's managed proxies. Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
+        category="persona", provider="Playwright / Selenium / Puppeteer / Browserbase", run=_browser_automation_plan,
         parameters={
             "target": "URL or local file path",
-            "tool": "playwright|selenium|puppeteer",
+            "tool": "playwright|selenium|puppeteer|browserbase",
             "action": "navigate|screenshot|evaluate|click|type|get_text|html",
             "script": "JavaScript expression for evaluate",
             "selector": "CSS selector for click/type",
@@ -2457,12 +2673,13 @@ def _register_defaults() -> None:
             "headless": "true|false",
             "screenshot": "true|false",
             "output": "optional output path for screenshot/result JSON",
-            "proxy": "optional http://user:pass@host:port proxy URL",
+            "proxy": "optional http://user:pass@host:port proxy URL, or 'browserbase' to use Browserbase managed proxies",
         },
         status="live" if (
             _is_playwright_available()
             or _is_selenium_available()
             or _is_puppeteer_configured()
+            or _is_browserbase_available()
         ) else "stub",
     ))
     register(ToolSpec(
