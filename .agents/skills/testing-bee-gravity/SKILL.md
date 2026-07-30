@@ -20,8 +20,9 @@ Then open `http://localhost:8000/` in Chrome.
 ## Smoke checks
 
 - `GET /api/config` must return JSON with keys:
-  `ollama_host`, `ollama_model`, `ollama_ready`, `wan2_command`, `wan2_available`, `styles`.
-- With `WAN2_COMMAND=` and no Ollama running, expect `ollama_ready: false` and `wan2_available: false`.
+  `ollama_host`, `ollama_model`, `ollama_ready`, `wan2_command`, `wan2_available`, `ready`, `not_ready_reason`, `styles`.
+- With `WAN2_COMMAND=` and no Ollama running, expect `ollama_ready: false`, `wan2_available: false`, `ready: false`, and an actionable `not_ready_reason`.
+- With a working `WAN2_COMMAND`, expect `wan2_available: true`, `ready: true`, and `not_ready_reason: ""`.
 
 ## Mocking WAN2.1 without a heavy model
 
@@ -59,7 +60,9 @@ Make it executable and run the app with `WAN2_COMMAND=/tmp/mock-wan2.sh`.
 ## Expected responses
 
 - Empty prompt + empty script → `400` with detail `Provide a prompt or paste a script.`
-- Prompt provided but Ollama unavailable → `502` with detail `Ollama script generation failed: ...`
+- Prompt provided but Ollama unavailable while Wan2.1 is ready → `503` with detail `Ollama is not reachable. Paste a script directly or start Ollama ...`
+- Wan2.1 unavailable → `503` with detail `Wan2.1 is not available. Build the image with --build-arg VIDEO_STACK=wan ...`
+- Ollama generation failure after becoming reachable → `502` with detail `Ollama script generation failed: ...`
 - Pasted script + working `WAN2_COMMAND` → `200` JSON with `status: "ok"`, `provider: "Wan2.1"`, `simulated: true`, and a `video_url` starting with `/videos/`.
 
 ## Devin Secrets Needed

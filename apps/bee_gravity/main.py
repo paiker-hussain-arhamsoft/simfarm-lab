@@ -45,12 +45,18 @@ async def api_config() -> dict:
     """Runtime configuration and health."""
     ollama_ready = await ollama.is_ready()
     wan2_available = wan2.is_available()
-    ready = wan2_available and (ollama_ready or True)  # script can bypass Ollama
+    ready = wan2_available
+    warning = ""
     not_ready_reason = ""
     if not wan2_available:
         not_ready_reason = (
             "Wan2.1 is not available. Build the image with --build-arg VIDEO_STACK=wan "
             "or set WAN2_COMMAND to a working wan2-generate binary."
+        )
+    elif not ollama_ready:
+        warning = (
+            "Ollama is not reachable; prompt-to-script generation is disabled. "
+            "Paste a script directly or start Ollama."
         )
     return {
         "ollama_host": config.OLLAMA_HOST,
@@ -58,7 +64,8 @@ async def api_config() -> dict:
         "ollama_ready": ollama_ready,
         "wan2_command": config.WAN2_COMMAND,
         "wan2_available": wan2_available,
-        "ready": wan2_available,
+        "ready": ready,
+        "warning": warning,
         "not_ready_reason": not_ready_reason,
         "styles": config.STYLES,
     }

@@ -28,6 +28,9 @@ async function loadConfig() {
         if (!cfg.ready) {
             generateBtn.disabled = true;
             statusEl.textContent = 'Not ready: ' + (cfg.not_ready_reason || 'Check Wan2.1 / Ollama setup.');
+        } else if (cfg.warning) {
+            generateBtn.disabled = false;
+            statusEl.textContent = 'Ready. ' + cfg.warning;
         } else {
             generateBtn.disabled = false;
             statusEl.textContent = 'Ready. Enter a prompt or paste a script and click Generate.';
