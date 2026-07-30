@@ -21,7 +21,7 @@ ARG COQUI_TOS_AGREED=
 # Runtime deps + audio build deps for Chatterbox/Coqui TTS, Wan video, and InsightFace + supervisor for multi-process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates supervisor build-essential git \
-        libsndfile1 libsndfile1-dev ffmpeg \
+        libsndfile1 libsndfile1-dev ffmpeg nmap \
         espeak espeak-data && \
     rm -rf /var/lib/apt/lists/*
 

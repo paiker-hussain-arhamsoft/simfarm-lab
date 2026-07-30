@@ -275,6 +275,9 @@ services:
       - PROXY_ROTATOR_API=http://proxy-rotator:8080
       # FlareSolverr challenge solver endpoint. The service runs on the internal network.
       - FLARESOLVERR_URL=http://flaresolverr:8191
+      # Comma-separated list of authorized Nmap targets. Defaults to localhost; expand
+      # this to owned/authorized assets before calling nmap_scan against them.
+      - NMAP_AUTHORIZED_TARGETS=${NMAP_AUTHORIZED_TARGETS:-127.0.0.1,localhost,::1}
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}

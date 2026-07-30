@@ -20,9 +20,11 @@ import json
 import os
 import shlex
 import shutil
+import subprocess
 import sys
 import urllib.parse
 import uuid
+import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -2470,6 +2472,156 @@ async def _osint_lookup(subject: str = "", **_: Any) -> dict:
     }
 
 
+def _is_nmap_available() -> bool:
+    """Return True if the `nmap` binary is on PATH."""
+    return shutil.which("nmap") is not None
+
+
+def _nmap_authorized_targets() -> set[str]:
+    """Return the set of authorized Nmap targets.
+
+    Defaults to localhost-only scanning. Set NMAP_AUTHORIZED_TARGETS to a
+    comma-separated list to allow other owned/authorized assets.
+    """
+    default = "127.0.0.1,localhost,::1"
+    return {t.strip().lower() for t in os.environ.get("NMAP_AUTHORIZED_TARGETS", default).split(",") if t.strip()}
+
+
+def _nmap_target_allowed(target: str) -> bool:
+    """Return True if the target is in the authorized list or resolves to one."""
+    normalized = target.strip().lower()
+    allowed = _nmap_authorized_targets()
+    if normalized in allowed or normalized.rstrip(".") in allowed:
+        return True
+    # Allow CIDR ranges only when the user explicitly authorizes them.
+    return False
+
+
+def _nmap_sanitize_args(args: str) -> list[str]:
+    """Split extra Nmap args and reject any shell-sensitive characters."""
+    if not args:
+        return []
+    parsed = shlex.split(args)
+    safe: list[str] = []
+    for token in parsed:
+        if any(c in token for c in ";|&$`\n\r<>"):
+            continue
+        safe.append(token)
+    return safe
+
+
+async def _nmap_scan(
+    target: str = "",
+    ports: str = "1-1000",
+    args: str = "",
+    **_: Any,
+) -> dict:
+    """Run a defensive Nmap scan against an authorized target and parse results.
+
+    Only targets listed in `NMAP_AUTHORIZED_TARGETS` (defaulting to localhost)
+    may be scanned. The result is marked `simulated: True` and includes the
+    parsed host/ports so callers can do inventory/risk analysis without claiming
+    a live exploit was run.
+    """
+    if not _is_nmap_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "note": "Nmap is not installed or not on PATH.",
+        }
+
+    if not target:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "note": "The 'target' parameter is required.",
+        }
+
+    if not _nmap_target_allowed(target):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "note": "Target is not in NMAP_AUTHORIZED_TARGETS (defaults to localhost). Add it to authorize this scan.",
+        }
+
+    base_cmd = [
+        "nmap", "-p", ports or "1-1000", "-T4", "-sV", "--open", "-oX", "-",
+    ] + _nmap_sanitize_args(args) + [target]
+
+    try:
+        raw = await asyncio.to_thread(
+            subprocess.check_output,
+            base_cmd,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.CalledProcessError as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "stdout": exc.output[:2000] if isinstance(exc.output, str) else exc.output[:2000] if exc.output else "",
+            "note": f"Nmap scan failed with exit code {exc.returncode}.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "note": f"Nmap scan failed ({exc}).",
+        }
+
+    try:
+        root = ET.fromstring(raw)
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "stdout": raw[:2000],
+            "note": f"Nmap produced output but XML parsing failed ({exc}).",
+        }
+
+    hosts: list[dict] = []
+    for host in root.findall("host"):
+        status_el = host.find("status")
+        status = status_el.get("state") if status_el is not None else "unknown"
+        addresses = [a.get("addr") for a in host.findall("address")]
+        host_ports: list[dict] = []
+        ports_el = host.find("ports")
+        if ports_el is not None:
+            for port in ports_el.findall("port"):
+                state_el = port.find("state")
+                service_el = port.find("service")
+                host_ports.append({
+                    "port": port.get("portid"),
+                    "protocol": port.get("protocol"),
+                    "state": state_el.get("state") if state_el is not None else "unknown",
+                    "service": service_el.get("name") if service_el is not None else "",
+                    "version": service_el.get("version") if service_el is not None else "",
+                })
+        hosts.append({"status": status, "addresses": addresses, "ports": host_ports})
+
+    return {
+        "simulated": True,
+        "requires_internet": False,
+        "provider": "Nmap",
+        "target": target,
+        "command": " ".join(base_cmd),
+        "hosts": hosts,
+        "note": "Defensive Nmap scan executed against an authorized target; results are parsed from Nmap XML output.",
+    }
+
+
 async def _cai_redteam(scope: str = "", **_: Any) -> dict:
     return {
         "simulated": True,
@@ -2715,6 +2867,17 @@ def _register_defaults() -> None:
         description="Passive open-source exposure mapping for owned/authorized assets. Simulated.",
         category="security", provider="OSINT", run=_osint_lookup,
         parameters={"subject": "owned/authorized asset"},
+    ))
+    register(ToolSpec(
+        id="nmap_scan", name="Nmap Network Scanner",
+        description="Defensive Nmap port/service scan against authorized targets. Falls back to a stub when Nmap is missing or the target is not in NMAP_AUTHORIZED_TARGETS.",
+        category="security", provider="Nmap", run=_nmap_scan,
+        parameters={
+            "target": "authorized target host/IP (default allowed: 127.0.0.1, localhost, ::1)",
+            "ports": "port range (default 1-1000)",
+            "args": "extra safe Nmap arguments (shell metacharacters are stripped)",
+        },
+        status="live" if _is_nmap_available() else "stub",
     ))
     register(ToolSpec(
         id="cai_redteam", name="Automated Red-Team Orchestrator",
