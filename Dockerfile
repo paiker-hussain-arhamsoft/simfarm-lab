@@ -67,6 +67,9 @@ PY
 
 COPY . .
 
+RUN chmod +x /app/services/mautic/mautic-campaign /app/services/mautic/mautic_campaign.py && \
+    ln -sf /app/services/mautic/mautic-campaign /usr/local/bin/mautic-campaign
+
 EXPOSE 8000
 
 CMD ["bash", "start.sh"]

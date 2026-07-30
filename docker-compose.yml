@@ -38,6 +38,11 @@ services:
       - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:1.5b}
       - DEFAULT_FRAMEWORK=${DEFAULT_FRAMEWORK:-supervisor}
       - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
+      # Optional Mautic content-distribution hook
+      - MAUTIC_COMMAND=${MAUTIC_COMMAND:-}
+      - MAUTIC_URL=${MAUTIC_URL:-http://mautic-web}
+      - MAUTIC_USER=${MAUTIC_USER:-admin}
+      - MAUTIC_PASSWORD=${MAUTIC_PASSWORD:-}
       # Privileged legal-proxy override role (default OFF). Even when enabled,
       # a flagged request is only cleared with a real authorization ref + approver.
       - LEGAL_PROXY_ENABLED=${LEGAL_PROXY_ENABLED:-}
