@@ -1,0 +1,4 @@
+# Selenium browser automation stack for persona/stealth tools.
+# Reuses the Chromium binary installed by Playwright.
+selenium==4.18.1
+webdriver-manager==4.0.1

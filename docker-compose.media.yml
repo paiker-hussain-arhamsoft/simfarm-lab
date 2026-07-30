@@ -197,12 +197,24 @@ services:
     shm_size: 8g
     command: tail -f /dev/null
 
+  puppeteer:
+    build:
+      context: ./services/puppeteer
+    image: simfarm-lab/puppeteer:latest
+    container_name: puppeteer
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - brain-data:/data
+      - brain-data:/app/data
+    command: tail -f /dev/null
+
   strategic-brain:
     build:
       context: .
       args:
         FACE_STACK: ${FACE_STACK:-}
-        BROWSER_STACK: ${BROWSER_STACK:-playwright}
+        BROWSER_STACK: ${BROWSER_STACK:-all}
     environment:
       - DUIX_VIDEO_HOST=http://duix-avatar-gen-video:8383
       - DUIX_DATA_DIR=/code/data
@@ -218,8 +230,11 @@ services:
       # Default VideoRetalking lip-sync command. CPU inference is very slow;
       # add an NVIDIA runtime to the videoretalking service for GPU.
       - VIDEORETALKING_COMMAND=docker exec videoretalking /video-retalking/run_videoretalking.sh --face {video} --audio {audio} --output {output}
-      # Allow Playwright browser automation to visit remote URLs when explicitly enabled.
+      # Allow browser automation to visit remote URLs when explicitly enabled.
       - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
+      # Default Puppeteer command. The puppeteer container mounts brain-data and runs
+      # a Node wrapper around the official puppeteer package.
+      - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser}
       # Default GFPGAN face restoration/upscale command. Supports images and video.
       - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
     volumes:
