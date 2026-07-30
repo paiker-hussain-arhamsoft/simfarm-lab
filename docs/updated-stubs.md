@@ -2,7 +2,7 @@
 
 This file lists the current integration status of every registered tool. A tool is `live` when its engine is installed/configured in the current environment; `stub` means it still returns the simulated fallback.
 
-Environment-dependent tools (e.g. `rotate_proxy`, `openvas_scan`, `dast_scan`) may flip to `live` once the relevant container or API key is configured.
+Environment-dependent tools may flip to `live` once the relevant container or API key is configured.
 
 Total tools: 89
 
@@ -43,7 +43,7 @@ Total tools: 89
 | `openvas_scan` | OpenVAS Vulnerability Scanner | security | OpenVAS / Greenbone | stub |
 | `cai_redteam` | Automated Red-Team Orchestrator | security | CAI (Alias Robotics) | stub |
 | `persona_design` | Synthetic Persona Designer | persona | ElizaOS | stub |
-| `behavior_model` | Behavior Modeler | persona | Botpress / LangGraph | stub |
+| `behavior_model` | Behavior Modeler | persona | Botpress / LangGraph / ElizaOS | stub |
 | `voice_dialect_map` | Voice & Dialect Mapper | persona | Coqui / Chatterbox / ElevenLabs | stub |
 | `fleet_orchestrate` | Persona Fleet Orchestrator | persona | ElizaOS / Socioboard | stub |
 | `modem_topology` | Modem Topology | infrastructure | SIM800/SIM900 · Gammu | stub |
@@ -104,4 +104,3 @@ Total tools: 89
 | `memory_compose_model` | Memory Compose Model | memory | Docker Compose (modeled) | stub |
 | `storage_estimate_model` | Storage Estimate Model | memory | storage-estimate (modeled) | stub |
 | `oeads_integration_model` | OEADS Integration Model | memory | OEADS integration (modeled) | stub |
-

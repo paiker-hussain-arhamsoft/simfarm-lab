@@ -285,6 +285,28 @@ services:
       retries: 3
       start_period: 30s
 
+  elizaos:
+    build:
+      context: ./services/elizaos
+    container_name: elizaos
+    restart: unless-stopped
+    environment:
+      - SERVER_PORT=3000
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ELEVENLABS_XI_API_KEY=${ELEVENLABS_XI_API_KEY:-}
+      - ELEVENLABS_MODEL_ID=${ELEVENLABS_MODEL_ID:-eleven_multilingual_v2}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+    # ElizaOS API is not exposed to the host; strategic-brain calls it internally.
+    volumes:
+      - brain-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/server/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   strategic-brain:
     build:
       context: .
@@ -326,6 +348,10 @@ services:
       - ZAP_AUTHORIZED_TARGETS=${ZAP_AUTHORIZED_TARGETS:-http://localhost,http://127.0.0.1}
       # Default ZAP command. Runs zap-baseline.py inside the zap container. Use {script}, {target}, {mins}, {report}.
       - ZAP_COMMAND=docker exec zap python3 {script} -t {target} -m {mins} -J {report} -I
+      # ElizaOS persona/agent API endpoint. The elizaos container runs the eliza-starter API.
+      - ELIZAOS_URL=http://elizaos:3000
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}

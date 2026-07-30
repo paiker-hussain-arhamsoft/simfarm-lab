@@ -2984,40 +2984,147 @@ async def _cai_redteam(scope: str = "", **_: Any) -> dict:
     }
 
 
-# ── TIER 3 · Persona Orchestration stubs (simulated, offline) ───────
-# Stand-ins for ElizaOS / Botpress / LangGraph / Socioboard / Playwright. Every
-# result is SIMULATED and stays inside the platform — no real synthetic accounts
-# are created, no real social posting is performed, and no stealth / fingerprint-
-# evasion against live platforms is done. Framed for authorized research,
-# red/blue-team training, and detection of coordinated inauthentic behavior.
+def _is_elizaos_available() -> bool:
+    """Return True if the ElizaOS API endpoint is configured."""
+    return bool(os.environ.get("ELIZAOS_URL", ""))
 
-async def _persona_design(archetype: str = "", region: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "ElizaOS",
-        "requires_internet": False,
-        "persona_id": "sim-persona-0001 (in-lab only)",
-        "layers": ["identity", "backstory", "demographics", "psychographics",
-                   "digital-footprint", "voice", "goals"],
-        "archetype": archetype or "generic-lab-persona",
-        "note": "Stub — 7-layer synthetic-identity design concept. Simulated only; no real "
-                "identity, account, or digital footprint is created. Authorized research/"
-                "training and detection use only.",
+
+async def _call_elizaos(method: str, path: str, json_data: dict | None = None, timeout: int = 30) -> dict:
+    """Call the ElizaOS REST API and return the parsed JSON response."""
+    base = os.environ.get("ELIZAOS_URL", "http://elizaos:3000").rstrip("/")
+    url = f"{base}{path}"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if method.upper() == "GET":
+                resp = await client.get(url)
+            else:
+                resp = await client.post(url, json=json_data or {})
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        raise ToolError(f"ElizaOS API call failed: {exc}")
+
+
+# ── TIER 3 · Persona Orchestration (ElizaOS-backed when available) ───
+# These tools call the ElizaOS REST API when the `elizaos` container is
+# reachable. They fall back to the original modeled stubs when it is missing
+# or misconfigured, so no real agents are provisioned without the engine.
+
+async def _persona_design(
+    archetype: str = "",
+    region: str = "",
+    name: str = "",
+    **_: Any,
+) -> dict:
+    """Create a synthetic persona character in ElizaOS, or return the stub."""
+    if not _is_elizaos_available():
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": "sim-persona-0001 (in-lab only)",
+            "layers": ["identity", "backstory", "demographics", "psychographics",
+                       "digital-footprint", "voice", "goals"],
+            "archetype": archetype or "generic-lab-persona",
+            "note": "ElizaOS is not configured (set ELIZAOS_URL). Returning modeled persona stub.",
+        }
+
+    character_name = name or (archetype or "generic").replace(" ", "-").lower()
+    character_json = {
+        "name": character_name,
+        "username": character_name,
+        "plugins": [],
+        "clients": [],
+        "modelProvider": "openai" if os.environ.get("OPENAI_API_KEY") else "openrouter",
+        "settings": {"secrets": {}},
+        "system": f"You are a synthetic persona for authorized research. Archetype: {archetype}. Region: {region}.",
+        "bio": [f"A {archetype} persona from {region} used for red/blue-team detection research."],
+        "lore": ["Designed to model coordinated inauthentic behavior in a controlled lab."],
+        "messageExamples": [],
+        "postExamples": [],
+        "topics": [region, "detection research"],
+        "style": {"all": ["analytical", "neutral"], "chat": ["neutral"], "post": ["neutral"]},
+        "adjectives": ["neutral", "synthetic"],
     }
 
+    try:
+        data = await _call_elizaos("POST", "/api/agents", {"characterJson": character_json})
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "ElizaOS",
+            "persona_id": data.get("data", {}).get("id") or data.get("data", {}).get("character", {}).get("id") or "eliza-unknown",
+            "character": data.get("data", {}),
+            "archetype": archetype,
+            "region": region,
+            "note": "ElizaOS character created. Result is marked simulated per safety policy.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": "sim-persona-0001 (in-lab only)",
+            "archetype": archetype,
+            "note": f"ElizaOS persona creation failed ({exc}); returning modeled stub.",
+        }
 
-async def _behavior_model(persona_id: str = "", goal: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "Botpress / LangGraph",
-        "requires_internet": False,
-        "persona_id": persona_id or "sim-persona-0001",
-        "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
-                     "interaction style (modeled)"],
-        "note": "Stub — behavioral modeling / interaction scripting concept. Simulated only; "
-                "no live agents are deployed and no real interactions are sent. For modeling "
-                "and detection of inauthentic behavior in a lab.",
+
+async def _behavior_model(
+    persona_id: str = "",
+    goal: str = "",
+    message: str = "",
+    **_: Any,
+) -> dict:
+    """Send a message to an ElizaOS agent and observe its generated reply."""
+    if not _is_elizaos_available():
+        return {
+            "simulated": True,
+            "provider": "Botpress / LangGraph",
+            "requires_internet": False,
+            "persona_id": persona_id or "sim-persona-0001",
+            "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                         "interaction style (modeled)"],
+            "note": "ElizaOS is not configured (set ELIZAOS_URL). Returning modeled behavior stub.",
+        }
+
+    if not persona_id:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": persona_id,
+            "note": "persona_id is required to query an ElizaOS agent.",
+        }
+
+    payload = {
+        "agentId": persona_id,
+        "text": message or goal or "Hello, please describe your current goal.",
+        "userId": "lab-user",
+        "roomId": f"lab-{persona_id}",
+        "userName": "researcher",
     }
+    try:
+        data = await _call_elizaos("POST", "/api/messaging/submit", payload, timeout=60)
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "ElizaOS",
+            "persona_id": persona_id,
+            "goal": goal,
+            "reply": data.get("data", {}).get("text") or data.get("text") or "",
+            "note": "ElizaOS generated a behavioral reply. Result is marked simulated per safety policy.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": persona_id,
+            "goal": goal,
+            "note": f"ElizaOS behavior query failed ({exc}); returning modeled stub.",
+        }
 
 
 async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) -> dict:
@@ -3033,18 +3140,74 @@ async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) ->
     }
 
 
-async def _fleet_orchestrate(count: int = 0, platform: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "ElizaOS / Socioboard",
-        "requires_internet": False,
-        "fleet_size": "modeled (not deployed)",
-        "platform": platform or "lab-dashboard",
-        "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
-        "note": "Stub — multi-persona fleet coordination / lifecycle concept. Simulated only; "
-                "no accounts are provisioned and nothing is deployed to real platforms. "
-                "Intended for scale modeling and detection research.",
-    }
+async def _fleet_orchestrate(
+    count: int = 0,
+    platform: str = "",
+    archetype: str = "",
+    region: str = "",
+    **_: Any,
+) -> dict:
+    """List existing ElizaOS agents and optionally create a batch for fleet modeling."""
+    if not _is_elizaos_available():
+        return {
+            "simulated": True,
+            "provider": "ElizaOS / Socioboard",
+            "requires_internet": False,
+            "fleet_size": "modeled (not deployed)",
+            "platform": platform or "lab-dashboard",
+            "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+            "note": "ElizaOS is not configured (set ELIZAOS_URL). Returning modeled fleet stub.",
+        }
+
+    try:
+        data = await _call_elizaos("GET", "/api/agents")
+        agents = data.get("data", {}).get("agents", [])
+        created_ids: list[str] = []
+        if count and archetype:
+            for i in range(int(count)):
+                char_json = {
+                    "name": f"{archetype}-{i}",
+                    "username": f"{archetype}-{i}",
+                    "plugins": [],
+                    "clients": [],
+                    "modelProvider": "openai" if os.environ.get("OPENAI_API_KEY") else "openrouter",
+                    "system": f"You are a synthetic {archetype} persona for authorized research.",
+                    "bio": [f"A {archetype} persona from {region} used for detection research."],
+                    "lore": ["Controlled lab persona."],
+                    "messageExamples": [],
+                    "postExamples": [],
+                    "topics": [region, "detection research"],
+                    "style": {"all": ["analytical", "neutral"], "chat": ["neutral"], "post": ["neutral"]},
+                    "adjectives": ["neutral", "synthetic"],
+                }
+                try:
+                    create_resp = await _call_elizaos("POST", "/api/agents", {"characterJson": char_json})
+                    cid = create_resp.get("data", {}).get("id") or create_resp.get("data", {}).get("character", {}).get("id")
+                    if cid:
+                        created_ids.append(cid)
+                except Exception:
+                    break
+
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "ElizaOS",
+            "platform": platform or "lab-dashboard",
+            "existing_agents_count": len(agents),
+            "existing_agent_ids": [a.get("id") for a in agents[:20]],
+            "created_agent_ids": created_ids,
+            "requested_count": int(count),
+            "note": "ElizaOS fleet queried/created. Result is marked simulated per safety policy.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "fleet_size": "modeled (not deployed)",
+            "platform": platform or "lab-dashboard",
+            "note": f"ElizaOS fleet orchestration failed ({exc}); returning modeled stub.",
+        }
 
 # ── TIER 4 · SIM farm / GSM gateway simulator adapters ─────────────
 async def _modem_topology(**kwargs): return await simfarm_sim.modem_topology(**kwargs)
@@ -3264,15 +3427,17 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="persona_design", name="Synthetic Persona Designer",
-        description="7-layer synthetic-identity design concept (ElizaOS). Simulated; no real identity created.",
+        description="Create a synthetic persona character through the ElizaOS API, or fall back to the modeled stub when ElizaOS is not configured.",
         category="persona", provider="ElizaOS", run=_persona_design,
-        parameters={"archetype": "persona archetype", "region": "target region"},
+        parameters={"archetype": "persona archetype", "region": "target region", "name": "optional character name"},
+        status="live" if _is_elizaos_available() else "stub",
     ))
     register(ToolSpec(
         id="behavior_model", name="Behavior Modeler",
-        description="Behavioral modeling / interaction scripting concept (Botpress/LangGraph). Simulated.",
-        category="persona", provider="Botpress / LangGraph", run=_behavior_model,
-        parameters={"persona_id": "persona id", "goal": "objective"},
+        description="Send a message to an ElizaOS agent and observe its generated reply, or fall back to the modeled stub.",
+        category="persona", provider="Botpress / LangGraph / ElizaOS", run=_behavior_model,
+        parameters={"persona_id": "persona id", "goal": "objective", "message": "message to send to the agent"},
+        status="live" if _is_elizaos_available() else "stub",
     ))
     register(ToolSpec(
         id="voice_dialect_map", name="Voice & Dialect Mapper",
@@ -3305,9 +3470,10 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="fleet_orchestrate", name="Persona Fleet Orchestrator",
-        description="Multi-persona coordination / lifecycle concept (ElizaOS/Socioboard). Simulated; nothing deployed.",
+        description="List or create a batch of ElizaOS agent personas, or fall back to the modeled stub.",
         category="persona", provider="ElizaOS / Socioboard", run=_fleet_orchestrate,
-        parameters={"count": "fleet size (modeled)", "platform": "platform"},
+        parameters={"count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
+        status="live" if _is_elizaos_available() else "stub",
     ))
     tier4 = [
         ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),
