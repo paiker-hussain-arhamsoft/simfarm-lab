@@ -384,7 +384,95 @@ async def _stealth_patch_model(**kw): return await _stealth_stub("playwright-ext
 async def _canvas_spoof_model(**kw): return await _stealth_stub("canvas-spoof (modeled)", {"noise":"bounded fixture","consistency_checks":["render hash","font metrics"]}, **kw)
 async def _webrtc_spoof_model(**kw): return await _stealth_stub("WebRTC-spoof (modeled)", {"leak_prevention":"fixture only","signals":["candidate exposure","ASN mismatch"]}, **kw)
 async def _human_behavior_model(**kw): return await _stealth_stub("behavior-sim (modeled)", {"timing":{"typing":"lognormal","scroll":"bursty","mouse":"bounded-jitter"}}, **kw)
-async def _flaresolverr_model(**kw): return await _stealth_stub("FlareSolverr · Docker", {"containers":0,"challenge_telemetry":["JS challenge","managed challenge","session age"]}, **kw)
+def _flaresolverr_url() -> str:
+    """Return the configured FlareSolverr base URL."""
+    return os.environ.get("FLARESOLVERR_URL", "http://flaresolverr:8191").rstrip("/")
+
+
+def _is_flaresolverr_available() -> bool:
+    """Return True if a FlareSolverr endpoint is configured."""
+    return bool(_flaresolverr_url())
+
+
+async def _flaresolverr_model(
+    url: str = "",
+    cmd: str = "request.get",
+    maxTimeout: int = 60000,
+    postData: str = "",
+    session: str = "",
+    **_: Any,
+) -> dict:
+    """Query a FlareSolverr instance to solve Cloudflare/DDoS-GUARD challenges.
+
+    Falls back to the original modeled stub when no FlareSolverr endpoint is
+    configured or the request fails.
+    """
+    endpoint = _flaresolverr_url()
+    if not endpoint:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr · Docker",
+            "challenge_telemetry": ["JS challenge", "managed challenge", "session age"],
+            "note": "FlareSolverr is not configured (set FLARESOLVERR_URL).",
+        }
+
+    if not url and cmd.startswith("request"):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "note": "The 'url' parameter is required for request.get and request.post commands.",
+        }
+
+    if url and url.startswith(("http://", "https://")) and not _online_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "note": "Remote URLs require ALLOW_ONLINE_TOOLS=1.",
+        }
+
+    payload: dict = {"cmd": cmd}
+    if url:
+        payload["url"] = url
+    if maxTimeout:
+        payload["maxTimeout"] = maxTimeout
+    if session:
+        payload["session"] = session
+    if postData and cmd == "request.post":
+        payload["postData"] = postData
+
+    try:
+        import requests
+        resp = await asyncio.to_thread(
+            requests.post,
+            f"{endpoint}/v1",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=(maxTimeout / 1000) + 30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "status": data.get("status"),
+            "message": data.get("message"),
+            "solution": data.get("solution"),
+            "note": "FlareSolverr returned a real challenge solution.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "challenge_telemetry": ["JS challenge", "managed challenge", "session age"],
+            "note": f"FlareSolverr request failed ({exc}); falling back to modeled stub.",
+        }
+
+
 async def _challenge_bypass_model(**kw): return await _stealth_stub("challenge-solver (modeled)", {"challenge_signals":["IUAM","managed challenge","DDoS-GUARD"]}, **kw)
 async def _fingerprint_pool_model(**kw): return await _stealth_stub("Browserbase · Scrapoxy", {"pool_size":24,"diversity_metrics":["engine","viewport","locale"]}, **kw)
 async def _session_isolation_model(**kw): return await _stealth_stub("session-isolation (modeled)", {"isolated":["cookie","storage","fingerprint"]}, **kw)
@@ -2772,6 +2860,20 @@ def _register_defaults() -> None:
         register(ToolSpec(id=ident,name=name,description="Simulated only; real execution requires authorization and is not performed.",
                           category="stealth" if ident in stealth_ids else "memory" if ident in memory_ids else "content",
                           provider=provider,run=fn))
+
+    register(ToolSpec(
+        id="flaresolverr_model", name="FlareSolverr Model",
+        description="Send a Cloudflare/DDoS-GUARD challenge URL to a FlareSolverr container and return the solved page/cookies. Falls back to a modeled stub when the container is not configured or the request fails.",
+        category="stealth", provider="FlareSolverr · Docker", run=_flaresolverr_model,
+        parameters={
+            "url": "target URL to solve",
+            "cmd": "request.get|request.post",
+            "maxTimeout": "maximum time to wait for challenge solution in milliseconds (default 60000)",
+            "postData": "POST body for request.post",
+            "session": "optional persistent session ID to reuse",
+        },
+        status="live" if _is_flaresolverr_available() else "stub",
+    ))
 
 
 _register_defaults()

@@ -231,6 +231,22 @@ services:
       retries: 3
       start_period: 60s
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - TZ=${TZ:-UTC}
+    # Do not expose the challenge-solver API to the host or internet.
+    # strategic-brain reaches it on the internal network at http://flaresolverr:8191.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8191/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   strategic-brain:
     build:
       context: .
@@ -257,6 +273,8 @@ services:
       # Rotating proxy endpoint. Browser automation and HTTP clients can use this.
       - PROXY_ROTATOR_URL=http://${PROXY_ROTATOR_USERNAME:-admin}:${PROXY_ROTATOR_PASSWORD:-secret}@proxy-rotator:3128
       - PROXY_ROTATOR_API=http://proxy-rotator:8080
+      # FlareSolverr challenge solver endpoint. The service runs on the internal network.
+      - FLARESOLVERR_URL=http://flaresolverr:8191
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}

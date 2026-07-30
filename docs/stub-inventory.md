@@ -32,7 +32,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | FFmpeg binary | **Yes** | Yes | `ffmpeg_pipeline` runs real `ffmpeg` commands when `inputs` and `command` (or a `steps` string starting with `-`) are supplied; the base image includes `ffmpeg`. |
 | Playwright / Puppeteer / Selenium | **Yes** | Yes | Playwright and Selenium are wired to `browser_automation_plan` with stub fallback; `playwright_stealth_check` uses Playwright; Puppeteer runs in its own sibling container. |
 | Scrapoxy / Browserbase / ProxyRotator | **Partial** | Online proxy/cloud | Scrapoxy is discontinued; `rotate_proxy(tool='proxy_rotator')` is wired to a `proxy-rotator` container (free-proxy scraper + rotator) with stub fallback; `browser_automation_plan(tool='browserbase')` works when `BROWSERBASE_API_KEY` is set. |
-| FlareSolverr | **No** | Online (challenge solver) | `flaresolverr_model` is a stub; no FlareSolverr container installed. |
+| FlareSolverr | **Yes** | Online (challenge solver) | `flaresolverr_model` is wired to the `flaresolverr` container at `http://flaresolverr:8191`; falls back to stub when the container is missing or unhealthy. |
 | Nmap / OpenVAS / OWASP ZAP / Burp Suite / Metasploit / CAI (Alias Robotics) | **No** | Mixed | Cyber crew tools are simulated; no security scanners installed. |
 | ElizaOS / Botpress / LangGraph (framework only) / Socioboard | **No** | Yes (self-hosted) | Persona tools are stubs; only the LangGraph orchestration library is installed, not ElizaOS/Botpress/Socioboard engines. |
 | SMSgate / Gammu / SIM800/SIM900 / RASP-IVR / Verboice / VBVoice | **No** | Yes (on-prem hardware) | SIM/IVR tools are simulated; no GSM/SIP libraries or hardware drivers installed. |
@@ -127,7 +127,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | `canvas_spoof_model` | Canvas Spoof Model | canvas-spoof | offline-only | Canvas fingerprint noise. |
 | `webrtc_spoof_model` | WebRTC Spoof Model | WebRTC-spoof | offline-only | WebRTC leak prevention. |
 | `human_behavior_model` | Human Behavior Model | behavior-sim | offline-only | Human behavior simulation. |
-| `flaresolverr_model` | FlareSolverr Model | FlareSolverr · Docker | offline-only | JS challenge solver concept. |
+| `flaresolverr_model` | FlareSolverr Model | FlareSolverr · Docker | online-optional | Real Cloudflare/DDoS-GUARD challenge solver when the `flaresolverr` container is reachable; falls back to modeled stub otherwise. |
 | `challenge_bypass_model` | Challenge Bypass Model | challenge-solver | offline-only | Managed Challenge / DDoS-GUARD bypass concept. |
 | `fingerprint_pool_model` | Fingerprint Pool Model | Browserbase / Scrapoxy | online-optional | Browserbase is online-capable in a real integration; stub is simulated. |
 | `session_isolation_model` | Session Isolation Model | session-isolation | offline-only | Session isolation concept. |
