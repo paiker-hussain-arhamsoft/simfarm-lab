@@ -2420,19 +2420,153 @@ async def _recon_scan(tool: str = "nmap", target: str = "", **_: Any) -> dict:
     }
 
 
-async def _dast_scan(tool: str = "zap", target: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "OWASP ZAP / Burp Suite",
-        "requires_internet": False,
-        "target": "lab-scoped web app (redacted)",
-        "alerts": [
-            {"risk": "medium", "name": "Missing security headers (simulated)"},
-            {"risk": "low", "name": "Cookie without SameSite (simulated)"},
-        ],
-        "note": "Stub — dynamic application security testing. Simulated only; no real "
-                "requests are sent. Authorized/defensive testing context.",
+def _is_zap_available() -> bool:
+    """Return True if a ZAP command is configured."""
+    return bool(os.environ.get("ZAP_COMMAND", ""))
+
+
+def _zap_authorized_targets() -> set[str]:
+    """Return the set of authorized ZAP target URL prefixes."""
+    default = "http://localhost,http://127.0.0.1"
+    return {t.strip().lower() for t in os.environ.get("ZAP_AUTHORIZED_TARGETS", default).split(",") if t.strip()}
+
+
+def _zap_target_allowed(target: str) -> bool:
+    """Return True if the target URL starts with an authorized prefix."""
+    normalized = target.strip().lower()
+    return any(normalized.startswith(prefix) for prefix in _zap_authorized_targets()) or _online_available()
+
+
+async def _dast_scan(
+    tool: str = "zap",
+    target: str = "",
+    scan_type: str = "baseline",
+    mins: int = 1,
+    **_: Any,
+) -> dict:
+    """Run a real OWASP ZAP packaged scan against an authorized web target.
+
+    Uses the configured ZAP_COMMAND (by default `docker exec` into the `zap`
+    container and run `zap-baseline.py`, `zap-full-scan.py`, or `zap-api-scan.py`).
+    Falls back to the original modeled stub when ZAP is not configured, the
+    target is not authorized, or the scan fails.
+    """
+    if tool != "zap" or not _is_zap_available():
+        return {
+            "simulated": True,
+            "provider": "OWASP ZAP / Burp Suite",
+            "requires_internet": False,
+            "target": target,
+            "alerts": [
+                {"risk": "medium", "name": "Missing security headers (simulated)"},
+                {"risk": "low", "name": "Cookie without SameSite (simulated)"},
+            ],
+            "note": "ZAP is not configured or tool is not 'zap'. Running modeled DAST stub.",
+        }
+
+    if not target:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "alerts": [],
+            "note": "The 'target' URL parameter is required.",
+        }
+
+    if not _zap_target_allowed(target):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "alerts": [],
+            "note": "Target is not in ZAP_AUTHORIZED_TARGETS and ALLOW_ONLINE_TOOLS is not set. Add the target prefix or set ALLOW_ONLINE_TOOLS=1.",
+        }
+
+    script_map = {
+        "baseline": "/zap/zap-baseline.py",
+        "full": "/zap/zap-full-scan.py",
+        "api": "/zap/zap-api-scan.py",
     }
+    script = script_map.get(scan_type, "/zap/zap-baseline.py")
+
+    report_file = f"/app/data/artifacts/zap-report-{uuid.uuid4().hex[:8]}.json"
+
+    try:
+        os.makedirs("/app/data/artifacts", exist_ok=True)
+    except (PermissionError, OSError):
+        report_file = f"data/artifacts/zap-report-{uuid.uuid4().hex[:8]}.json"
+        os.makedirs("data/artifacts", exist_ok=True)
+
+    cmd_template = os.environ.get(
+        "ZAP_COMMAND",
+        "docker exec zap python3 {script} -t {target} -m {mins} -J {report} -I",
+    )
+    command = cmd_template.format(
+        script=script,
+        target=shlex.quote(target),
+        mins=int(mins),
+        report=shlex.quote(report_file),
+    )
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        stderr_text = stderr.decode()[:1000]
+
+        if not os.path.exists(report_file):
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "OWASP ZAP",
+                "target": target,
+                "scan_type": scan_type,
+                "stdout": stdout.decode()[:2000],
+                "stderr": stderr_text,
+                "alerts": [],
+                "note": "ZAP scan did not produce a JSON report; falling back to modeled stub.",
+            }
+
+        with open(report_file, "r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        # Extract a lightweight alert summary from the ZAP traditional JSON report.
+        alerts: list[dict] = []
+        for site in report.get("site", []):
+            for alert in site.get("alerts", []):
+                alerts.append({
+                    "risk": alert.get("riskdesc", "").split(" ")[0] if alert.get("riskdesc") else alert.get("risk", ""),
+                    "name": alert.get("name", ""),
+                    "confidence": alert.get("confidence", ""),
+                    "instances": len(alert.get("instances", [])) if isinstance(alert.get("instances"), list) else 0,
+                })
+
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "scan_type": scan_type,
+            "alerts_count": len(alerts),
+            "alerts": alerts[:50],
+            "report_file": report_file,
+            "note": "Real OWASP ZAP packaged scan completed; JSON report saved to brain-data/artifacts.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "scan_type": scan_type,
+            "alerts": [],
+            "note": f"ZAP scan failed ({exc}); falling back to modeled DAST stub.",
+        }
 
 
 async def _ja3_fingerprint(host: str = "", **_: Any) -> dict:
@@ -3062,9 +3196,15 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="dast_scan", name="DAST Scanner",
-        description="Dynamic application security testing (OWASP ZAP, Burp Suite). Simulated.",
+        description="Dynamic application security testing (OWASP ZAP packaged scan). Falls back to a modeled stub when ZAP is not configured or the scan fails.",
         category="security", provider="OWASP ZAP / Burp Suite", run=_dast_scan,
-        parameters={"tool": "zap|burp", "target": "authorized web app"},
+        parameters={
+            "tool": "zap|burp",
+            "target": "authorized web app URL",
+            "scan_type": "baseline|full|api (default baseline)",
+            "mins": "number of minutes to spider (default 1)",
+        },
+        status="live" if _is_zap_available() else "stub",
     ))
     register(ToolSpec(
         id="ja3_fingerprint", name="TLS Fingerprint Analyzer",

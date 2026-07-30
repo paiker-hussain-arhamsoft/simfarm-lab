@@ -266,6 +266,25 @@ services:
       retries: 5
       start_period: 300s
 
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: zap
+    restart: unless-stopped
+    # Keep the container alive so strategic-brain can docker-exec scan scripts.
+    command: ["/bin/bash", "-c", "while true; do sleep 30; done"]
+    environment:
+      - ZAP_OPTIONS=-config api.disablekey=true
+    volumes:
+      - brain-data:/app/data
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD", "test", "-f", "/zap/zap-baseline.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   strategic-brain:
     build:
       context: .
@@ -303,6 +322,10 @@ services:
       - OPENVAS_AUTHORIZED_TARGETS=${OPENVAS_AUTHORIZED_TARGETS:-127.0.0.1,localhost,::1}
       # Default OpenVAS command. Runs gvm-cli inside the openvas container.
       - OPENVAS_COMMAND=docker exec openvas gvm-cli socket --gmp-username {username} --gmp-password {password} --xml {xml}
+      # OWASP ZAP settings. Add authorized web-app targets to ZAP_AUTHORIZED_TARGETS.
+      - ZAP_AUTHORIZED_TARGETS=${ZAP_AUTHORIZED_TARGETS:-http://localhost,http://127.0.0.1}
+      # Default ZAP command. Runs zap-baseline.py inside the zap container. Use {script}, {target}, {mins}, {report}.
+      - ZAP_COMMAND=docker exec zap python3 {script} -t {target} -m {mins} -J {report} -I
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}
