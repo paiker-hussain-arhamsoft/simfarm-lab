@@ -100,8 +100,8 @@ async def generate_video(
     script: str,
     duration: str = "5s",
     output_dir: str = config.ARTIFACT_DIR,
-) -> str:
-    """Generate an MP4 with Wan2.1 and return the local file path."""
+) -> dict:
+    """Generate an MP4 with Wan2.1 and return artifact metadata."""
     os.makedirs(output_dir, exist_ok=True)
 
     if config.WAN2_COMMAND:
@@ -156,12 +156,13 @@ async def generate_video(
         artifact = payload.get("artifact")
         if not artifact:
             raise RuntimeError("WAN2_COMMAND did not return an artifact path")
-        return str(artifact)
+        return {"artifact": str(artifact), "simulated": bool(payload.get("simulated", True))}
 
     # No external hook: try in-process generation.
     try:
         import diffusers  # noqa: F401
-        return await _generate_in_process(script, duration, output_dir)
+        artifact = await _generate_in_process(script, duration, output_dir)
+        return {"artifact": artifact, "simulated": True}
     except ImportError as exc:
         raise RuntimeError(
             "WAN2_COMMAND is not set and diffusers is not installed in this environment"

@@ -73,10 +73,11 @@ async def api_generate(req: GenerateRequest) -> dict:
             raise HTTPException(status_code=502, detail="Ollama returned an empty script.")
 
     try:
-        artifact = await wan2.generate_video(script, req.duration, config.ARTIFACT_DIR)
+        result = await wan2.generate_video(script, req.duration, config.ARTIFACT_DIR)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Wan2.1 video generation failed: {exc}") from exc
 
+    artifact = result["artifact"]
     filename = Path(artifact).name
     return {
         "status": "ok",
@@ -86,5 +87,5 @@ async def api_generate(req: GenerateRequest) -> dict:
         "video_url": f"/videos/{filename}",
         "artifact": artifact,
         "provider": "Wan2.1",
-        "simulated": True,
+        "simulated": result.get("simulated", True),
     }
