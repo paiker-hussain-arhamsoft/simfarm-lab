@@ -21,7 +21,7 @@ ARG COQUI_TOS_AGREED=
 # Runtime deps + audio build deps for Chatterbox/Coqui TTS, Wan video, and InsightFace + supervisor for multi-process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates supervisor build-essential git \
-        libsndfile1 libsndfile1-dev ffmpeg \
+        libsndfile1 libsndfile1-dev ffmpeg nmap \
         espeak espeak-data && \
     rm -rf /var/lib/apt/lists/*
 
@@ -39,7 +39,7 @@ ENV LD_LIBRARY_PATH=/usr/lib/ollama
 WORKDIR /app
 
 # Install Python dependencies first for layer caching; voice/video/face deps are heavy so keep them separate
-COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt ./
+COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt requirements-browser-browserbase.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
     if [ "$VOICE_STACK" = "coqui" ]; then \
         pip install --no-cache-dir -r requirements-voice-coqui.txt; \
@@ -59,6 +59,9 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     fi && \
     if [ "$BROWSER_STACK" = "selenium" ] || [ "$BROWSER_STACK" = "all" ]; then \
         pip install --no-cache-dir -r requirements-browser-selenium.txt; \
+    fi && \
+    if [ "$BROWSER_STACK" = "browserbase" ] || [ "$BROWSER_STACK" = "all" ]; then \
+        pip install --no-cache-dir -r requirements-browser-browserbase.txt; \
     fi
 
 # Pre-download InsightFace models into the image when the face stack is enabled.

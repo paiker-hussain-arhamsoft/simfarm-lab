@@ -31,9 +31,9 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | Duix-Avatar / Wav2Lip / VideoRetalking / Roop / GFPGAN / DeepFaceLab / FaceSwap / Deep-Live-Cam | Mixed | Yes (with GPU) | InsightFace, Deep-Live-Cam, Wav2Lip, SadTalker, VideoRetalking, and GFPGAN are wired to real containers or packages with stub fallbacks; DeepFaceLab/FaceSwap/Roop require pre-trained workspaces. |
 | FFmpeg binary | **Yes** | Yes | `ffmpeg_pipeline` runs real `ffmpeg` commands when `inputs` and `command` (or a `steps` string starting with `-`) are supplied; the base image includes `ffmpeg`. |
 | Playwright / Puppeteer / Selenium | **Yes** | Yes | Playwright and Selenium are wired to `browser_automation_plan` with stub fallback; `playwright_stealth_check` uses Playwright; Puppeteer runs in its own sibling container. |
-| Scrapoxy / Browserbase | **No** | Online proxy/cloud | `rotate_proxy`, `fingerprint_pool_model`, `scrapoxy_deploy` are stubs; no proxy service installed. |
-| FlareSolverr | **No** | Online (challenge solver) | `flaresolverr_model` is a stub; no FlareSolverr container installed. |
-| Nmap / OpenVAS / OWASP ZAP / Burp Suite / Metasploit / CAI (Alias Robotics) | **No** | Mixed | Cyber crew tools are simulated; no security scanners installed. |
+| Scrapoxy / Browserbase / ProxyRotator | **Partial** | Online proxy/cloud | Scrapoxy is discontinued; `rotate_proxy(tool='proxy_rotator')` is wired to a `proxy-rotator` container (free-proxy scraper + rotator) with stub fallback; `browser_automation_plan(tool='browserbase')` works when `BROWSERBASE_API_KEY` is set. |
+| FlareSolverr | **Yes** | Online (challenge solver) | `flaresolverr_model` is wired to the `flaresolverr` container at `http://flaresolverr:8191`; falls back to stub when the container is missing or unhealthy. |
+| Nmap / OpenVAS / OWASP ZAP / Burp Suite / Metasploit / CAI (Alias Robotics) | **Partial** | Mixed | `nmap_scan` is wired to system `nmap`; `openvas_scan` is wired to the `immauss/openvas` container via `gvm-cli`; `dast_scan(tool='zap')` is wired to the `zaproxy/zap-stable` container via `zap-baseline.py`/`zap-full-scan.py`/`zap-api-scan.py`. All fall back to stubs when unavailable or unauthorized. Burp/Metasploit/CAI remain simulated. |
 | ElizaOS / Botpress / LangGraph (framework only) / Socioboard | **No** | Yes (self-hosted) | Persona tools are stubs; only the LangGraph orchestration library is installed, not ElizaOS/Botpress/Socioboard engines. |
 | SMSgate / Gammu / SIM800/SIM900 / RASP-IVR / Verboice / VBVoice | **No** | Yes (on-prem hardware) | SIM/IVR tools are simulated; no GSM/SIP libraries or hardware drivers installed. |
 | Mautic / Strapi / Postiz | **No** | Yes (self-hosted Docker) | Content-distribution tools are stubs; no CMS/marketing containers installed. |
@@ -97,7 +97,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | `sms_send` | SMS Send | SMSgate | offline-only | SMS send concept. |
 | `celery_dispatch` | Celery Dispatch | Celery | offline-only | Celery worker dispatch concept. |
 | `adjust_load_balancer` | Load Balancer Controller | infra-control | offline-only | Cloud LB strategy concept. |
-| `rotate_proxy` | Proxy Rotator | Scrapoxy | offline-only | Routing/proxy vector rotation concept. |
+| `rotate_proxy` | Proxy Rotator | ProxyRotator / Scrapoxy | online-optional | Returns a live `proxy-rotator` URL when the container is healthy; falls back to simulated vector otherwise. |
 
 ### TIER 4 · IVR (6)
 | Tool ID | Name | Provider represented | Offline / Online | Notes |
@@ -127,7 +127,7 @@ All tool results are guarded by `backend/tools/registry.py:80` (`safety.enforce_
 | `canvas_spoof_model` | Canvas Spoof Model | canvas-spoof | offline-only | Canvas fingerprint noise. |
 | `webrtc_spoof_model` | WebRTC Spoof Model | WebRTC-spoof | offline-only | WebRTC leak prevention. |
 | `human_behavior_model` | Human Behavior Model | behavior-sim | offline-only | Human behavior simulation. |
-| `flaresolverr_model` | FlareSolverr Model | FlareSolverr · Docker | offline-only | JS challenge solver concept. |
+| `flaresolverr_model` | FlareSolverr Model | FlareSolverr · Docker | online-optional | Real Cloudflare/DDoS-GUARD challenge solver when the `flaresolverr` container is reachable; falls back to modeled stub otherwise. |
 | `challenge_bypass_model` | Challenge Bypass Model | challenge-solver | offline-only | Managed Challenge / DDoS-GUARD bypass concept. |
 | `fingerprint_pool_model` | Fingerprint Pool Model | Browserbase / Scrapoxy | online-optional | Browserbase is online-capable in a real integration; stub is simulated. |
 | `session_isolation_model` | Session Isolation Model | session-isolation | offline-only | Session isolation concept. |

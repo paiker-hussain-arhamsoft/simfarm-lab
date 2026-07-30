@@ -209,6 +209,82 @@ services:
       - brain-data:/app/data
     command: tail -f /dev/null
 
+  proxy-rotator:
+    image: jadewon/proxy-rotator:latest
+    container_name: proxy-rotator
+    restart: unless-stopped
+    # The rotator needs outbound internet to fetch free proxy lists.
+    environment:
+      - LISTEN_ADDR=0.0.0.0
+      - PROXY_USERNAME=${PROXY_ROTATOR_USERNAME:-admin}
+      - PROXY_PASSWORD=${PROXY_ROTATOR_PASSWORD:-secret}
+      - PROXY_PORT=3128
+      - ADMIN_PORT=8080
+      - SOURCES=${PROXY_ROTATOR_SOURCES:-freeproxy}
+      - TEST_URL=https://www.cloudflare.com/cdn-cgi/trace
+    # Do not expose the proxy port to the host by default; sibling containers
+    # reach it on the internal network at http://proxy-rotator:3128.
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    restart: unless-stopped
+    environment:
+      - LOG_LEVEL=${FLARESOLVERR_LOG_LEVEL:-info}
+      - TZ=${TZ:-UTC}
+    # Do not expose the challenge-solver API to the host or internet.
+    # strategic-brain reaches it on the internal network at http://flaresolverr:8191.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8191/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  openvas:
+    image: immauss/openvas:latest
+    container_name: openvas
+    restart: unless-stopped
+    environment:
+      - PASSWORD=${OPENVAS_PASSWORD:-admin}
+      - USERNAME=${OPENVAS_USERNAME:-admin}
+      - TZ=${TZ:-UTC}
+    # Web UI on 9392 is not exposed to the host by default. strategic-brain drives
+    # scans via gvm-cli inside the container using the OPENVAS_COMMAND hook.
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9392/login/login.html"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
+  zap:
+    image: zaproxy/zap-stable:latest
+    container_name: zap
+    restart: unless-stopped
+    # Keep the container alive so strategic-brain can docker-exec scan scripts.
+    command: ["/bin/bash", "-c", "while true; do sleep 30; done"]
+    environment:
+      - ZAP_OPTIONS=-config api.disablekey=true
+    volumes:
+      - brain-data:/app/data
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD", "test", "-f", "/zap/zap-baseline.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
   strategic-brain:
     build:
       context: .
@@ -232,9 +308,30 @@ services:
       - VIDEORETALKING_COMMAND=docker exec videoretalking /video-retalking/run_videoretalking.sh --face {video} --audio {audio} --output {output}
       # Allow browser automation to visit remote URLs when explicitly enabled.
       - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
+      # Rotating proxy endpoint. Browser automation and HTTP clients can use this.
+      - PROXY_ROTATOR_URL=http://${PROXY_ROTATOR_USERNAME:-admin}:${PROXY_ROTATOR_PASSWORD:-secret}@proxy-rotator:3128
+      - PROXY_ROTATOR_API=http://proxy-rotator:8080
+      # FlareSolverr challenge solver endpoint. The service runs on the internal network.
+      - FLARESOLVERR_URL=http://flaresolverr:8191
+      # Comma-separated list of authorized Nmap targets. Defaults to localhost; expand
+      # this to owned/authorized assets before calling nmap_scan against them.
+      - NMAP_AUTHORIZED_TARGETS=${NMAP_AUTHORIZED_TARGETS:-127.0.0.1,localhost,::1}
+      # OpenVAS / GVM credentials. The password is set by the OpenVAS container's PASSWORD env.
+      - OPENVAS_USERNAME=${OPENVAS_USERNAME:-admin}
+      - OPENVAS_PASSWORD=${OPENVAS_PASSWORD:-admin}
+      - OPENVAS_AUTHORIZED_TARGETS=${OPENVAS_AUTHORIZED_TARGETS:-127.0.0.1,localhost,::1}
+      # Default OpenVAS command. Runs gvm-cli inside the openvas container.
+      - OPENVAS_COMMAND=docker exec openvas gvm-cli socket --gmp-username {username} --gmp-password {password} --xml {xml}
+      # OWASP ZAP settings. Add authorized web-app targets to ZAP_AUTHORIZED_TARGETS.
+      - ZAP_AUTHORIZED_TARGETS=${ZAP_AUTHORIZED_TARGETS:-http://localhost,http://127.0.0.1}
+      # Default ZAP command. Runs zap-baseline.py inside the zap container. Use {script}, {target}, {mins}, {report}.
+      - ZAP_COMMAND=docker exec zap python3 {script} -t {target} -m {mins} -J {report} -I
+      # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
+      - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
+      - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}
       # Default Puppeteer command. The puppeteer container mounts brain-data and runs
       # a Node wrapper around the official puppeteer package.
-      - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser}
+      - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser} --proxy {proxy}
       # Default GFPGAN face restoration/upscale command. Supports images and video.
       - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
     volumes:

@@ -20,8 +20,11 @@ import json
 import os
 import shlex
 import shutil
+import subprocess
 import sys
+import urllib.parse
 import uuid
+import xml.etree.ElementTree as ET
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -202,18 +205,121 @@ async def _generate_media_package(kind: str = "video", script: str = "", **_: An
     }
 
 
-async def _rotate_proxy(pool: str = "residential", reason: str = "", **_: Any) -> dict:
-    # Demonstrates a tool that can 'fail' to exercise the self-refining loop.
+def _proxy_rotator_url() -> str:
+    """Return the configured proxy-rotator URL or an empty string."""
+    return os.environ.get("PROXY_ROTATOR_URL", "")
+
+
+def _parse_proxy_url(proxy: str) -> dict:
+    """Parse a proxy URL into {server, username, password} for browser/selenium use."""
+    parsed = urllib.parse.urlparse(proxy)
+    username = parsed.username or ""
+    password = parsed.password or ""
+    host = parsed.hostname or ""
+    port = parsed.port or (3128 if not parsed.scheme else 80)
+    server = f"{parsed.scheme}://{host}:{port}" if parsed.scheme else f"http://{host}:{port}"
+    return {"server": server, "username": username, "password": password, "host": host, "port": port, "scheme": parsed.scheme or "http"}
+
+
+async def _rotate_proxy(pool: str = "proxy_rotator", reason: str = "", **_: Any) -> dict:
+    """Return a live rotating proxy URL or the original stub when none is available."""
     if pool == "blocked":
         raise ToolError("Proxy pool 'blocked' is exhausted; caller should alter the pool.")
+
+    pool = (pool or "proxy_rotator").lower()
+
+    if pool == "proxy_rotator":
+        proxy_url = _proxy_rotator_url()
+        if not proxy_url:
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "ProxyRotator / Scrapoxy",
+                "pool": pool,
+                "new_vector": "10.x.x.x (simulated)",
+                "reason": reason,
+                "note": "Proxy-rotator is not configured (set PROXY_ROTATOR_URL).",
+            }
+
+        try:
+            import requests
+            proxies = {"http": proxy_url, "https": proxy_url}
+            # Test through the local rotator to a public echo service.
+            resp = await asyncio.to_thread(
+                requests.get, "http://httpbin.org/ip", proxies=proxies, timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "ProxyRotator",
+                "pool": pool,
+                "new_vector": proxy_url,
+                "exit_ip": data.get("origin"),
+                "reason": reason,
+                "note": "Live proxy-rotator endpoint returned; traffic routes through a scraped upstream.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "ProxyRotator",
+                "pool": pool,
+                "new_vector": proxy_url,
+                "reason": reason,
+                "note": f"Proxy-rotator test failed ({exc}); returning endpoint for retry but engine may not be healthy.",
+            }
+
+    if pool == "browserbase":
+        if not _is_browserbase_available():
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Browserbase",
+                "pool": pool,
+                "new_vector": "browserbase session (simulated)",
+                "reason": reason,
+                "note": "Browserbase proxy rotation requires BROWSERBASE_API_KEY.",
+            }
+        try:
+            from browserbase import AsyncBrowserbase
+            bb = AsyncBrowserbase(api_key=os.environ["BROWSERBASE_API_KEY"])
+            project_id = os.environ.get("BROWSERBASE_PROJECT_ID") or None
+            session = await bb.sessions.create(
+                project_id=project_id,
+                proxies=True,
+                browser_settings={"viewport": {"width": 1280, "height": 720}},
+            )
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Browserbase",
+                "pool": pool,
+                "new_vector": getattr(session, "connect_url", ""),
+                "session_id": getattr(session, "id", ""),
+                "reason": reason,
+                "note": "Browserbase cloud session created with managed proxies enabled. Use the connect_url with a Playwright/CDP client or pass proxy='browserbase' to browser_automation_plan(tool='browserbase').",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Browserbase",
+                "pool": pool,
+                "new_vector": "browserbase session (simulated)",
+                "reason": reason,
+                "note": f"Browserbase session creation failed ({exc}); set BROWSERBASE_API_KEY and try again.",
+            }
+
     return {
         "simulated": True,
         "requires_internet": False,
-        "provider": "Scrapoxy",
+        "provider": "Scrapoxy / ProxyRotator / Browserbase",
         "pool": pool,
         "new_vector": "10.x.x.x (simulated)",
         "reason": reason,
-        "note": "Stub — infrastructure routing hook; simulated only.",
+        "note": f"Proxy provider '{pool}' is not installed or configured.",
     }
 
 # ── TIER 4 · IVR and proxy-rotation local simulation tools ─────────
@@ -280,7 +386,95 @@ async def _stealth_patch_model(**kw): return await _stealth_stub("playwright-ext
 async def _canvas_spoof_model(**kw): return await _stealth_stub("canvas-spoof (modeled)", {"noise":"bounded fixture","consistency_checks":["render hash","font metrics"]}, **kw)
 async def _webrtc_spoof_model(**kw): return await _stealth_stub("WebRTC-spoof (modeled)", {"leak_prevention":"fixture only","signals":["candidate exposure","ASN mismatch"]}, **kw)
 async def _human_behavior_model(**kw): return await _stealth_stub("behavior-sim (modeled)", {"timing":{"typing":"lognormal","scroll":"bursty","mouse":"bounded-jitter"}}, **kw)
-async def _flaresolverr_model(**kw): return await _stealth_stub("FlareSolverr · Docker", {"containers":0,"challenge_telemetry":["JS challenge","managed challenge","session age"]}, **kw)
+def _flaresolverr_url() -> str:
+    """Return the configured FlareSolverr base URL."""
+    return os.environ.get("FLARESOLVERR_URL", "http://flaresolverr:8191").rstrip("/")
+
+
+def _is_flaresolverr_available() -> bool:
+    """Return True if a FlareSolverr endpoint is configured."""
+    return bool(_flaresolverr_url())
+
+
+async def _flaresolverr_model(
+    url: str = "",
+    cmd: str = "request.get",
+    maxTimeout: int = 60000,
+    postData: str = "",
+    session: str = "",
+    **_: Any,
+) -> dict:
+    """Query a FlareSolverr instance to solve Cloudflare/DDoS-GUARD challenges.
+
+    Falls back to the original modeled stub when no FlareSolverr endpoint is
+    configured or the request fails.
+    """
+    endpoint = _flaresolverr_url()
+    if not endpoint:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr · Docker",
+            "challenge_telemetry": ["JS challenge", "managed challenge", "session age"],
+            "note": "FlareSolverr is not configured (set FLARESOLVERR_URL).",
+        }
+
+    if not url and cmd.startswith("request"):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "note": "The 'url' parameter is required for request.get and request.post commands.",
+        }
+
+    if url and url.startswith(("http://", "https://")) and not _online_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "note": "Remote URLs require ALLOW_ONLINE_TOOLS=1.",
+        }
+
+    payload: dict = {"cmd": cmd}
+    if url:
+        payload["url"] = url
+    if maxTimeout:
+        payload["maxTimeout"] = maxTimeout
+    if session:
+        payload["session"] = session
+    if postData and cmd == "request.post":
+        payload["postData"] = postData
+
+    try:
+        import requests
+        resp = await asyncio.to_thread(
+            requests.post,
+            f"{endpoint}/v1",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            timeout=(maxTimeout / 1000) + 30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "status": data.get("status"),
+            "message": data.get("message"),
+            "solution": data.get("solution"),
+            "note": "FlareSolverr returned a real challenge solution.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "FlareSolverr",
+            "challenge_telemetry": ["JS challenge", "managed challenge", "session age"],
+            "note": f"FlareSolverr request failed ({exc}); falling back to modeled stub.",
+        }
+
+
 async def _challenge_bypass_model(**kw): return await _stealth_stub("challenge-solver (modeled)", {"challenge_signals":["IUAM","managed challenge","DDoS-GUARD"]}, **kw)
 async def _fingerprint_pool_model(**kw): return await _stealth_stub("Browserbase · Scrapoxy", {"pool_size":24,"diversity_metrics":["engine","viewport","locale"]}, **kw)
 async def _session_isolation_model(**kw): return await _stealth_stub("session-isolation (modeled)", {"isolated":["cookie","storage","fingerprint"]}, **kw)
@@ -401,6 +595,15 @@ def _is_puppeteer_configured() -> bool:
     return bool(os.environ.get("PUPPETEER_COMMAND", ""))
 
 
+def _is_browserbase_available() -> bool:
+    """Return True if the browserbase package is installed and an API key is configured."""
+    import importlib.util
+    return (
+        importlib.util.find_spec("browserbase") is not None
+        and bool(os.environ.get("BROWSERBASE_API_KEY", ""))
+    )
+
+
 _BROWSER_ARTIFACT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "data", "artifacts", "browser"
@@ -458,6 +661,7 @@ async def _run_selenium_session(
     screenshot: bool = False,
     output: str = "",
     browser: str = "chromium",
+    proxy: str = "",
 ) -> dict:
     """Run a Selenium browser session using the Playwright Chromium binary."""
     import subprocess
@@ -493,6 +697,20 @@ async def _run_selenium_session(
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1280,720")
+    if proxy:
+        parsed = _parse_proxy_url(proxy)
+        from selenium.webdriver.common.proxy import Proxy, ProxyType
+        proxy_obj = Proxy()
+        proxy_obj.proxy_type = ProxyType.MANUAL
+        proxy_obj.http_proxy = f"{parsed['host']}:{parsed['port']}"
+        proxy_obj.ssl_proxy = f"{parsed['host']}:{parsed['port']}"
+        # Selenium Chrome does not reliably support HTTP proxy authentication
+        # via the Proxy object; Playwright/Puppeteer handle authenticated proxies
+        # natively. Socks credentials are set here for SOCKS proxies only.
+        if parsed["username"] and parsed["scheme"].startswith("sock"):
+            proxy_obj.socks_username = parsed["username"]
+            proxy_obj.socks_password = parsed["password"]
+        options.set_capability("proxy", proxy_obj.to_capabilities())
 
     driver_path = ChromeDriverManager(driver_version=version).install()
     service = Service(driver_path)
@@ -597,6 +815,7 @@ async def _run_puppeteer_command(
     screenshot: bool = False,
     output: str = "",
     browser: str = "chromium",
+    proxy: str = "",
 ) -> dict:
     """Run the configured external Puppeteer command and parse its JSON result."""
     cmd_template = os.environ.get("PUPPETEER_COMMAND", "")
@@ -621,6 +840,7 @@ async def _run_puppeteer_command(
         screenshot="true" if _is_headless_true(screenshot) else "false",
         output=shlex.quote(out_path),
         browser=shlex.quote(browser or "chromium"),
+        proxy=shlex.quote(proxy or ""),
     )
 
     proc = await asyncio.create_subprocess_shell(
@@ -642,6 +862,165 @@ async def _run_puppeteer_command(
     return result
 
 
+async def _run_browserbase_session(
+    target: str,
+    action: str = "navigate",
+    script: str = "",
+    selector: str = "",
+    value: str = "",
+    headless: bool = True,
+    screenshot: bool = False,
+    output: str = "",
+    proxy: str = "",
+    **_: Any,
+) -> dict:
+    """Run a Browserbase cloud browser session via the Browserbase API + Playwright CDP."""
+    from browserbase import AsyncBrowserbase
+    from playwright.async_api import async_playwright
+
+    api_key = os.environ.get("BROWSERBASE_API_KEY", "")
+    if not api_key:
+        raise ToolError("BROWSERBASE_API_KEY is not configured")
+
+    target_url = _normalize_browser_target(target)
+    if not target_url:
+        raise ToolError("target must be a URL (http/https/file) or an existing file path")
+
+    is_remote = target_url.startswith(("http://", "https://"))
+    if is_remote and not _online_available():
+        raise ToolError("Remote URLs require ALLOW_ONLINE_TOOLS=1")
+
+    os.makedirs(_BROWSER_ARTIFACT_DIR, exist_ok=True)
+    out_path = output
+    if not out_path:
+        ext = ".png" if screenshot else ".json"
+        out_path = os.path.join(_BROWSER_ARTIFACT_DIR, f"{uuid.uuid4()}{ext}")
+    elif not os.path.isabs(out_path):
+        out_path = os.path.join(_duix_data_dir(), out_path)
+    out_path = os.path.normpath(os.path.abspath(out_path))
+
+    bb = AsyncBrowserbase(api_key=api_key)
+    project_id = os.environ.get("BROWSERBASE_PROJECT_ID") or None
+
+    proxies: Any = False
+    if proxy:
+        if proxy.lower() in ("browserbase", "true", "1", "yes"):
+            proxies = True
+        elif proxy.startswith(("http://", "https://")):
+            parsed = _parse_proxy_url(proxy)
+            proxies = [{
+                "type": "external",
+                "server": parsed["server"],
+                "username": parsed["username"] or None,
+                "password": parsed["password"] or None,
+            }]
+        else:
+            proxies = True
+
+    create_kwargs: dict = {
+        "project_id": project_id,
+        "proxies": proxies,
+    }
+    # Only pass browser_settings if we have a viewport or proxy-related flags.
+    browser_settings: dict = {
+        "viewport": {"width": 1280, "height": 720},
+    }
+    create_kwargs["browser_settings"] = browser_settings
+
+    session = await bb.sessions.create(**create_kwargs)
+    result: dict = {
+        "target": target_url,
+        "action": action,
+        "headless": headless,
+        "session_id": getattr(session, "id", None),
+        "provider": "Browserbase",
+    }
+
+    async with async_playwright() as p:
+        browser = await p.chromium.connect_over_cdp(session.connect_url)
+        try:
+            context = browser.contexts[0]
+            page = context.pages[0] if context.pages else await context.new_page()
+            response = await page.goto(
+                target_url,
+                wait_until="networkidle" if is_remote else "domcontentloaded",
+            )
+            result["status"] = response.status if response else None
+            result["title"] = await page.title()
+            result["url"] = page.url
+
+            action_clean = (action or "navigate").lower()
+
+            if action_clean == "stealth":
+                signals = await page.evaluate("""() => ({
+                    userAgent: navigator.userAgent,
+                    webdriver: navigator.webdriver,
+                    plugins: navigator.plugins ? navigator.plugins.length : null,
+                    languages: navigator.languages,
+                    platform: navigator.platform,
+                    hardwareConcurrency: navigator.hardwareConcurrency,
+                    deviceMemory: navigator.deviceMemory,
+                    maxTouchPoints: navigator.maxTouchPoints,
+                    chrome: typeof window.chrome !== 'undefined',
+                    chromeRuntime: typeof chrome !== 'undefined' && !!chrome.runtime,
+                    notificationPermissions: typeof Notification !== 'undefined',
+                })""")
+                result["signals"] = signals
+                flags = []
+                if signals.get("webdriver"):
+                    flags.append("navigator.webdriver === true")
+                if signals.get("plugins") == 0:
+                    flags.append("zero_plugins")
+                if not signals.get("chrome"):
+                    flags.append("window.chrome_missing")
+                result["flags"] = flags
+                result["stealth_grade"] = "A" if len(flags) == 0 else ("B" if len(flags) == 1 else "C")
+
+            elif action_clean == "screenshot":
+                await page.screenshot(path=out_path, full_page=False)
+                result["screenshot"] = out_path
+
+            elif action_clean == "evaluate":
+                if not script:
+                    raise ToolError("evaluate action requires a 'script' parameter")
+                result["evaluate_result"] = await page.evaluate(script)
+
+            elif action_clean == "click":
+                if not selector:
+                    raise ToolError("click action requires a 'selector' parameter")
+                await page.click(selector)
+                result["clicked"] = selector
+
+            elif action_clean == "type":
+                if not selector or value is None:
+                    raise ToolError("type action requires 'selector' and 'value' parameters")
+                await page.fill(selector, value)
+                result["filled"] = selector
+
+            elif action_clean == "get_text":
+                text = await page.inner_text("body")
+                result["text"] = text[:10000]
+
+            elif action_clean == "html":
+                html = await page.content()
+                result["html"] = html[:10000]
+
+            elif action_clean in ("navigate", "goto"):
+                pass
+
+            else:
+                raise ToolError(f"Unsupported browser action: {action}")
+
+            if screenshot and action_clean != "screenshot":
+                await page.screenshot(path=out_path, full_page=False)
+                result["screenshot"] = out_path
+
+        finally:
+            await browser.close()
+
+    return result
+
+
 async def _run_playwright_session(
     target: str,
     action: str = "navigate",
@@ -652,6 +1031,7 @@ async def _run_playwright_session(
     screenshot: bool = False,
     output: str = "",
     browser: str = "chromium",
+    proxy: str = "",
 ) -> dict:
     """Launch a Playwright browser session and execute the requested action.
 
@@ -680,17 +1060,26 @@ async def _run_playwright_session(
 
     result: dict = {"target": target_url, "action": action, "headless": headless}
 
+    context_options: dict = {
+        "viewport": {"width": 1280, "height": 720},
+        "user_agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
+    if proxy:
+        parsed = _parse_proxy_url(proxy)
+        context_options["proxy"] = {
+            "server": parsed["server"],
+            "username": parsed["username"],
+            "password": parsed["password"],
+        }
+
     async with async_playwright() as p:
         browser_launcher = getattr(p, browser, p.chromium)
         browser_obj = await browser_launcher.launch(headless=headless)
         try:
-            context = await browser_obj.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                ),
-            )
+            context = await browser_obj.new_context(**context_options)
             page = await context.new_page()
             response = await page.goto(target_url, wait_until="networkidle" if is_remote else "domcontentloaded")
             result["status"] = response.status if response else None
@@ -826,6 +1215,8 @@ def _browser_provider_available(tool: str) -> bool:
         return _is_selenium_available()
     if tool == "puppeteer":
         return _is_puppeteer_configured()
+    if tool == "browserbase":
+        return _is_browserbase_available()
     return False
 
 
@@ -838,7 +1229,7 @@ def _browser_plan_stub(tool: str, target: str, action: str, note: str) -> dict:
         "tool": tool or "playwright",
         "target": target,
         "action": action or "navigate",
-        "capabilities": ["headless session", "auto-waiting", "multi-browser (chromium)",
+        "capabilities": ["headless session", "auto-waiting", "multi-browser (chromium)", "cloud (Browserbase)",
                          "navigate", "screenshot", "evaluate", "click", "type", "get_text", "html"],
         "note": note,
     }
@@ -854,14 +1245,15 @@ async def _browser_automation_plan(
     headless: bool = True,
     screenshot: bool = False,
     output: str = "",
+    proxy: str = "",
     **_: Any,
 ) -> dict:
-    """Headless browser automation with Playwright, Selenium, or Puppeteer."""
+    """Headless browser automation with Playwright, Selenium, Puppeteer, or Browserbase."""
     tool = (tool or "playwright").lower()
-    if tool not in ("playwright", "selenium", "puppeteer"):
+    if tool not in ("playwright", "selenium", "puppeteer", "browserbase"):
         return _browser_plan_stub(
             tool, target, action,
-            f"Tool '{tool}' is not supported; use 'playwright', 'selenium', or 'puppeteer'."
+            f"Tool '{tool}' is not supported; use 'playwright', 'selenium', 'puppeteer', or 'browserbase'."
         )
 
     valid_target = bool(target and (_is_target_url(target) or os.path.exists(target)))
@@ -875,17 +1267,22 @@ async def _browser_automation_plan(
         if tool == "playwright":
             session = await _run_playwright_session(
                 target=target, action=action, script=script, selector=selector, value=value,
-                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
         elif tool == "selenium":
             session = await _run_selenium_session(
                 target=target, action=action, script=script, selector=selector, value=value,
-                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
+            )
+        elif tool == "browserbase":
+            session = await _run_browserbase_session(
+                target=target, action=action, script=script, selector=selector, value=value,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
         else:  # puppeteer
             session = await _run_puppeteer_command(
                 target=target, action=action, script=script, selector=selector, value=value,
-                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
 
         return {
@@ -2023,19 +2420,153 @@ async def _recon_scan(tool: str = "nmap", target: str = "", **_: Any) -> dict:
     }
 
 
-async def _dast_scan(tool: str = "zap", target: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "OWASP ZAP / Burp Suite",
-        "requires_internet": False,
-        "target": "lab-scoped web app (redacted)",
-        "alerts": [
-            {"risk": "medium", "name": "Missing security headers (simulated)"},
-            {"risk": "low", "name": "Cookie without SameSite (simulated)"},
-        ],
-        "note": "Stub — dynamic application security testing. Simulated only; no real "
-                "requests are sent. Authorized/defensive testing context.",
+def _is_zap_available() -> bool:
+    """Return True if a ZAP command is configured."""
+    return bool(os.environ.get("ZAP_COMMAND", ""))
+
+
+def _zap_authorized_targets() -> set[str]:
+    """Return the set of authorized ZAP target URL prefixes."""
+    default = "http://localhost,http://127.0.0.1"
+    return {t.strip().lower() for t in os.environ.get("ZAP_AUTHORIZED_TARGETS", default).split(",") if t.strip()}
+
+
+def _zap_target_allowed(target: str) -> bool:
+    """Return True if the target URL starts with an authorized prefix."""
+    normalized = target.strip().lower()
+    return any(normalized.startswith(prefix) for prefix in _zap_authorized_targets()) or _online_available()
+
+
+async def _dast_scan(
+    tool: str = "zap",
+    target: str = "",
+    scan_type: str = "baseline",
+    mins: int = 1,
+    **_: Any,
+) -> dict:
+    """Run a real OWASP ZAP packaged scan against an authorized web target.
+
+    Uses the configured ZAP_COMMAND (by default `docker exec` into the `zap`
+    container and run `zap-baseline.py`, `zap-full-scan.py`, or `zap-api-scan.py`).
+    Falls back to the original modeled stub when ZAP is not configured, the
+    target is not authorized, or the scan fails.
+    """
+    if tool != "zap" or not _is_zap_available():
+        return {
+            "simulated": True,
+            "provider": "OWASP ZAP / Burp Suite",
+            "requires_internet": False,
+            "target": target,
+            "alerts": [
+                {"risk": "medium", "name": "Missing security headers (simulated)"},
+                {"risk": "low", "name": "Cookie without SameSite (simulated)"},
+            ],
+            "note": "ZAP is not configured or tool is not 'zap'. Running modeled DAST stub.",
+        }
+
+    if not target:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "alerts": [],
+            "note": "The 'target' URL parameter is required.",
+        }
+
+    if not _zap_target_allowed(target):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "alerts": [],
+            "note": "Target is not in ZAP_AUTHORIZED_TARGETS and ALLOW_ONLINE_TOOLS is not set. Add the target prefix or set ALLOW_ONLINE_TOOLS=1.",
+        }
+
+    script_map = {
+        "baseline": "/zap/zap-baseline.py",
+        "full": "/zap/zap-full-scan.py",
+        "api": "/zap/zap-api-scan.py",
     }
+    script = script_map.get(scan_type, "/zap/zap-baseline.py")
+
+    report_file = f"/app/data/artifacts/zap-report-{uuid.uuid4().hex[:8]}.json"
+
+    try:
+        os.makedirs("/app/data/artifacts", exist_ok=True)
+    except (PermissionError, OSError):
+        report_file = f"data/artifacts/zap-report-{uuid.uuid4().hex[:8]}.json"
+        os.makedirs("data/artifacts", exist_ok=True)
+
+    cmd_template = os.environ.get(
+        "ZAP_COMMAND",
+        "docker exec zap python3 {script} -t {target} -m {mins} -J {report} -I",
+    )
+    command = cmd_template.format(
+        script=script,
+        target=shlex.quote(target),
+        mins=int(mins),
+        report=shlex.quote(report_file),
+    )
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+        stderr_text = stderr.decode()[:1000]
+
+        if not os.path.exists(report_file):
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "OWASP ZAP",
+                "target": target,
+                "scan_type": scan_type,
+                "stdout": stdout.decode()[:2000],
+                "stderr": stderr_text,
+                "alerts": [],
+                "note": "ZAP scan did not produce a JSON report; falling back to modeled stub.",
+            }
+
+        with open(report_file, "r", encoding="utf-8") as f:
+            report = json.load(f)
+
+        # Extract a lightweight alert summary from the ZAP traditional JSON report.
+        alerts: list[dict] = []
+        for site in report.get("site", []):
+            for alert in site.get("alerts", []):
+                alerts.append({
+                    "risk": alert.get("riskdesc", "").split(" ")[0] if alert.get("riskdesc") else alert.get("risk", ""),
+                    "name": alert.get("name", ""),
+                    "confidence": alert.get("confidence", ""),
+                    "instances": len(alert.get("instances", [])) if isinstance(alert.get("instances"), list) else 0,
+                })
+
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "scan_type": scan_type,
+            "alerts_count": len(alerts),
+            "alerts": alerts[:50],
+            "report_file": report_file,
+            "note": "Real OWASP ZAP packaged scan completed; JSON report saved to brain-data/artifacts.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OWASP ZAP",
+            "target": target,
+            "scan_type": scan_type,
+            "alerts": [],
+            "note": f"ZAP scan failed ({exc}); falling back to modeled DAST stub.",
+        }
 
 
 async def _ja3_fingerprint(host: str = "", **_: Any) -> dict:
@@ -2073,6 +2604,372 @@ async def _osint_lookup(subject: str = "", **_: Any) -> dict:
         "note": "Stub — passive open-source exposure mapping for owned/authorized assets. "
                 "Simulated only; no live collection is performed.",
     }
+
+
+def _is_nmap_available() -> bool:
+    """Return True if the `nmap` binary is on PATH."""
+    return shutil.which("nmap") is not None
+
+
+def _nmap_authorized_targets() -> set[str]:
+    """Return the set of authorized Nmap targets.
+
+    Defaults to localhost-only scanning. Set NMAP_AUTHORIZED_TARGETS to a
+    comma-separated list to allow other owned/authorized assets.
+    """
+    default = "127.0.0.1,localhost,::1"
+    return {t.strip().lower() for t in os.environ.get("NMAP_AUTHORIZED_TARGETS", default).split(",") if t.strip()}
+
+
+def _nmap_target_allowed(target: str) -> bool:
+    """Return True if the target is in the authorized list or resolves to one."""
+    normalized = target.strip().lower()
+    allowed = _nmap_authorized_targets()
+    if normalized in allowed or normalized.rstrip(".") in allowed:
+        return True
+    # Allow CIDR ranges only when the user explicitly authorizes them.
+    return False
+
+
+def _nmap_sanitize_args(args: str) -> list[str]:
+    """Split extra Nmap args and reject any shell-sensitive characters."""
+    if not args:
+        return []
+    parsed = shlex.split(args)
+    safe: list[str] = []
+    for token in parsed:
+        if any(c in token for c in ";|&$`\n\r<>"):
+            continue
+        safe.append(token)
+    return safe
+
+
+async def _nmap_scan(
+    target: str = "",
+    ports: str = "1-1000",
+    args: str = "",
+    **_: Any,
+) -> dict:
+    """Run a defensive Nmap scan against an authorized target and parse results.
+
+    Only targets listed in `NMAP_AUTHORIZED_TARGETS` (defaulting to localhost)
+    may be scanned. The result is marked `simulated: True` and includes the
+    parsed host/ports so callers can do inventory/risk analysis without claiming
+    a live exploit was run.
+    """
+    if not _is_nmap_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "note": "Nmap is not installed or not on PATH.",
+        }
+
+    if not target:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "note": "The 'target' parameter is required.",
+        }
+
+    if not _nmap_target_allowed(target):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "note": "Target is not in NMAP_AUTHORIZED_TARGETS (defaults to localhost). Add it to authorize this scan.",
+        }
+
+    base_cmd = [
+        "nmap", "-p", ports or "1-1000", "-T4", "-sV", "--open", "-oX", "-",
+    ] + _nmap_sanitize_args(args) + [target]
+
+    try:
+        raw = await asyncio.to_thread(
+            subprocess.check_output,
+            base_cmd,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=120,
+        )
+    except subprocess.CalledProcessError as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "stdout": exc.output[:2000] if isinstance(exc.output, str) else exc.output[:2000] if exc.output else "",
+            "note": f"Nmap scan failed with exit code {exc.returncode}.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "note": f"Nmap scan failed ({exc}).",
+        }
+
+    try:
+        root = ET.fromstring(raw)
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "Nmap",
+            "target": target,
+            "stdout": raw[:2000],
+            "note": f"Nmap produced output but XML parsing failed ({exc}).",
+        }
+
+    hosts: list[dict] = []
+    for host in root.findall("host"):
+        status_el = host.find("status")
+        status = status_el.get("state") if status_el is not None else "unknown"
+        addresses = [a.get("addr") for a in host.findall("address")]
+        host_ports: list[dict] = []
+        ports_el = host.find("ports")
+        if ports_el is not None:
+            for port in ports_el.findall("port"):
+                state_el = port.find("state")
+                service_el = port.find("service")
+                host_ports.append({
+                    "port": port.get("portid"),
+                    "protocol": port.get("protocol"),
+                    "state": state_el.get("state") if state_el is not None else "unknown",
+                    "service": service_el.get("name") if service_el is not None else "",
+                    "version": service_el.get("version") if service_el is not None else "",
+                })
+        hosts.append({"status": status, "addresses": addresses, "ports": host_ports})
+
+    return {
+        "simulated": True,
+        "requires_internet": False,
+        "provider": "Nmap",
+        "target": target,
+        "command": " ".join(base_cmd),
+        "hosts": hosts,
+        "note": "Defensive Nmap scan executed against an authorized target; results are parsed from Nmap XML output.",
+    }
+
+
+def _is_openvas_available() -> bool:
+    """Return True if an OpenVAS/GVM command is configured."""
+    return bool(os.environ.get("OPENVAS_COMMAND", ""))
+
+
+def _openvas_authorized_targets() -> set[str]:
+    """Return the set of authorized OpenVAS targets (defaults to localhost)."""
+    default = "127.0.0.1,localhost,::1"
+    return {t.strip().lower() for t in os.environ.get("OPENVAS_AUTHORIZED_TARGETS", default).split(",") if t.strip()}
+
+
+def _openvas_target_allowed(target: str) -> bool:
+    """Return True if the target is in the authorized list."""
+    normalized = target.strip().lower()
+    allowed = _openvas_authorized_targets()
+    return normalized in allowed or normalized.rstrip(".") in allowed
+
+
+def _xml_escape(value: str) -> str:
+    """Escape XML special characters for GMP command bodies."""
+    return (
+        value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&apos;")
+    )
+
+
+async def _openvas_gmp(xml: str, timeout: int = 120) -> ET.Element:
+    """Run a single GMP XML command through the configured OpenVAS command."""
+    cmd_template = os.environ.get(
+        "OPENVAS_COMMAND",
+        "docker exec openvas gvm-cli socket --gmp-username {username} --gmp-password {password} --xml {xml}",
+    )
+    username = os.environ.get("OPENVAS_USERNAME", "admin")
+    password = os.environ.get("OPENVAS_PASSWORD", "admin")
+    command = cmd_template.format(
+        username=shlex.quote(username),
+        password=shlex.quote(password),
+        xml=shlex.quote(xml),
+    )
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    if proc.returncode != 0:
+        raise ToolError(f"OpenVAS command failed: {stderr.decode()[:500]}")
+    output = stdout.decode()
+    if not output.strip():
+        raise ToolError("OpenVAS command produced no output")
+    return ET.fromstring(output)
+
+
+def _get_response_attr(root: ET.Element, attr: str) -> str | None:
+    """Extract an attribute from a GMP response root element."""
+    status = root.get("status")
+    if status and not status.startswith(("2", "20")):
+        status_text = root.get("status_text", "")
+        raise ToolError(f"OpenVAS returned status {status}: {status_text}")
+    return root.get(attr)
+
+
+async def _openvas_scan(
+    target: str = "",
+    config_id: str = "daba56c8-73ec-11df-a475-002264764cea",
+    scanner_id: str = "08b69003-5fc2-4037-a479-93b440211c73",
+    port_list_id: str = "4a4717fe-57d2-11e1-9a26-406186ea4fc5",
+    wait: bool = False,
+    timeout: int = 300,
+    **_: Any,
+) -> dict:
+    """Trigger a defensive OpenVAS/GVM vulnerability scan against an authorized target.
+
+    The workflow creates a target, creates a task using the supplied scan
+    config/scanner/port-list IDs, starts the task, and (optionally) polls until
+    the scan finishes and returns a summary. Missing/misconfigured OpenVAS or
+    unauthorized targets fall back to the original modeled stub.
+    """
+    if not _is_openvas_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": "OpenVAS is not configured (set OPENVAS_COMMAND).",
+        }
+
+    if not target:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "note": "The 'target' parameter is required.",
+        }
+
+    if target.startswith(("http://", "https://")) and not _online_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": "Remote targets require ALLOW_ONLINE_TOOLS=1.",
+        }
+
+    if not _openvas_target_allowed(target):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": "Target is not in OPENVAS_AUTHORIZED_TARGETS (defaults to localhost). Add it to authorize this scan.",
+        }
+
+    name = f"simfarm-{_xml_escape(target)}-{uuid.uuid4().hex[:8]}"
+    safe_target = _xml_escape(target)
+
+    try:
+        # 1. Create target
+        create_target_xml = (
+            f'<create_target><name>{name}</name>'
+            f'<hosts>{safe_target}</hosts>'
+            f'<port_list id="{port_list_id}"/></create_target>'
+        )
+        target_resp = await _openvas_gmp(create_target_xml)
+        target_id = _get_response_attr(target_resp, "id")
+        if not target_id:
+            raise ToolError("OpenVAS did not return a target ID")
+
+        # 2. Create task
+        create_task_xml = (
+            f'<create_task><name>{name}</name>'
+            f'<config id="{config_id}"/>'
+            f'<target id="{target_id}"/>'
+            f'<scanner id="{scanner_id}"/></create_task>'
+        )
+        task_resp = await _openvas_gmp(create_task_xml)
+        task_id = _get_response_attr(task_resp, "id")
+        if not task_id:
+            raise ToolError("OpenVAS did not return a task ID")
+
+        # 3. Start task
+        start_xml = f'<start_task task_id="{task_id}"/>'
+        start_resp = await _openvas_gmp(start_xml)
+        report_id_el = start_resp.find("report_id")
+        report_id = report_id_el.text if report_id_el is not None else _get_response_attr(start_resp, "report_id")
+        if not report_id:
+            # Fall back to scanning start_resp text for a report id.
+            for attr in ("id", "report_id"):
+                val = start_resp.get(attr)
+                if val:
+                    report_id = val
+                    break
+
+        result: dict = {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "target_id": target_id,
+            "task_id": task_id,
+            "report_id": report_id,
+            "status": "started",
+            "note": "OpenVAS scan started. Set wait=True to poll for completion and a report summary.",
+        }
+
+        if not wait:
+            return result
+
+        # 4. Poll until the task is Done (or New/Requested status)
+        deadline = asyncio.get_event_loop().time() + timeout
+        status = "Unknown"
+        while asyncio.get_event_loop().time() < deadline:
+            status_resp = await _openvas_gmp(f'<get_tasks task_id="{task_id}" details="0"/>')
+            task_el = status_resp.find(".//task")
+            if task_el is not None:
+                status_el = task_el.find("status")
+                status = status_el.text if status_el is not None else status
+                if status and status.lower() in ("done", "stopped", "interrupted"):
+                    break
+            await asyncio.sleep(5)
+
+        result["status"] = status
+
+        if status.lower() == "done" and report_id:
+            report_resp = await _openvas_gmp(f'<get_reports report_id="{report_id}" details="1"/>')
+            # Pull a lightweight summary from the report element.
+            report = report_resp.find(".//report")
+            summary: dict = {}
+            if report is not None:
+                severity = report.find(".//severity")
+                if severity is not None:
+                    summary["severity"] = severity.get("full") or severity.text
+                result_count = report.find(".//result_count")
+                if result_count is not None:
+                    full_el = result_count.find("full")
+                    summary["result_count"] = full_el.text if full_el is not None else None
+            result["report_summary"] = summary
+            result["note"] = "OpenVAS scan completed and report summary retrieved."
+        else:
+            result["note"] = f"OpenVAS scan status after polling: {status}. Retrieve the report later with report_id."
+
+        return result
+
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": f"OpenVAS scan failed ({exc}); falling back to modeled stub.",
+        }
 
 
 async def _cai_redteam(scope: str = "", **_: Any) -> dict:
@@ -2185,9 +3082,13 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="rotate_proxy", name="Proxy Rotator",
-        description="Rotate routing/proxy vectors when an endpoint is blocked.",
-        category="infrastructure", provider="Scrapoxy", run=_rotate_proxy,
-        parameters={"pool": "proxy pool", "reason": "why rotating"},
+        description="Return a live rotating proxy URL from the configured proxy-rotator (or a stub when no proxy engine is available). Browserbase is also supported as a cloud proxy source when BROWSERBASE_API_KEY is set.",
+        category="infrastructure", provider="ProxyRotator / Scrapoxy / Browserbase", run=_rotate_proxy,
+        parameters={
+            "pool": "proxy_rotator|scrapoxy|proxyguard|browserbase",
+            "reason": "why rotating",
+        },
+        status="live" if (_proxy_rotator_url() or _is_browserbase_available()) else "stub",
     ))
     register(ToolSpec(
         id="adjust_load_balancer", name="Load Balancer Controller",
@@ -2295,9 +3196,15 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="dast_scan", name="DAST Scanner",
-        description="Dynamic application security testing (OWASP ZAP, Burp Suite). Simulated.",
+        description="Dynamic application security testing (OWASP ZAP packaged scan). Falls back to a modeled stub when ZAP is not configured or the scan fails.",
         category="security", provider="OWASP ZAP / Burp Suite", run=_dast_scan,
-        parameters={"tool": "zap|burp", "target": "authorized web app"},
+        parameters={
+            "tool": "zap|burp",
+            "target": "authorized web app URL",
+            "scan_type": "baseline|full|api (default baseline)",
+            "mins": "number of minutes to spider (default 1)",
+        },
+        status="live" if _is_zap_available() else "stub",
     ))
     register(ToolSpec(
         id="ja3_fingerprint", name="TLS Fingerprint Analyzer",
@@ -2316,6 +3223,31 @@ def _register_defaults() -> None:
         description="Passive open-source exposure mapping for owned/authorized assets. Simulated.",
         category="security", provider="OSINT", run=_osint_lookup,
         parameters={"subject": "owned/authorized asset"},
+    ))
+    register(ToolSpec(
+        id="nmap_scan", name="Nmap Network Scanner",
+        description="Defensive Nmap port/service scan against authorized targets. Falls back to a stub when Nmap is missing or the target is not in NMAP_AUTHORIZED_TARGETS.",
+        category="security", provider="Nmap", run=_nmap_scan,
+        parameters={
+            "target": "authorized target host/IP (default allowed: 127.0.0.1, localhost, ::1)",
+            "ports": "port range (default 1-1000)",
+            "args": "extra safe Nmap arguments (shell metacharacters are stripped)",
+        },
+        status="live" if _is_nmap_available() else "stub",
+    ))
+    register(ToolSpec(
+        id="openvas_scan", name="OpenVAS Vulnerability Scanner",
+        description="Trigger a defensive OpenVAS/GVM vulnerability scan against an authorized target. Creates a target, task, starts the scan, and optionally polls for completion. Falls back to a stub when OpenVAS is not configured or the target is not authorized.",
+        category="security", provider="OpenVAS / Greenbone", run=_openvas_scan,
+        parameters={
+            "target": "authorized target host/IP (default allowed: 127.0.0.1, localhost, ::1)",
+            "config_id": "scan config UUID (default Full and Fast)",
+            "scanner_id": "scanner UUID (default OpenVAS scanner)",
+            "port_list_id": "port list UUID (default IANA TCP/UDP)",
+            "wait": "true|false to poll for completion",
+            "timeout": "max seconds to wait when wait=true (default 300)",
+        },
+        status="live" if _is_openvas_available() else "stub",
     ))
     register(ToolSpec(
         id="cai_redteam", name="Automated Red-Team Orchestrator",
@@ -2350,11 +3282,11 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="browser_automation_plan", name="Browser Automation Planner",
-        description="Headless browser automation with Playwright, Selenium, or Puppeteer (navigate, screenshot, evaluate, click, type, get_text, html). Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
-        category="persona", provider="Playwright / Selenium / Puppeteer", run=_browser_automation_plan,
+        description="Headless browser automation with Playwright, Selenium, Puppeteer, or Browserbase (navigate, screenshot, evaluate, click, type, get_text, html). Browserbase is a cloud browser requiring BROWSERBASE_API_KEY. Can route through an HTTP proxy (e.g. proxy-rotator) or Browserbase's managed proxies. Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
+        category="persona", provider="Playwright / Selenium / Puppeteer / Browserbase", run=_browser_automation_plan,
         parameters={
             "target": "URL or local file path",
-            "tool": "playwright|selenium|puppeteer",
+            "tool": "playwright|selenium|puppeteer|browserbase",
             "action": "navigate|screenshot|evaluate|click|type|get_text|html",
             "script": "JavaScript expression for evaluate",
             "selector": "CSS selector for click/type",
@@ -2362,11 +3294,13 @@ def _register_defaults() -> None:
             "headless": "true|false",
             "screenshot": "true|false",
             "output": "optional output path for screenshot/result JSON",
+            "proxy": "optional http://user:pass@host:port proxy URL, or 'browserbase' to use Browserbase managed proxies",
         },
         status="live" if (
             _is_playwright_available()
             or _is_selenium_available()
             or _is_puppeteer_configured()
+            or _is_browserbase_available()
         ) else "stub",
     ))
     register(ToolSpec(
@@ -2459,6 +3393,20 @@ def _register_defaults() -> None:
         register(ToolSpec(id=ident,name=name,description="Simulated only; real execution requires authorization and is not performed.",
                           category="stealth" if ident in stealth_ids else "memory" if ident in memory_ids else "content",
                           provider=provider,run=fn))
+
+    register(ToolSpec(
+        id="flaresolverr_model", name="FlareSolverr Model",
+        description="Send a Cloudflare/DDoS-GUARD challenge URL to a FlareSolverr container and return the solved page/cookies. Falls back to a modeled stub when the container is not configured or the request fails.",
+        category="stealth", provider="FlareSolverr · Docker", run=_flaresolverr_model,
+        parameters={
+            "url": "target URL to solve",
+            "cmd": "request.get|request.post",
+            "maxTimeout": "maximum time to wait for challenge solution in milliseconds (default 60000)",
+            "postData": "POST body for request.post",
+            "session": "optional persistent session ID to reuse",
+        },
+        status="live" if _is_flaresolverr_available() else "stub",
+    ))
 
 
 _register_defaults()

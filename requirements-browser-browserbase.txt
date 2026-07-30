@@ -1,0 +1,3 @@
+# Browserbase cloud browser automation stack.
+# Installed when BROWSER_STACK=browserbase or all.
+browserbase==1.15.0

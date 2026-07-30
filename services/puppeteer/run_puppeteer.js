@@ -16,6 +16,7 @@ function parseArgs(argv) {
     screenshot: 'false',
     output: '',
     browser: 'chromium',
+    proxy: '',
   };
   for (let i = 2; i < argv.length; i++) {
     const key = argv[i];
@@ -38,20 +39,30 @@ function screenshotPathFor(output) {
 (async () => {
   const args = parseArgs(process.argv);
   if (!args.target || !args.output) {
-    console.error('Usage: node run_puppeteer.js --target <url> --output <json> [--action navigate|screenshot|evaluate|click|type|get_text|html|stealth] [...]');
+    console.error('Usage: node run_puppeteer.js --target <url> --output <json> [--action navigate|screenshot|evaluate|click|type|get_text|html|stealth] [--proxy <url>] [...]');
     process.exit(1);
+  }
+
+  const launchArgs = [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-dev-shm-usage',
+    '--disable-gpu',
+    '--window-size=1280,720',
+  ];
+
+  if (args.proxy) {
+    const proxyUrl = new URL(args.proxy);
+    // Chromium's --proxy-server does not accept credentials. Pass the bare
+    // server; unauthenticated proxies work, authenticated ones need an
+    // unauth local forwarder or a separate proxy helper.
+    launchArgs.push(`--proxy-server=${proxyUrl.protocol}//${proxyUrl.hostname}:${proxyUrl.port || 80}`);
   }
 
   const puppeteer = require('puppeteer');
   const browser = await puppeteer.launch({
     headless: args.headless !== 'false',
-    args: [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--window-size=1280,720',
-    ],
+    args: launchArgs,
   });
 
   const result = {
