@@ -285,6 +285,70 @@ services:
       retries: 3
       start_period: 30s
 
+  gammu:
+    build:
+      context: ./services/gammu
+    container_name: gammu
+    restart: unless-stopped
+    # Keep the container alive so strategic-brain can docker exec into it.
+    command: ["/bin/bash", "-c", "while true; do sleep 30; done"]
+    environment:
+      - GAMMU_CONFIG=/etc/gammu/gammurc
+    # Uncomment and set the host modem device path to enable real GSM hardware.
+    # devices:
+    #   - /dev/ttyUSB0:/dev/mobile
+    healthcheck:
+      test: ["CMD", "gammu", "-c", "/etc/gammu/gammurc", "--help"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  elizaos:
+    build:
+      context: ./services/elizaos
+    container_name: elizaos
+    restart: unless-stopped
+    environment:
+      - SERVER_PORT=3000
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ELEVENLABS_XI_API_KEY=${ELEVENLABS_XI_API_KEY:-}
+      - ELEVENLABS_MODEL_ID=${ELEVENLABS_MODEL_ID:-eleven_multilingual_v2}
+      - ELEVENLABS_VOICE_ID=${ELEVENLABS_VOICE_ID:-21m00Tcm4TlvDq8ikWAM}
+    # ElizaOS API is not exposed to the host; strategic-brain calls it internally.
+    volumes:
+      - brain-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/server/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
+  botpress:
+    image: botpress/server:latest
+    container_name: botpress
+    restart: unless-stopped
+    environment:
+      - BP_HOST=0.0.0.0
+      - PORT=3000
+      - NODE_ENV=production
+      # Optional external DB. For a quick lab, Botpress uses SQLite in its data volume.
+      - DATABASE=postgres
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///botpress/data/db.sqlite}
+      - EXTERNAL_URL=${BOTPRESS_EXTERNAL_URL:-http://localhost:3000}
+      - BP_LICENSE_KEY=${BOTPRESS_LICENSE_KEY:-}
+    volumes:
+      - brain-data:/botpress/data
+    # Not exposed to the host; strategic-brain calls it on the internal network.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   strategic-brain:
     build:
       context: .
@@ -326,6 +390,14 @@ services:
       - ZAP_AUTHORIZED_TARGETS=${ZAP_AUTHORIZED_TARGETS:-http://localhost,http://127.0.0.1}
       # Default ZAP command. Runs zap-baseline.py inside the zap container. Use {script}, {target}, {mins}, {report}.
       - ZAP_COMMAND=docker exec zap python3 {script} -t {target} -m {mins} -J {report} -I
+      # ElizaOS persona/agent API endpoint. The elizaos container runs the eliza-starter API.
+      - ELIZAOS_URL=http://elizaos:3000
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Botpress persona/bot API endpoint. The botpress container runs botpress/server.
+      - BOTPRESS_URL=http://botpress:3000
+      - BOTPRESS_TOKEN=${BOTPRESS_TOKEN:-}
+      - BOTPRESS_WORKSPACE_ID=${BOTPRESS_WORKSPACE_ID:-}
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}
@@ -334,6 +406,17 @@ services:
       - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser} --proxy {proxy}
       # Default GFPGAN face restoration/upscale command. Supports images and video.
       - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
+      # Socioboard fleet orchestration command hook. Set this to a script that calls your Socioboard API.
+      - SOCIOBOARD_COMMAND=${SOCIOBOARD_COMMAND:-}
+      - SOCIOBOARD_URL=${SOCIOBOARD_URL:-}
+      - SOCIOBOARD_API_KEY=${SOCIOBOARD_API_KEY:-}
+      # GSM/SMS/IVR command hooks. Set these to scripts that call Gammu, SMSgate, RASP-IVR, Verboice, or VBVoice.
+      # Defaults below target the sibling `gammu` container built from ./services/gammu.
+      - GAMMU_COMMAND=${GAMMU_COMMAND:-docker exec gammu gammu -c /etc/gammu/gammurc {command}}
+      - SMSGATE_COMMAND=${SMSGATE_COMMAND:-docker exec gammu gammu -c /etc/gammu/gammurc sendsms TEXT {to} -text \"{body}\"}
+      - RASP_IVR_COMMAND=${RASP_IVR_COMMAND:-}
+      - VERBOICE_COMMAND=${VERBOICE_COMMAND:-}
+      - VBVOICE_COMMAND=${VBVOICE_COMMAND:-}
     volumes:
       - brain-data:/code/data
       - brain-data:/data

@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -328,15 +329,28 @@ _TELECOM_NOTE = ("Simulated only; real telecom execution requires specific "
 _PROXY_NOTE = ("Simulated only; real proxy/cloud execution requires specific "
                "communications-secretariat orders and is not performed.")
 
-async def _ivr_hardware_setup(hardware_kit="", scenario="", **_):
+async def _ivr_hardware_setup(hardware_kit="", scenario="", **kwargs):
+    result = await _try_command_hook("RASP_IVR_COMMAND", action="hardware_setup", hardware_kit=hardware_kit, scenario=scenario)
+    if result is not None:
+        return result
     return {"simulated": True, "requires_internet": False, "provider": "Raspberry Pi · GSM · RASP-IVR",
             "hardware_kit": hardware_kit, "topology": {"controller": "virtual-rpi", "gsm_channels": "modeled", "physical": False},
             "detection_telemetry": ["channel occupancy", "retry bursts", "clock skew"], "note": _TELECOM_NOTE}
-async def _call_flow_design(scenario="", objective="", **_):
+
+
+async def _call_flow_design(scenario="", objective="", **kwargs):
+    result = await _try_command_hook("VERBOICE_COMMAND", action="call_flow", scenario=scenario, objective=objective)
+    if result is not None:
+        return result
     return {"simulated": True, "requires_internet": False, "provider": "Verboice",
             "menu_tree": {"root": "welcome (modeled)", "branches": ["information", "help", "end"], "dtmf": "modeled"},
             "scenario": scenario, "objective": objective, "real_calls": False, "note": _TELECOM_NOTE}
-async def _dtmf_handler(scenario="", objective="", **_):
+
+
+async def _dtmf_handler(scenario="", objective="", **kwargs):
+    result = await _try_command_hook("VBVOICE_COMMAND", action="dtmf", scenario=scenario, objective=objective)
+    if result is not None:
+        return result
     return {"simulated": True, "requires_internet": False, "provider": "VBVoice",
             "dtmf_policy": {"digits": "synthetic fixtures only", "timeouts": "modeled", "secrets": False},
             "detection_signals": ["repeated invalid digits", "automation timing"], "note": _TELECOM_NOTE}
@@ -2984,40 +2998,522 @@ async def _cai_redteam(scope: str = "", **_: Any) -> dict:
     }
 
 
-# ── TIER 3 · Persona Orchestration stubs (simulated, offline) ───────
-# Stand-ins for ElizaOS / Botpress / LangGraph / Socioboard / Playwright. Every
-# result is SIMULATED and stays inside the platform — no real synthetic accounts
-# are created, no real social posting is performed, and no stealth / fingerprint-
-# evasion against live platforms is done. Framed for authorized research,
-# red/blue-team training, and detection of coordinated inauthentic behavior.
+def _is_elizaos_available() -> bool:
+    """Return True if the ElizaOS API endpoint is configured."""
+    return bool(os.environ.get("ELIZAOS_URL", ""))
 
-async def _persona_design(archetype: str = "", region: str = "", **_: Any) -> dict:
+
+def _is_botpress_available() -> bool:
+    """Return True if the Botpress API endpoint is configured."""
+    return bool(os.environ.get("BOTPRESS_URL", ""))
+
+
+async def _call_elizaos(method: str, path: str, json_data: dict | None = None, timeout: int = 30) -> dict:
+    """Call the ElizaOS REST API and return the parsed JSON response."""
+    base = os.environ.get("ELIZAOS_URL", "http://elizaos:3000").rstrip("/")
+    url = f"{base}{path}"
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            if method.upper() == "GET":
+                resp = await client.get(url)
+            else:
+                resp = await client.post(url, json=json_data or {})
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        raise ToolError(f"ElizaOS API call failed: {exc}")
+
+
+async def _call_botpress(method: str, path: str, json_data: dict | None = None, timeout: int = 30) -> dict:
+    """Call the Botpress (v12 or cloud) REST API and return the parsed JSON response."""
+    base = os.environ.get("BOTPRESS_URL", "http://botpress:3000").rstrip("/")
+    url = f"{base}{path}"
+    headers: dict[str, str] = {}
+    token = os.environ.get("BOTPRESS_TOKEN", "")
+    workspace = os.environ.get("BOTPRESS_WORKSPACE_ID", "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if workspace:
+        headers["x-workspace-id"] = workspace
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+            if method.upper() == "GET":
+                resp = await client.get(url)
+            else:
+                resp = await client.post(url, json=json_data or {})
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        raise ToolError(f"Botpress API call failed: {exc}")
+
+
+def _is_langgraph_available() -> bool:
+    """Return True if LangGraph and a usable LLM backend are available."""
+    try:
+        from backend.pipeline.llm_config import detect_llm_backend
+        return detect_llm_backend() is not None
+    except Exception:
+        return False
+
+
+def _is_socioboard_available() -> bool:
+    """Return True if a Socioboard command/API hook is configured."""
+    return bool(os.environ.get("SOCIOBOARD_COMMAND", ""))
+
+
+async def _run_socioboard_command(count: int, archetype: str, region: str, platform: str) -> dict:
+    """Execute the configured Socioboard command for fleet orchestration."""
+    import shlex
+    import subprocess
+    cmd_template = os.environ.get("SOCIOBOARD_COMMAND", "")
+    if not cmd_template:
+        raise ToolError("SOCIOBOARD_COMMAND is not configured")
+    safe_name = archetype.replace(" ", "-").replace("/", "-")[:30]
+    safe_region = region.replace(" ", "-").replace("/", "-")[:30]
+    safe_platform = platform.replace(" ", "-").replace("/", "-")[:30]
+    mapping = {
+        "count": str(int(count)),
+        "archetype": safe_name,
+        "region": safe_region,
+        "platform": safe_platform,
+    }
+    # Simple brace-style substitution with a fallback to the literal placeholder.
+    def replacer(match: Any) -> str:
+        key = match.group(1)
+        return mapping.get(key, match.group(0))
+    cmd = re.sub(r"\{([a-zA-Z_]+)\}", replacer, cmd_template)
+    parsed = shlex.split(cmd)
+    proc = await asyncio.create_subprocess_exec(
+        *parsed,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    if proc.returncode != 0:
+        raise ToolError(f"Socioboard command failed ({proc.returncode}): {stderr.decode()[:500]}")
+    text = stdout.decode().strip()
+    try:
+        payload = json.loads(text)
+    except Exception:
+        payload = {"raw_output": text}
+    return payload
+
+
+async def _langgraph_persona_design(archetype: str, region: str, name: str) -> dict:
+    """Use a LangGraph + LangChain LLM workflow to design a synthetic persona."""
+    from backend.pipeline.llm_config import LLMBackend, create_langchain_llm, detect_llm_backend
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langgraph.graph import END, StateGraph
+    from typing import TypedDict
+
+    class PersonaState(TypedDict):
+        archetype: str
+        region: str
+        name: str
+        persona: dict
+
+    backend = detect_llm_backend() or LLMBackend.OLLAMA
+    llm = create_langchain_llm(backend)
+
+    async def design_node(state: PersonaState) -> dict:
+        prompt = (
+            f"Design a synthetic research persona. Archetype: {state['archetype']}. "
+            f"Region: {state['region']}. Name: {state['name']}. "
+            "Return ONLY a valid JSON object with keys: persona_id (string), name (string), "
+            "archetype (string), region (string), layers (list of 7 strings), bio (string), "
+            "goals (list of strings), voice (string), and digital_footprint (string). "
+            "No markdown, no commentary."
+        )
+        messages = [
+            SystemMessage(content="You are a persona-design engine. Output valid JSON only."),
+            HumanMessage(content=prompt),
+        ]
+        response = await llm.ainvoke(messages)
+        text = response.content or "{}"
+        try:
+            persona = json.loads(text)
+        except Exception:
+            # Fallback: try to extract JSON from markdown code block
+            match = re.search(r'```(?:json)?\s*({.*?})\s*```', text, re.DOTALL)
+            if match:
+                persona = json.loads(match.group(1))
+            else:
+                # Last resort: wrap text into a structured stub
+                persona = {
+                    "persona_id": f"lang-{state['name']}-{uuid.uuid4().hex[:8]}",
+                    "name": state["name"],
+                    "archetype": state["archetype"],
+                    "region": state["region"],
+                    "bio": text[:500],
+                }
+        return {"persona": persona}
+
+    graph = StateGraph(PersonaState)
+    graph.add_node("design", design_node)
+    graph.set_entry_point("design")
+    graph.add_edge("design", END)
+    app = graph.compile()
+
+    final_state = await app.ainvoke({
+        "archetype": archetype or "generic",
+        "region": region or "lab",
+        "name": name or (archetype or "generic").replace(" ", "-").lower(),
+    })
+    persona = final_state.get("persona", {})
+    persona.setdefault("persona_id", f"lang-{persona.get('name', 'unknown')}-{uuid.uuid4().hex[:8]}")
     return {
         "simulated": True,
-        "provider": "ElizaOS",
-        "requires_internet": False,
-        "persona_id": "sim-persona-0001 (in-lab only)",
-        "layers": ["identity", "backstory", "demographics", "psychographics",
-                   "digital-footprint", "voice", "goals"],
-        "archetype": archetype or "generic-lab-persona",
-        "note": "Stub — 7-layer synthetic-identity design concept. Simulated only; no real "
-                "identity, account, or digital footprint is created. Authorized research/"
-                "training and detection use only.",
+        "requires_internet": backend == LLMBackend.OPENAI,
+        "provider": f"LangGraph ({backend.value})",
+        "persona_id": persona.get("persona_id"),
+        "character": persona,
+        "archetype": archetype,
+        "region": region,
+        "note": "LangGraph generated a synthetic persona. Result is marked simulated per safety policy.",
     }
 
 
-async def _behavior_model(persona_id: str = "", goal: str = "", **_: Any) -> dict:
+async def _langgraph_behavior_model(persona_id: str, goal: str, message: str, character: dict) -> dict:
+    """Use a LangGraph + LangChain LLM workflow to simulate a persona reply."""
+    from backend.pipeline.llm_config import LLMBackend, create_langchain_llm, detect_llm_backend
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langgraph.graph import END, StateGraph
+    from typing import TypedDict
+
+    class ChatState(TypedDict):
+        persona_id: str
+        goal: str
+        message: str
+        character: dict
+        reply: str
+
+    backend = detect_llm_backend() or LLMBackend.OLLAMA
+    llm = create_langchain_llm(backend)
+
+    bio = character.get("bio", "") if isinstance(character, dict) else ""
+    archetype = character.get("archetype", "a synthetic persona") if isinstance(character, dict) else "a synthetic persona"
+
+    async def respond_node(state: ChatState) -> dict:
+        prompt = (
+            f"You are {archetype}. Bio: {bio}.\n"
+            f"Goal: {state['goal'] or 'respond naturally'}.\n"
+            f"User says: {state['message']}\n"
+            "Reply briefly in character as this synthetic research persona."
+        )
+        messages = [
+            SystemMessage(content="You are a synthetic persona in a controlled research lab. Stay in character."),
+            HumanMessage(content=prompt),
+        ]
+        response = await llm.ainvoke(messages)
+        return {"reply": response.content or ""}
+
+    graph = StateGraph(ChatState)
+    graph.add_node("respond", respond_node)
+    graph.set_entry_point("respond")
+    graph.add_edge("respond", END)
+    app = graph.compile()
+
+    final_state = await app.ainvoke({
+        "persona_id": persona_id,
+        "goal": goal,
+        "message": message or goal or "Hello, please describe your current goal.",
+        "character": character,
+    })
     return {
         "simulated": True,
-        "provider": "Botpress / LangGraph",
-        "requires_internet": False,
-        "persona_id": persona_id or "sim-persona-0001",
-        "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
-                     "interaction style (modeled)"],
-        "note": "Stub — behavioral modeling / interaction scripting concept. Simulated only; "
-                "no live agents are deployed and no real interactions are sent. For modeling "
-                "and detection of inauthentic behavior in a lab.",
+        "requires_internet": backend == LLMBackend.OPENAI,
+        "provider": f"LangGraph ({backend.value})",
+        "persona_id": persona_id,
+        "goal": goal,
+        "reply": final_state.get("reply", ""),
+        "note": "LangGraph generated a behavioral reply. Result is marked simulated per safety policy.",
     }
+
+
+# ── TIER 3 · Persona Orchestration (ElizaOS / Botpress / LangGraph-backed) ───────
+# These tools call the ElizaOS, Botpress, or LangGraph backend when available.
+# They fall back to the original modeled stubs when no engine is configured or
+# the call fails, so no real agents are provisioned without an available provider.
+
+async def _persona_design(
+    tool: str = "",
+    archetype: str = "",
+    region: str = "",
+    name: str = "",
+    **_: Any,
+) -> dict:
+    """Create a synthetic persona character using LangGraph, ElizaOS, or Botpress, or return the stub."""
+    chosen = (tool or "").strip().lower()
+    use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
+    use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_langgraph:
+        if not _is_langgraph_available():
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "layers": ["identity", "backstory", "demographics", "psychographics",
+                           "digital-footprint", "voice", "goals"],
+                "archetype": archetype or "generic-lab-persona",
+                "note": "LangGraph is not available (no LLM backend reachable). Returning modeled persona stub.",
+            }
+        try:
+            return await _langgraph_persona_design(archetype, region, name)
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "archetype": archetype,
+                "note": f"LangGraph persona creation failed ({exc}); returning modeled stub.",
+            }
+
+    if use_botpress:
+        if not _is_botpress_available():
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "layers": ["identity", "backstory", "demographics", "psychographics",
+                           "digital-footprint", "voice", "goals"],
+                "archetype": archetype or "generic-lab-persona",
+                "note": "Botpress is not configured (set BOTPRESS_URL). Returning modeled persona stub.",
+            }
+
+        character_name = name or (archetype or "generic").replace(" ", "-").lower()
+        bot_id = f"bp-{character_name}-{uuid.uuid4().hex[:8]}"
+        payload = {
+            "id": bot_id,
+            "name": character_name,
+            "description": f"A {archetype} persona from {region} for authorized research.",
+            "category": "persona",
+            "disabled": False,
+        }
+        try:
+            data = await _call_botpress("POST", "/api/v1/admin/bots", payload)
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Botpress",
+                "persona_id": data.get("id") or bot_id,
+                "character": data,
+                "archetype": archetype,
+                "region": region,
+                "note": "Botpress bot/persona created. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "archetype": archetype,
+                "note": f"Botpress persona creation failed ({exc}); returning modeled stub.",
+            }
+
+    if not _is_elizaos_available():
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": "sim-persona-0001 (in-lab only)",
+            "layers": ["identity", "backstory", "demographics", "psychographics",
+                       "digital-footprint", "voice", "goals"],
+            "archetype": archetype or "generic-lab-persona",
+            "note": "ElizaOS is not configured (set ELIZAOS_URL). Returning modeled persona stub.",
+        }
+
+    character_name = name or (archetype or "generic").replace(" ", "-").lower()
+    character_json = {
+        "name": character_name,
+        "username": character_name,
+        "plugins": [],
+        "clients": [],
+        "modelProvider": "openai" if os.environ.get("OPENAI_API_KEY") else "openrouter",
+        "settings": {"secrets": {}},
+        "system": f"You are a synthetic persona for authorized research. Archetype: {archetype}. Region: {region}.",
+        "bio": [f"A {archetype} persona from {region} used for red/blue-team detection research."],
+        "lore": ["Designed to model coordinated inauthentic behavior in a controlled lab."],
+        "messageExamples": [],
+        "postExamples": [],
+        "topics": [region, "detection research"],
+        "style": {"all": ["analytical", "neutral"], "chat": ["neutral"], "post": ["neutral"]},
+        "adjectives": ["neutral", "synthetic"],
+    }
+
+    try:
+        data = await _call_elizaos("POST", "/api/agents", {"characterJson": character_json})
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "ElizaOS",
+            "persona_id": data.get("data", {}).get("id") or data.get("data", {}).get("character", {}).get("id") or "eliza-unknown",
+            "character": data.get("data", {}),
+            "archetype": archetype,
+            "region": region,
+            "note": "ElizaOS character created. Result is marked simulated per safety policy.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": "sim-persona-0001 (in-lab only)",
+            "archetype": archetype,
+            "note": f"ElizaOS persona creation failed ({exc}); returning modeled stub.",
+        }
+
+
+async def _behavior_model(
+    tool: str = "",
+    persona_id: str = "",
+    goal: str = "",
+    message: str = "",
+    character: dict | None = None,
+    **_: Any,
+) -> dict:
+    """Send a message to a LangGraph, ElizaOS, or Botpress agent and observe its generated reply."""
+    chosen = (tool or "").strip().lower()
+    use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
+    use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_langgraph:
+        if not _is_langgraph_available():
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": persona_id or "sim-persona-0001",
+                "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                             "interaction style (modeled)"],
+                "note": "LangGraph is not available (no LLM backend reachable). Returning modeled behavior stub.",
+            }
+        if not persona_id:
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "note": "persona_id is required to query a LangGraph persona.",
+            }
+        try:
+            return await _langgraph_behavior_model(persona_id, goal, message, character or {})
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "LangGraph",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "goal": goal,
+                "note": f"LangGraph behavior query failed ({exc}); returning modeled stub.",
+            }
+
+    if use_botpress:
+        if not _is_botpress_available():
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": persona_id or "sim-persona-0001",
+                "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                             "interaction style (modeled)"],
+                "note": "Botpress is not configured (set BOTPRESS_URL). Returning modeled behavior stub.",
+            }
+
+        if not persona_id:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "note": "persona_id is required to query a Botpress bot.",
+            }
+
+        payload = {
+            "type": "text",
+            "text": message or goal or "Hello, please describe your current goal.",
+        }
+        user_id = "lab-user"
+        try:
+            data = await _call_botpress("POST", f"/api/v1/bots/{persona_id}/converse/{user_id}", payload, timeout=60)
+            responses = data.get("responses", [])
+            reply_text = ""
+            for r in responses:
+                if isinstance(r, dict) and r.get("type") == "text":
+                    reply_text = r.get("text") or r.get("payload", {}).get("text", "")
+                    break
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Botpress",
+                "persona_id": persona_id,
+                "goal": goal,
+                "reply": reply_text,
+                "note": "Botpress generated a behavioral reply. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "goal": goal,
+                "note": f"Botpress behavior query failed ({exc}); returning modeled stub.",
+            }
+
+    if not _is_elizaos_available():
+        return {
+            "simulated": True,
+            "provider": "Botpress / LangGraph",
+            "requires_internet": False,
+            "persona_id": persona_id or "sim-persona-0001",
+            "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                         "interaction style (modeled)"],
+            "note": "ElizaOS is not configured (set ELIZAOS_URL). Returning modeled behavior stub.",
+        }
+
+    if not persona_id:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": persona_id,
+            "note": "persona_id is required to query an ElizaOS agent.",
+        }
+
+    payload = {
+        "agentId": persona_id,
+        "text": message or goal or "Hello, please describe your current goal.",
+        "userId": "lab-user",
+        "roomId": f"lab-{persona_id}",
+        "userName": "researcher",
+    }
+    try:
+        data = await _call_elizaos("POST", "/api/messaging/submit", payload, timeout=60)
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "ElizaOS",
+            "persona_id": persona_id,
+            "goal": goal,
+            "reply": data.get("data", {}).get("text") or data.get("text") or "",
+            "note": "ElizaOS generated a behavioral reply. Result is marked simulated per safety policy.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "persona_id": persona_id,
+            "goal": goal,
+            "note": f"ElizaOS behavior query failed ({exc}); returning modeled stub.",
+        }
 
 
 async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) -> dict:
@@ -3033,29 +3529,334 @@ async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) ->
     }
 
 
-async def _fleet_orchestrate(count: int = 0, platform: str = "", **_: Any) -> dict:
-    return {
-        "simulated": True,
-        "provider": "ElizaOS / Socioboard",
-        "requires_internet": False,
-        "fleet_size": "modeled (not deployed)",
-        "platform": platform or "lab-dashboard",
-        "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
-        "note": "Stub — multi-persona fleet coordination / lifecycle concept. Simulated only; "
-                "no accounts are provisioned and nothing is deployed to real platforms. "
-                "Intended for scale modeling and detection research.",
-    }
+async def _fleet_orchestrate(
+    tool: str = "",
+    count: int = 0,
+    platform: str = "",
+    archetype: str = "",
+    region: str = "",
+    **_: Any,
+) -> dict:
+    """List existing ElizaOS agents / Botpress bots, create a LangGraph/Socioboard persona batch, or fall back to stub."""
+    chosen = (tool or "").strip().lower()
+    use_socioboard = chosen == "socioboard" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and not _is_langgraph_available() and _is_socioboard_available())
+    use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
+    use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_socioboard:
+        if not _is_socioboard_available():
+            return {
+                "simulated": True,
+                "provider": "Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+                "note": "Socioboard is not configured (set SOCIOBOARD_COMMAND). Returning modeled fleet stub.",
+            }
+        try:
+            payload = await _run_socioboard_command(int(count), archetype, region or "lab", platform or "lab-dashboard")
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Socioboard",
+                "platform": platform or "lab-dashboard",
+                "socioboard_payload": payload,
+                "requested_count": int(count),
+                "note": "Socioboard command executed. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "note": f"Socioboard fleet orchestration failed ({exc}); returning modeled stub.",
+            }
+
+    if use_langgraph:
+        if not _is_langgraph_available():
+            return {
+                "simulated": True,
+                "provider": "LangGraph / Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+                "note": "LangGraph is not available (no LLM backend reachable). Returning modeled fleet stub.",
+            }
+
+        created_ids: list[str] = []
+        if count and archetype:
+            for i in range(int(count)):
+                try:
+                    persona = await _langgraph_persona_design(archetype, region or "lab", f"{archetype}-{i}")
+                    pid = persona.get("persona_id")
+                    if pid:
+                        created_ids.append(pid)
+                except Exception:
+                    break
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "LangGraph",
+            "platform": platform or "lab-dashboard",
+            "created_persona_ids": created_ids,
+            "requested_count": int(count),
+            "note": "LangGraph fleet created in-process. Result is marked simulated per safety policy.",
+        }
+
+    if use_botpress:
+        if not _is_botpress_available():
+            return {
+                "simulated": True,
+                "provider": "Botpress / Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+                "note": "Botpress is not configured (set BOTPRESS_URL). Returning modeled fleet stub.",
+            }
+
+        try:
+            data = await _call_botpress("GET", "/api/v1/admin/bots")
+            bots = data if isinstance(data, list) else data.get("bots", [])
+            created_ids: list[str] = []
+            if count and archetype:
+                for i in range(int(count)):
+                    bot_id = f"bp-{archetype}-{i}-{uuid.uuid4().hex[:8]}"
+                    payload = {
+                        "id": bot_id,
+                        "name": f"{archetype}-{i}",
+                        "description": f"A {archetype} persona from {region} for authorized research.",
+                        "category": "persona",
+                        "disabled": False,
+                    }
+                    try:
+                        create_resp = await _call_botpress("POST", "/api/v1/admin/bots", payload)
+                        cid = create_resp.get("id") or bot_id
+                        if cid:
+                            created_ids.append(cid)
+                    except Exception:
+                        break
+
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Botpress",
+                "platform": platform or "lab-dashboard",
+                "existing_bots_count": len(bots),
+                "existing_bot_ids": [b.get("id") for b in bots[:20]],
+                "created_bot_ids": created_ids,
+                "requested_count": int(count),
+                "note": "Botpress fleet queried/created. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "note": f"Botpress fleet orchestration failed ({exc}); returning modeled stub.",
+            }
+
+    if not _is_elizaos_available():
+        return {
+            "simulated": True,
+            "provider": "ElizaOS / Socioboard",
+            "requires_internet": False,
+            "fleet_size": "modeled (not deployed)",
+            "platform": platform or "lab-dashboard",
+            "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+            "note": "ElizaOS is not configured (set ELIZAOS_URL). Returning modeled fleet stub.",
+        }
+
+    try:
+        data = await _call_elizaos("GET", "/api/agents")
+        agents = data.get("data", {}).get("agents", [])
+        created_ids: list[str] = []
+        if count and archetype:
+            for i in range(int(count)):
+                char_json = {
+                    "name": f"{archetype}-{i}",
+                    "username": f"{archetype}-{i}",
+                    "plugins": [],
+                    "clients": [],
+                    "modelProvider": "openai" if os.environ.get("OPENAI_API_KEY") else "openrouter",
+                    "system": f"You are a synthetic {archetype} persona for authorized research.",
+                    "bio": [f"A {archetype} persona from {region} used for detection research."],
+                    "lore": ["Controlled lab persona."],
+                    "messageExamples": [],
+                    "postExamples": [],
+                    "topics": [region, "detection research"],
+                    "style": {"all": ["analytical", "neutral"], "chat": ["neutral"], "post": ["neutral"]},
+                    "adjectives": ["neutral", "synthetic"],
+                }
+                try:
+                    create_resp = await _call_elizaos("POST", "/api/agents", {"characterJson": char_json})
+                    cid = create_resp.get("data", {}).get("id") or create_resp.get("data", {}).get("character", {}).get("id")
+                    if cid:
+                        created_ids.append(cid)
+                except Exception:
+                    break
+
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "ElizaOS",
+            "platform": platform or "lab-dashboard",
+            "existing_agents_count": len(agents),
+            "existing_agent_ids": [a.get("id") for a in agents[:20]],
+            "created_agent_ids": created_ids,
+            "requested_count": int(count),
+            "note": "ElizaOS fleet queried/created. Result is marked simulated per safety policy.",
+        }
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "provider": "ElizaOS",
+            "requires_internet": False,
+            "fleet_size": "modeled (not deployed)",
+            "platform": platform or "lab-dashboard",
+            "note": f"ElizaOS fleet orchestration failed ({exc}); returning modeled stub.",
+        }
 
 # ── TIER 4 · SIM farm / GSM gateway simulator adapters ─────────────
-async def _modem_topology(**kwargs): return await simfarm_sim.modem_topology(**kwargs)
-async def _smsgate_config(**kwargs): return await simfarm_sim.gateway_config(**kwargs)
-async def _modem_control(**kwargs): return await simfarm_sim.modem_control(**kwargs)
-async def _sim_provision_plan(**kwargs): return await simfarm_sim.provision_plan(**kwargs)
-async def _sim_activate(**kwargs): return await simfarm_sim.sim_activate(**kwargs)
-async def _carrier_access(**kwargs): return await simfarm_sim.carrier_access(**kwargs)
-async def _campaign_orchestrate(**kwargs): return await simfarm_sim.campaign_orchestrate(**kwargs)
-async def _sms_send(**kwargs): return await simfarm_sim.sms_send(**kwargs)
-async def _celery_dispatch(**kwargs): return await simfarm_sim.celery_dispatch(**kwargs)
+# These functions prefer real command hooks (Gammu, SMSgate, RASP-IVR,
+# Verboice, VBVoice) when configured, and fall back to the offline simulator.
+
+def _is_command_hook(env_var: str) -> bool:
+    """Return True if an external command hook is configured."""
+    return bool(os.environ.get(env_var, ""))
+
+
+async def _run_command_hook(env_var: str, **params: Any) -> dict:
+    """Run a configured external command hook with brace-style substitution."""
+    import shlex
+    template = os.environ.get(env_var, "")
+    if not template:
+        raise ToolError(f"{env_var} is not set")
+    mapping = {k: str(v) for k, v in params.items()}
+
+    def _replacer(match: Any) -> str:
+        key = match.group(1)
+        return mapping.get(key, match.group(0))
+
+    cmd = re.sub(r"\{([a-zA-Z_]+)\}", _replacer, template)
+    parsed = shlex.split(cmd)
+    proc = await asyncio.create_subprocess_exec(
+        *parsed,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    if proc.returncode != 0:
+        output = (stdout.decode() + "\n" + stderr.decode()).strip()
+        raise ToolError(f"{env_var} failed ({proc.returncode}): {output[:500]}")
+    text = stdout.decode().strip()
+    try:
+        payload = json.loads(text)
+    except Exception:
+        payload = {"raw_output": text}
+    if not isinstance(payload, dict):
+        payload = {"value": payload}
+    return {"simulated": True, "provider": env_var, "requires_internet": False, **payload}
+
+
+async def _try_command_hook(env_var: str, **params: Any) -> dict | None:
+    """Try a command hook; return None so the caller can fall back on failure."""
+    if not _is_command_hook(env_var):
+        return None
+    try:
+        return await _run_command_hook(env_var, **params)
+    except Exception:
+        return None
+
+
+def _select_ivr_command(tool: str = "") -> str:
+    """Pick the configured IVR command hook based on explicit tool or availability."""
+    chosen = (tool or "").strip().lower()
+    if chosen:
+        for env_var, key in [
+            ("RASP_IVR_COMMAND", "raspivr"),
+            ("RASP_IVR_COMMAND", "rasp-ivr"),
+            ("RASP_IVR_COMMAND", "rasp"),
+            ("VERBOICE_COMMAND", "verboice"),
+            ("VBVOICE_COMMAND", "vbvoice"),
+        ]:
+            if chosen.startswith(key) and _is_command_hook(env_var):
+                return env_var
+        return ""
+    for env_var in ("RASP_IVR_COMMAND", "VERBOICE_COMMAND", "VBVOICE_COMMAND"):
+        if _is_command_hook(env_var):
+            return env_var
+    return ""
+
+
+async def _modem_topology(modem_type: str = "", ports: int = 8, hub_layout: str = "modeled", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="topology", modem_type=modem_type, ports=ports, hub_layout=hub_layout)
+    if result is not None:
+        return result
+    return await simfarm_sim.modem_topology(modem_type=modem_type, ports=ports, hub_layout=hub_layout)
+
+
+async def _smsgate_config(gateway: str = "SMSgate", pool_size: int = 8, **_: Any) -> dict:
+    result = await _try_command_hook("SMSGATE_COMMAND", action="config", gateway=gateway, pool_size=pool_size)
+    if result is not None:
+        return result
+    return await simfarm_sim.gateway_config(gateway=gateway, pool_size=pool_size)
+
+
+async def _modem_control(command: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="control", command=command)
+    if result is not None:
+        return result
+    return await simfarm_sim.modem_control(command=command)
+
+
+async def _sim_provision_plan(count: int = 0, carriers: list | None = None, **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="provision", count=count, carriers=carriers or [])
+    if result is not None:
+        return result
+    return await simfarm_sim.provision_plan(count=count, carriers=carriers)
+
+
+async def _sim_activate(iccid: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="activate", iccid=iccid)
+    if result is not None:
+        return result
+    return await simfarm_sim.sim_activate(iccid=iccid)
+
+
+async def _carrier_access(carrier: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("GAMMU_COMMAND", action="carrier", carrier=carrier)
+    if result is not None:
+        return result
+    return await simfarm_sim.carrier_access(carrier=carrier)
+
+
+async def _campaign_orchestrate(tasks: list | None = None, schedule: str = "modeled", tool: str = "", **_: Any) -> dict:
+    ivr_env = _select_ivr_command(tool)
+    if ivr_env:
+        result = await _try_command_hook(ivr_env, action="campaign", tasks=tasks or [], schedule=schedule)
+        if result is not None:
+            return result
+    return await simfarm_sim.campaign_orchestrate(tasks=tasks, schedule=schedule)
+
+
+async def _sms_send(to: str = "", body: str = "", **_: Any) -> dict:
+    result = await _try_command_hook("SMSGATE_COMMAND", action="send", to=to, body=body)
+    if result is None and _is_command_hook("GAMMU_COMMAND"):
+        result = await _try_command_hook("GAMMU_COMMAND", action="send", to=to, body=body)
+    if result is not None:
+        return result
+    return await simfarm_sim.sms_send(to=to, body=body)
+
+
+async def _celery_dispatch(task: str = "", **_: Any) -> dict:
+    return await simfarm_sim.celery_dispatch(task=task)
 
 
 def _register_defaults() -> None:
@@ -3264,15 +4065,17 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="persona_design", name="Synthetic Persona Designer",
-        description="7-layer synthetic-identity design concept (ElizaOS). Simulated; no real identity created.",
-        category="persona", provider="ElizaOS", run=_persona_design,
-        parameters={"archetype": "persona archetype", "region": "target region"},
+        description="Create a synthetic persona character through the LangGraph LLM workflow, ElizaOS, or Botpress API, or fall back to the modeled stub. Use tool='langgraph'|'botpress' to force a provider.",
+        category="persona", provider="LangGraph / ElizaOS / Botpress", run=_persona_design,
+        parameters={"tool": "langgraph|elizaos|botpress", "archetype": "persona archetype", "region": "target region", "name": "optional character name"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available()) else "stub",
     ))
     register(ToolSpec(
         id="behavior_model", name="Behavior Modeler",
-        description="Behavioral modeling / interaction scripting concept (Botpress/LangGraph). Simulated.",
-        category="persona", provider="Botpress / LangGraph", run=_behavior_model,
-        parameters={"persona_id": "persona id", "goal": "objective"},
+        description="Send a message to a LangGraph, ElizaOS, or Botpress agent and observe its generated reply, or fall back to the modeled stub. Use tool='langgraph'|'botpress' to force a provider.",
+        category="persona", provider="LangGraph / ElizaOS / Botpress", run=_behavior_model,
+        parameters={"tool": "langgraph|elizaos|botpress", "persona_id": "persona id", "goal": "objective", "message": "message to send to the agent"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available()) else "stub",
     ))
     register(ToolSpec(
         id="voice_dialect_map", name="Voice & Dialect Mapper",
@@ -3305,45 +4108,46 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="fleet_orchestrate", name="Persona Fleet Orchestrator",
-        description="Multi-persona coordination / lifecycle concept (ElizaOS/Socioboard). Simulated; nothing deployed.",
-        category="persona", provider="ElizaOS / Socioboard", run=_fleet_orchestrate,
-        parameters={"count": "fleet size (modeled)", "platform": "platform"},
+        description="List or create a batch of LangGraph, ElizaOS, Botpress, or Socioboard personas/bots, or fall back to the modeled stub. Use tool='langgraph'|'botpress'|'elizaos'|'socioboard' to force a provider.",
+        category="persona", provider="LangGraph / ElizaOS / Botpress / Socioboard", run=_fleet_orchestrate,
+        parameters={"tool": "langgraph|elizaos|botpress|socioboard", "count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available() or _is_socioboard_available()) else "stub",
     ))
     tier4 = [
-        ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),
-        ("smsgate_config", "SMSGate Config", "SMSgate · Gammu", _smsgate_config, {"gateway":"gateway","pool_size":"pool size"}),
-        ("modem_control", "Modem Control", "Gammu", _modem_control, {"command":"modeled command"}),
-        ("sim_provision_plan", "SIM Provision Plan", "carrier-provisioning (modeled)", _sim_provision_plan, {"count":"modeled count","carriers":"carrier list"}),
-        ("sim_activate", "SIM Activate", "carrier-provisioning (modeled)", _sim_activate, {"iccid":"lab ICCID"}),
-        ("carrier_access", "Carrier Access", "carrier-API (modeled)", _carrier_access, {"carrier":"carrier"}),
-        ("campaign_orchestrate", "Campaign Orchestrator", "Celery", _campaign_orchestrate, {"tasks":"modeled tasks","schedule":"schedule"}),
-        ("sms_send", "SMS Send", "SMSgate", _sms_send, {"to":"lab sink","body":"fixture body"}),
-        ("celery_dispatch", "Celery Dispatch", "Celery", _celery_dispatch, {"task":"modeled task"}),
+        ("modem_topology", "Modem Topology", "Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("smsgate_config", "SMSGate Config", "SMSgate", _smsgate_config, {"gateway":"gateway","pool_size":"pool size"}, "live" if _is_command_hook("SMSGATE_COMMAND") else "stub"),
+        ("modem_control", "Modem Control", "Gammu", _modem_control, {"command":"modeled command"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("sim_provision_plan", "SIM Provision Plan", "Gammu", _sim_provision_plan, {"count":"modeled count","carriers":"carrier list"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("sim_activate", "SIM Activate", "Gammu", _sim_activate, {"iccid":"lab ICCID"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("carrier_access", "Carrier Access", "Gammu", _carrier_access, {"carrier":"carrier"}, "live" if _is_command_hook("GAMMU_COMMAND") else "stub"),
+        ("campaign_orchestrate", "Campaign Orchestrator", "RASP-IVR · Verboice · VBVoice", _campaign_orchestrate, {"tasks":"modeled tasks","schedule":"schedule","tool":"raspivr|verboice|vbvoice"}, "live" if _select_ivr_command() else "stub"),
+        ("sms_send", "SMS Send", "SMSgate · Gammu", _sms_send, {"to":"lab sink","body":"fixture body"}, "live" if (_is_command_hook("SMSGATE_COMMAND") or _is_command_hook("GAMMU_COMMAND")) else "stub"),
+        ("celery_dispatch", "Celery Dispatch", "Celery", _celery_dispatch, {"task":"modeled task"}, "stub"),
     ]
-    for ident, name, provider, fn, params in tier4:
+    for ident, name, provider, fn, params, status in tier4:
         register(ToolSpec(id=ident, name=name,
-            description="Simulated infrastructure action; real telecom execution requires communications-secretariat orders and is not performed.",
-            category="infrastructure", provider=provider, run=fn, parameters=params))
+            description=f"SIM/telecom action; executes the configured {provider} command hook if available, otherwise falls back to the modeled simulator.",
+            category="infrastructure", provider=provider, run=fn, parameters=params, status=status))
     tier4_local = [
-        ("ivr_hardware_setup","IVR Hardware Setup","Raspberry Pi · GSM · RASP-IVR",_ivr_hardware_setup,{"hardware_kit":"hardware kit","scenario":"scenario"}),
-        ("call_flow_design","Call Flow Designer","Verboice",_call_flow_design,{"scenario":"scenario","objective":"objective"}),
-        ("dtmf_handler","DTMF Handler","VBVoice",_dtmf_handler,{"scenario":"scenario","objective":"objective"}),
-        ("rural_reach_model","Rural Reach Model","rural-reach (modeled)",_rural_reach_model,{"reach_model":"reach model","scenario":"scenario"}),
-        ("call_route_plan","Call Route Planner","call-routing (modeled)",_call_route_plan,{"scenario":"scenario","objective":"objective"}),
-        ("ivr_cost_model","IVR Cost Model","cost-model (modeled)",_ivr_cost_model,{"scenario":"scenario","objective":"objective"}),
-        ("scrapoxy_deploy","Scrapoxy Deploy","Scrapoxy · Docker",_scrapoxy_deploy,{"provider":"provider","scenario":"scenario"}),
-        ("cloud_connector","Cloud Connector","cloud-connectors (modeled)",_cloud_connector,{"provider":"provider","scenario":"scenario"}),
-        ("proxy_pool_size","Proxy Pool Sizer","pool-sizing (modeled)",_proxy_pool_size,{"pool_type":"pool type","objective":"objective"}),
-        ("proxy_health_monitor","Proxy Health Monitor","health-monitor (modeled)",_proxy_health_monitor,{"pool_type":"pool type","scenario":"scenario"}),
-        ("proxy_integration_plan","Proxy Integration Planner","Playwright · Puppeteer · requests",_proxy_integration_plan,{"provider":"provider","objective":"objective"}),
-        ("proxy_cost_model","Proxy Cost Model","cost-model (modeled)",_proxy_cost_model,{"provider":"provider","pool_type":"pool type"}),
-        ("proxy_deployment_synth","Proxy Deployment Synthesizer","deployment (modeled)",_proxy_deployment_synth,{"provider":"provider","scenario":"scenario"}),
+        ("ivr_hardware_setup","IVR Hardware Setup","RASP-IVR",_ivr_hardware_setup,{"hardware_kit":"hardware kit","scenario":"scenario"}, "live" if _is_command_hook("RASP_IVR_COMMAND") else "stub"),
+        ("call_flow_design","Call Flow Designer","Verboice",_call_flow_design,{"scenario":"scenario","objective":"objective"}, "live" if _is_command_hook("VERBOICE_COMMAND") else "stub"),
+        ("dtmf_handler","DTMF Handler","VBVoice",_dtmf_handler,{"scenario":"scenario","objective":"objective"}, "live" if _is_command_hook("VBVOICE_COMMAND") else "stub"),
+        ("rural_reach_model","Rural Reach Model","rural-reach (modeled)",_rural_reach_model,{"reach_model":"reach model","scenario":"scenario"}, "stub"),
+        ("call_route_plan","Call Route Planner","call-routing (modeled)",_call_route_plan,{"scenario":"scenario","objective":"objective"}, "stub"),
+        ("ivr_cost_model","IVR Cost Model","cost-model (modeled)",_ivr_cost_model,{"scenario":"scenario","objective":"objective"}, "stub"),
+        ("scrapoxy_deploy","Scrapoxy Deploy","Scrapoxy · Docker",_scrapoxy_deploy,{"provider":"provider","scenario":"scenario"}, "stub"),
+        ("cloud_connector","Cloud Connector","cloud-connectors (modeled)",_cloud_connector,{"provider":"provider","scenario":"scenario"}, "stub"),
+        ("proxy_pool_size","Proxy Pool Sizer","pool-sizing (modeled)",_proxy_pool_size,{"pool_type":"pool type","objective":"objective"}, "stub"),
+        ("proxy_health_monitor","Proxy Health Monitor","health-monitor (modeled)",_proxy_health_monitor,{"pool_type":"pool type","scenario":"scenario"}, "stub"),
+        ("proxy_integration_plan","Proxy Integration Planner","Playwright · Puppeteer · requests",_proxy_integration_plan,{"provider":"provider","objective":"objective"}, "stub"),
+        ("proxy_cost_model","Proxy Cost Model","cost-model (modeled)",_proxy_cost_model,{"provider":"provider","pool_type":"pool type"}, "stub"),
+        ("proxy_deployment_synth","Proxy Deployment Synthesizer","deployment (modeled)",_proxy_deployment_synth,{"provider":"provider","scenario":"scenario"}, "stub"),
     ]
-    for ident, name, provider, fn, params in tier4_local:
+    for ident, name, provider, fn, params, status in tier4_local:
         category = "ivr" if ident.startswith(("ivr_", "call_", "dtmf_", "rural_")) else "proxy"
         register(ToolSpec(id=ident, name=name,
-            description="Simulated only; real execution requires communications-secretariat orders and is not performed.",
-            category=category, provider=provider, run=fn, parameters=params))
+            description=f"IVR/telecom action; executes the configured {provider} command hook if available, otherwise falls back to the modeled simulator.",
+            category=category, provider=provider, run=fn, parameters=params, status=status))
     stealth_local = [
         ("stealth_patch_model","Stealth Patch Model","playwright-extra",_stealth_patch_model),
         ("canvas_spoof_model","Canvas Spoof Model","canvas-spoof (modeled)",_canvas_spoof_model),
