@@ -25,7 +25,7 @@ async function loadConfig() {
             styleEl.appendChild(opt);
         });
     } catch (err) {
-        statusEl.textContent = 'Failed to load config: ' + err;
+        statusEl.textContent = 'Failed to load config: ' + (err.message || String(err));
     }
 }
 
@@ -69,7 +69,7 @@ generateBtn.addEventListener('click', async () => {
 
         statusEl.textContent = 'Done.';
     } catch (err) {
-        statusEl.textContent = 'Error: ' + err;
+        statusEl.textContent = 'Error: ' + (err.message || String(err));
     } finally {
         generateBtn.disabled = false;
     }
