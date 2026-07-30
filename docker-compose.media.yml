@@ -307,6 +307,29 @@ services:
       retries: 5
       start_period: 120s
 
+  botpress:
+    image: botpress/server:latest
+    container_name: botpress
+    restart: unless-stopped
+    environment:
+      - BP_HOST=0.0.0.0
+      - PORT=3000
+      - NODE_ENV=production
+      # Optional external DB. For a quick lab, Botpress uses SQLite in its data volume.
+      - DATABASE=postgres
+      - DATABASE_URL=${DATABASE_URL:-sqlite:///botpress/data/db.sqlite}
+      - EXTERNAL_URL=${BOTPRESS_EXTERNAL_URL:-http://localhost:3000}
+      - BP_LICENSE_KEY=${BOTPRESS_LICENSE_KEY:-}
+    volumes:
+      - brain-data:/botpress/data
+    # Not exposed to the host; strategic-brain calls it on the internal network.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:3000/api/v1/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+
   strategic-brain:
     build:
       context: .
@@ -352,6 +375,10 @@ services:
       - ELIZAOS_URL=http://elizaos:3000
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      # Botpress persona/bot API endpoint. The botpress container runs botpress/server.
+      - BOTPRESS_URL=http://botpress:3000
+      - BOTPRESS_TOKEN=${BOTPRESS_TOKEN:-}
+      - BOTPRESS_WORKSPACE_ID=${BOTPRESS_WORKSPACE_ID:-}
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}

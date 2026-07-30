@@ -2989,6 +2989,11 @@ def _is_elizaos_available() -> bool:
     return bool(os.environ.get("ELIZAOS_URL", ""))
 
 
+def _is_botpress_available() -> bool:
+    """Return True if the Botpress API endpoint is configured."""
+    return bool(os.environ.get("BOTPRESS_URL", ""))
+
+
 async def _call_elizaos(method: str, path: str, json_data: dict | None = None, timeout: int = 30) -> dict:
     """Call the ElizaOS REST API and return the parsed JSON response."""
     base = os.environ.get("ELIZAOS_URL", "http://elizaos:3000").rstrip("/")
@@ -3006,18 +3011,91 @@ async def _call_elizaos(method: str, path: str, json_data: dict | None = None, t
         raise ToolError(f"ElizaOS API call failed: {exc}")
 
 
-# ── TIER 3 · Persona Orchestration (ElizaOS-backed when available) ───
-# These tools call the ElizaOS REST API when the `elizaos` container is
-# reachable. They fall back to the original modeled stubs when it is missing
-# or misconfigured, so no real agents are provisioned without the engine.
+async def _call_botpress(method: str, path: str, json_data: dict | None = None, timeout: int = 30) -> dict:
+    """Call the Botpress (v12 or cloud) REST API and return the parsed JSON response."""
+    base = os.environ.get("BOTPRESS_URL", "http://botpress:3000").rstrip("/")
+    url = f"{base}{path}"
+    headers: dict[str, str] = {}
+    token = os.environ.get("BOTPRESS_TOKEN", "")
+    workspace = os.environ.get("BOTPRESS_WORKSPACE_ID", "")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    if workspace:
+        headers["x-workspace-id"] = workspace
+    try:
+        import httpx
+        async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+            if method.upper() == "GET":
+                resp = await client.get(url)
+            else:
+                resp = await client.post(url, json=json_data or {})
+            resp.raise_for_status()
+            return resp.json()
+    except Exception as exc:
+        raise ToolError(f"Botpress API call failed: {exc}")
+
+
+# ── TIER 3 · Persona Orchestration (ElizaOS / Botpress-backed) ───────
+# These tools call the ElizaOS or Botpress REST API when the relevant
+# container is reachable. They fall back to the original modeled stubs when
+# no engine is configured or the call fails, so no real agents are
+# provisioned without an available provider.
 
 async def _persona_design(
+    tool: str = "",
     archetype: str = "",
     region: str = "",
     name: str = "",
     **_: Any,
 ) -> dict:
-    """Create a synthetic persona character in ElizaOS, or return the stub."""
+    """Create a synthetic persona character in ElizaOS or Botpress, or return the stub."""
+    chosen = (tool or "").strip().lower()
+    use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_botpress:
+        if not _is_botpress_available():
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "layers": ["identity", "backstory", "demographics", "psychographics",
+                           "digital-footprint", "voice", "goals"],
+                "archetype": archetype or "generic-lab-persona",
+                "note": "Botpress is not configured (set BOTPRESS_URL). Returning modeled persona stub.",
+            }
+
+        character_name = name or (archetype or "generic").replace(" ", "-").lower()
+        bot_id = f"bp-{character_name}-{uuid.uuid4().hex[:8]}"
+        payload = {
+            "id": bot_id,
+            "name": character_name,
+            "description": f"A {archetype} persona from {region} for authorized research.",
+            "category": "persona",
+            "disabled": False,
+        }
+        try:
+            data = await _call_botpress("POST", "/api/v1/admin/bots", payload)
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Botpress",
+                "persona_id": data.get("id") or bot_id,
+                "character": data,
+                "archetype": archetype,
+                "region": region,
+                "note": "Botpress bot/persona created. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": "sim-persona-0001 (in-lab only)",
+                "archetype": archetype,
+                "note": f"Botpress persona creation failed ({exc}); returning modeled stub.",
+            }
+
     if not _is_elizaos_available():
         return {
             "simulated": True,
@@ -3072,12 +3150,69 @@ async def _persona_design(
 
 
 async def _behavior_model(
+    tool: str = "",
     persona_id: str = "",
     goal: str = "",
     message: str = "",
     **_: Any,
 ) -> dict:
-    """Send a message to an ElizaOS agent and observe its generated reply."""
+    """Send a message to an ElizaOS or Botpress agent and observe its generated reply."""
+    chosen = (tool or "").strip().lower()
+    use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_botpress:
+        if not _is_botpress_available():
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": persona_id or "sim-persona-0001",
+                "patterns": ["posting cadence (modeled)", "topic affinities (modeled)",
+                             "interaction style (modeled)"],
+                "note": "Botpress is not configured (set BOTPRESS_URL). Returning modeled behavior stub.",
+            }
+
+        if not persona_id:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "note": "persona_id is required to query a Botpress bot.",
+            }
+
+        payload = {
+            "type": "text",
+            "text": message or goal or "Hello, please describe your current goal.",
+        }
+        user_id = "lab-user"
+        try:
+            data = await _call_botpress("POST", f"/api/v1/bots/{persona_id}/converse/{user_id}", payload, timeout=60)
+            responses = data.get("responses", [])
+            reply_text = ""
+            for r in responses:
+                if isinstance(r, dict) and r.get("type") == "text":
+                    reply_text = r.get("text") or r.get("payload", {}).get("text", "")
+                    break
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Botpress",
+                "persona_id": persona_id,
+                "goal": goal,
+                "reply": reply_text,
+                "note": "Botpress generated a behavioral reply. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "persona_id": persona_id,
+                "goal": goal,
+                "note": f"Botpress behavior query failed ({exc}); returning modeled stub.",
+            }
+
     if not _is_elizaos_available():
         return {
             "simulated": True,
@@ -3141,13 +3276,72 @@ async def _voice_dialect_map(language: str = "", dialect: str = "", **_: Any) ->
 
 
 async def _fleet_orchestrate(
+    tool: str = "",
     count: int = 0,
     platform: str = "",
     archetype: str = "",
     region: str = "",
     **_: Any,
 ) -> dict:
-    """List existing ElizaOS agents and optionally create a batch for fleet modeling."""
+    """List existing ElizaOS agents or Botpress bots and optionally create a batch."""
+    chosen = (tool or "").strip().lower()
+    use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_botpress:
+        if not _is_botpress_available():
+            return {
+                "simulated": True,
+                "provider": "Botpress / Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+                "note": "Botpress is not configured (set BOTPRESS_URL). Returning modeled fleet stub.",
+            }
+
+        try:
+            data = await _call_botpress("GET", "/api/v1/admin/bots")
+            bots = data if isinstance(data, list) else data.get("bots", [])
+            created_ids: list[str] = []
+            if count and archetype:
+                for i in range(int(count)):
+                    bot_id = f"bp-{archetype}-{i}-{uuid.uuid4().hex[:8]}"
+                    payload = {
+                        "id": bot_id,
+                        "name": f"{archetype}-{i}",
+                        "description": f"A {archetype} persona from {region} for authorized research.",
+                        "category": "persona",
+                        "disabled": False,
+                    }
+                    try:
+                        create_resp = await _call_botpress("POST", "/api/v1/admin/bots", payload)
+                        cid = create_resp.get("id") or bot_id
+                        if cid:
+                            created_ids.append(cid)
+                    except Exception:
+                        break
+
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Botpress",
+                "platform": platform or "lab-dashboard",
+                "existing_bots_count": len(bots),
+                "existing_bot_ids": [b.get("id") for b in bots[:20]],
+                "created_bot_ids": created_ids,
+                "requested_count": int(count),
+                "note": "Botpress fleet queried/created. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Botpress",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "note": f"Botpress fleet orchestration failed ({exc}); returning modeled stub.",
+            }
+
     if not _is_elizaos_available():
         return {
             "simulated": True,
@@ -3427,17 +3621,17 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="persona_design", name="Synthetic Persona Designer",
-        description="Create a synthetic persona character through the ElizaOS API, or fall back to the modeled stub when ElizaOS is not configured.",
-        category="persona", provider="ElizaOS", run=_persona_design,
-        parameters={"archetype": "persona archetype", "region": "target region", "name": "optional character name"},
-        status="live" if _is_elizaos_available() else "stub",
+        description="Create a synthetic persona character through the ElizaOS or Botpress API, or fall back to the modeled stub. Use tool='botpress' to force Botpress.",
+        category="persona", provider="ElizaOS / Botpress", run=_persona_design,
+        parameters={"tool": "elizaos|botpress", "archetype": "persona archetype", "region": "target region", "name": "optional character name"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available()) else "stub",
     ))
     register(ToolSpec(
         id="behavior_model", name="Behavior Modeler",
-        description="Send a message to an ElizaOS agent and observe its generated reply, or fall back to the modeled stub.",
-        category="persona", provider="Botpress / LangGraph / ElizaOS", run=_behavior_model,
-        parameters={"persona_id": "persona id", "goal": "objective", "message": "message to send to the agent"},
-        status="live" if _is_elizaos_available() else "stub",
+        description="Send a message to an ElizaOS or Botpress agent and observe its generated reply, or fall back to the modeled stub. Use tool='botpress' to force Botpress.",
+        category="persona", provider="ElizaOS / Botpress / LangGraph", run=_behavior_model,
+        parameters={"tool": "elizaos|botpress", "persona_id": "persona id", "goal": "objective", "message": "message to send to the agent"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available()) else "stub",
     ))
     register(ToolSpec(
         id="voice_dialect_map", name="Voice & Dialect Mapper",
@@ -3470,10 +3664,10 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="fleet_orchestrate", name="Persona Fleet Orchestrator",
-        description="List or create a batch of ElizaOS agent personas, or fall back to the modeled stub.",
-        category="persona", provider="ElizaOS / Socioboard", run=_fleet_orchestrate,
-        parameters={"count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
-        status="live" if _is_elizaos_available() else "stub",
+        description="List or create a batch of ElizaOS or Botpress personas/bots, or fall back to the modeled stub. Use tool='botpress' to force Botpress.",
+        category="persona", provider="ElizaOS / Botpress / Socioboard", run=_fleet_orchestrate,
+        parameters={"tool": "elizaos|botpress", "count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available()) else "stub",
     ))
     tier4 = [
         ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),
