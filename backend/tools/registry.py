@@ -3044,6 +3044,49 @@ def _is_langgraph_available() -> bool:
         return False
 
 
+def _is_socioboard_available() -> bool:
+    """Return True if a Socioboard command/API hook is configured."""
+    return bool(os.environ.get("SOCIOBOARD_COMMAND", ""))
+
+
+async def _run_socioboard_command(count: int, archetype: str, region: str, platform: str) -> dict:
+    """Execute the configured Socioboard command for fleet orchestration."""
+    import shlex
+    import subprocess
+    cmd_template = os.environ.get("SOCIOBOARD_COMMAND", "")
+    if not cmd_template:
+        raise ToolError("SOCIOBOARD_COMMAND is not configured")
+    safe_name = archetype.replace(" ", "-").replace("/", "-")[:30]
+    safe_region = region.replace(" ", "-").replace("/", "-")[:30]
+    safe_platform = platform.replace(" ", "-").replace("/", "-")[:30]
+    mapping = {
+        "count": str(int(count)),
+        "archetype": safe_name,
+        "region": safe_region,
+        "platform": safe_platform,
+    }
+    # Simple brace-style substitution with a fallback to the literal placeholder.
+    def replacer(match: Any) -> str:
+        key = match.group(1)
+        return mapping.get(key, match.group(0))
+    cmd = re.sub(r"\{([a-zA-Z_]+)\}", replacer, cmd_template)
+    parsed = shlex.split(cmd)
+    proc = await asyncio.create_subprocess_exec(
+        *parsed,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=120)
+    if proc.returncode != 0:
+        raise ToolError(f"Socioboard command failed ({proc.returncode}): {stderr.decode()[:500]}")
+    text = stdout.decode().strip()
+    try:
+        payload = json.loads(text)
+    except Exception:
+        payload = {"raw_output": text}
+    return payload
+
+
 async def _langgraph_persona_design(archetype: str, region: str, name: str) -> dict:
     """Use a LangGraph + LangChain LLM workflow to design a synthetic persona."""
     from backend.pipeline.llm_config import LLMBackend, create_langchain_llm, detect_llm_backend
@@ -3480,10 +3523,43 @@ async def _fleet_orchestrate(
     region: str = "",
     **_: Any,
 ) -> dict:
-    """List existing ElizaOS agents / Botpress bots or create a LangGraph persona batch for fleet modeling."""
+    """List existing ElizaOS agents / Botpress bots, create a LangGraph/Socioboard persona batch, or fall back to stub."""
     chosen = (tool or "").strip().lower()
+    use_socioboard = chosen == "socioboard" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and not _is_langgraph_available() and _is_socioboard_available())
     use_langgraph = chosen == "langgraph" or (chosen == "" and not _is_elizaos_available() and not _is_botpress_available() and _is_langgraph_available())
     use_botpress = chosen.startswith("botpress") or (chosen == "" and not _is_elizaos_available() and _is_botpress_available())
+
+    if use_socioboard:
+        if not _is_socioboard_available():
+            return {
+                "simulated": True,
+                "provider": "Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "lifecycle": ["design", "provision (simulated)", "monitor (simulated)", "retire"],
+                "note": "Socioboard is not configured (set SOCIOBOARD_COMMAND). Returning modeled fleet stub.",
+            }
+        try:
+            payload = await _run_socioboard_command(int(count), archetype, region or "lab", platform or "lab-dashboard")
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "Socioboard",
+                "platform": platform or "lab-dashboard",
+                "socioboard_payload": payload,
+                "requested_count": int(count),
+                "note": "Socioboard command executed. Result is marked simulated per safety policy.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "provider": "Socioboard",
+                "requires_internet": False,
+                "fleet_size": "modeled (not deployed)",
+                "platform": platform or "lab-dashboard",
+                "note": f"Socioboard fleet orchestration failed ({exc}); returning modeled stub.",
+            }
 
     if use_langgraph:
         if not _is_langgraph_available():
@@ -3894,10 +3970,10 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="fleet_orchestrate", name="Persona Fleet Orchestrator",
-        description="List or create a batch of LangGraph, ElizaOS, or Botpress personas/bots, or fall back to the modeled stub. Use tool='langgraph'|'botpress' to force a provider.",
+        description="List or create a batch of LangGraph, ElizaOS, Botpress, or Socioboard personas/bots, or fall back to the modeled stub. Use tool='langgraph'|'botpress'|'elizaos'|'socioboard' to force a provider.",
         category="persona", provider="LangGraph / ElizaOS / Botpress / Socioboard", run=_fleet_orchestrate,
-        parameters={"tool": "langgraph|elizaos|botpress", "count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
-        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available()) else "stub",
+        parameters={"tool": "langgraph|elizaos|botpress|socioboard", "count": "fleet size (modeled)", "platform": "platform", "archetype": "persona archetype", "region": "target region"},
+        status="live" if (_is_elizaos_available() or _is_botpress_available() or _is_langgraph_available() or _is_socioboard_available()) else "stub",
     ))
     tier4 = [
         ("modem_topology", "Modem Topology", "SIM800/SIM900 · Gammu", _modem_topology, {"modem_type":"modem type","ports":"port count","hub_layout":"hub layout"}),

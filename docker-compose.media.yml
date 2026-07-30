@@ -387,6 +387,10 @@ services:
       - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser} --proxy {proxy}
       # Default GFPGAN face restoration/upscale command. Supports images and video.
       - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
+      # Socioboard fleet orchestration command hook. Set this to a script that calls your Socioboard API.
+      - SOCIOBOARD_COMMAND=${SOCIOBOARD_COMMAND:-}
+      - SOCIOBOARD_URL=${SOCIOBOARD_URL:-}
+      - SOCIOBOARD_API_KEY=${SOCIOBOARD_API_KEY:-}
     volumes:
       - brain-data:/code/data
       - brain-data:/data
