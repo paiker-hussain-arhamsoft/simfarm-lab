@@ -30,5 +30,10 @@ done
 echo "[start] pulling Ollama model: $OLLAMA_MODEL (if not present) ..."
 curl -sf "$OLLAMA_HOST/api/pull" -d "{\"name\":\"$OLLAMA_MODEL\"}" >/dev/null 2>&1 || true
 
+if [ -x /usr/local/bin/wan2-generate ]; then
+    export WAN2_COMMAND="/usr/local/bin/wan2-generate --script {script} --duration {duration} --output-dir /artifacts/media"
+    echo "[start] Wan2.1 command hook configured: $WAN2_COMMAND"
+fi
+
 echo "[start] starting main uvicorn ..."
 exec uvicorn backend.main:app --host 0.0.0.0 --port 8000
