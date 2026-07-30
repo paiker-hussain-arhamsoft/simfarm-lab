@@ -2622,6 +2622,222 @@ async def _nmap_scan(
     }
 
 
+def _is_openvas_available() -> bool:
+    """Return True if an OpenVAS/GVM command is configured."""
+    return bool(os.environ.get("OPENVAS_COMMAND", ""))
+
+
+def _openvas_authorized_targets() -> set[str]:
+    """Return the set of authorized OpenVAS targets (defaults to localhost)."""
+    default = "127.0.0.1,localhost,::1"
+    return {t.strip().lower() for t in os.environ.get("OPENVAS_AUTHORIZED_TARGETS", default).split(",") if t.strip()}
+
+
+def _openvas_target_allowed(target: str) -> bool:
+    """Return True if the target is in the authorized list."""
+    normalized = target.strip().lower()
+    allowed = _openvas_authorized_targets()
+    return normalized in allowed or normalized.rstrip(".") in allowed
+
+
+def _xml_escape(value: str) -> str:
+    """Escape XML special characters for GMP command bodies."""
+    return (
+        value.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&apos;")
+    )
+
+
+async def _openvas_gmp(xml: str, timeout: int = 120) -> ET.Element:
+    """Run a single GMP XML command through the configured OpenVAS command."""
+    cmd_template = os.environ.get(
+        "OPENVAS_COMMAND",
+        "docker exec openvas gvm-cli socket --gmp-username {username} --gmp-password {password} --xml {xml}",
+    )
+    username = os.environ.get("OPENVAS_USERNAME", "admin")
+    password = os.environ.get("OPENVAS_PASSWORD", "admin")
+    command = cmd_template.format(
+        username=shlex.quote(username),
+        password=shlex.quote(password),
+        xml=shlex.quote(xml),
+    )
+    proc = await asyncio.create_subprocess_shell(
+        command,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    if proc.returncode != 0:
+        raise ToolError(f"OpenVAS command failed: {stderr.decode()[:500]}")
+    output = stdout.decode()
+    if not output.strip():
+        raise ToolError("OpenVAS command produced no output")
+    return ET.fromstring(output)
+
+
+def _get_response_attr(root: ET.Element, attr: str) -> str | None:
+    """Extract an attribute from a GMP response root element."""
+    status = root.get("status")
+    if status and not status.startswith(("2", "20")):
+        status_text = root.get("status_text", "")
+        raise ToolError(f"OpenVAS returned status {status}: {status_text}")
+    return root.get(attr)
+
+
+async def _openvas_scan(
+    target: str = "",
+    config_id: str = "daba56c8-73ec-11df-a475-002264764cea",
+    scanner_id: str = "08b69003-5fc2-4037-a479-93b440211c73",
+    port_list_id: str = "4a4717fe-57d2-11e1-9a26-406186ea4fc5",
+    wait: bool = False,
+    timeout: int = 300,
+    **_: Any,
+) -> dict:
+    """Trigger a defensive OpenVAS/GVM vulnerability scan against an authorized target.
+
+    The workflow creates a target, creates a task using the supplied scan
+    config/scanner/port-list IDs, starts the task, and (optionally) polls until
+    the scan finishes and returns a summary. Missing/misconfigured OpenVAS or
+    unauthorized targets fall back to the original modeled stub.
+    """
+    if not _is_openvas_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": "OpenVAS is not configured (set OPENVAS_COMMAND).",
+        }
+
+    if not target:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "note": "The 'target' parameter is required.",
+        }
+
+    if target.startswith(("http://", "https://")) and not _online_available():
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": "Remote targets require ALLOW_ONLINE_TOOLS=1.",
+        }
+
+    if not _openvas_target_allowed(target):
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": "Target is not in OPENVAS_AUTHORIZED_TARGETS (defaults to localhost). Add it to authorize this scan.",
+        }
+
+    name = f"simfarm-{_xml_escape(target)}-{uuid.uuid4().hex[:8]}"
+    safe_target = _xml_escape(target)
+
+    try:
+        # 1. Create target
+        create_target_xml = (
+            f'<create_target><name>{name}</name>'
+            f'<hosts>{safe_target}</hosts>'
+            f'<port_list id="{port_list_id}"/></create_target>'
+        )
+        target_resp = await _openvas_gmp(create_target_xml)
+        target_id = _get_response_attr(target_resp, "id")
+        if not target_id:
+            raise ToolError("OpenVAS did not return a target ID")
+
+        # 2. Create task
+        create_task_xml = (
+            f'<create_task><name>{name}</name>'
+            f'<config id="{config_id}"/>'
+            f'<target id="{target_id}"/>'
+            f'<scanner id="{scanner_id}"/></create_task>'
+        )
+        task_resp = await _openvas_gmp(create_task_xml)
+        task_id = _get_response_attr(task_resp, "id")
+        if not task_id:
+            raise ToolError("OpenVAS did not return a task ID")
+
+        # 3. Start task
+        start_xml = f'<start_task task_id="{task_id}"/>'
+        start_resp = await _openvas_gmp(start_xml)
+        report_id_el = start_resp.find("report_id")
+        report_id = report_id_el.text if report_id_el is not None else _get_response_attr(start_resp, "report_id")
+        if not report_id:
+            # Fall back to scanning start_resp text for a report id.
+            for attr in ("id", "report_id"):
+                val = start_resp.get(attr)
+                if val:
+                    report_id = val
+                    break
+
+        result: dict = {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "target_id": target_id,
+            "task_id": task_id,
+            "report_id": report_id,
+            "status": "started",
+            "note": "OpenVAS scan started. Set wait=True to poll for completion and a report summary.",
+        }
+
+        if not wait:
+            return result
+
+        # 4. Poll until the task is Done (or New/Requested status)
+        deadline = asyncio.get_event_loop().time() + timeout
+        status = "Unknown"
+        while asyncio.get_event_loop().time() < deadline:
+            status_resp = await _openvas_gmp(f'<get_tasks task_id="{task_id}" details="0"/>')
+            task_el = status_resp.find(".//task")
+            if task_el is not None:
+                status_el = task_el.find("status")
+                status = status_el.text if status_el is not None else status
+                if status and status.lower() in ("done", "stopped", "interrupted"):
+                    break
+            await asyncio.sleep(5)
+
+        result["status"] = status
+
+        if status.lower() == "done" and report_id:
+            report_resp = await _openvas_gmp(f'<get_reports report_id="{report_id}" details="1"/>')
+            # Pull a lightweight summary from the report element.
+            report = report_resp.find(".//report")
+            summary: dict = {}
+            if report is not None:
+                severity = report.find(".//severity")
+                if severity is not None:
+                    summary["severity"] = severity.get("full") or severity.text
+                result_count = report.find(".//result_count")
+                if result_count is not None:
+                    full_el = result_count.find("full")
+                    summary["result_count"] = full_el.text if full_el is not None else None
+            result["report_summary"] = summary
+            result["note"] = "OpenVAS scan completed and report summary retrieved."
+        else:
+            result["note"] = f"OpenVAS scan status after polling: {status}. Retrieve the report later with report_id."
+
+        return result
+
+    except Exception as exc:
+        return {
+            "simulated": True,
+            "requires_internet": False,
+            "provider": "OpenVAS / Greenbone",
+            "target": target,
+            "note": f"OpenVAS scan failed ({exc}); falling back to modeled stub.",
+        }
+
+
 async def _cai_redteam(scope: str = "", **_: Any) -> dict:
     return {
         "simulated": True,
@@ -2878,6 +3094,20 @@ def _register_defaults() -> None:
             "args": "extra safe Nmap arguments (shell metacharacters are stripped)",
         },
         status="live" if _is_nmap_available() else "stub",
+    ))
+    register(ToolSpec(
+        id="openvas_scan", name="OpenVAS Vulnerability Scanner",
+        description="Trigger a defensive OpenVAS/GVM vulnerability scan against an authorized target. Creates a target, task, starts the scan, and optionally polls for completion. Falls back to a stub when OpenVAS is not configured or the target is not authorized.",
+        category="security", provider="OpenVAS / Greenbone", run=_openvas_scan,
+        parameters={
+            "target": "authorized target host/IP (default allowed: 127.0.0.1, localhost, ::1)",
+            "config_id": "scan config UUID (default Full and Fast)",
+            "scanner_id": "scanner UUID (default OpenVAS scanner)",
+            "port_list_id": "port list UUID (default IANA TCP/UDP)",
+            "wait": "true|false to poll for completion",
+            "timeout": "max seconds to wait when wait=true (default 300)",
+        },
+        status="live" if _is_openvas_available() else "stub",
     ))
     register(ToolSpec(
         id="cai_redteam", name="Automated Red-Team Orchestrator",

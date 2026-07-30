@@ -247,6 +247,25 @@ services:
       retries: 3
       start_period: 60s
 
+  openvas:
+    image: immauss/openvas:latest
+    container_name: openvas
+    restart: unless-stopped
+    environment:
+      - PASSWORD=${OPENVAS_PASSWORD:-admin}
+      - USERNAME=${OPENVAS_USERNAME:-admin}
+      - TZ=${TZ:-UTC}
+    # Web UI on 9392 is not exposed to the host by default. strategic-brain drives
+    # scans via gvm-cli inside the container using the OPENVAS_COMMAND hook.
+    cap_add:
+      - NET_ADMIN
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:9392/login/login.html"]
+      interval: 60s
+      timeout: 10s
+      retries: 5
+      start_period: 300s
+
   strategic-brain:
     build:
       context: .
@@ -278,6 +297,12 @@ services:
       # Comma-separated list of authorized Nmap targets. Defaults to localhost; expand
       # this to owned/authorized assets before calling nmap_scan against them.
       - NMAP_AUTHORIZED_TARGETS=${NMAP_AUTHORIZED_TARGETS:-127.0.0.1,localhost,::1}
+      # OpenVAS / GVM credentials. The password is set by the OpenVAS container's PASSWORD env.
+      - OPENVAS_USERNAME=${OPENVAS_USERNAME:-admin}
+      - OPENVAS_PASSWORD=${OPENVAS_PASSWORD:-admin}
+      - OPENVAS_AUTHORIZED_TARGETS=${OPENVAS_AUTHORIZED_TARGETS:-127.0.0.1,localhost,::1}
+      # Default OpenVAS command. Runs gvm-cli inside the openvas container.
+      - OPENVAS_COMMAND=docker exec openvas gvm-cli socket --gmp-username {username} --gmp-password {password} --xml {xml}
       # Browserbase cloud browser / proxy credentials. Set BROWSERBASE_API_KEY in your .env.
       - BROWSERBASE_API_KEY=${BROWSERBASE_API_KEY:-}
       - BROWSERBASE_PROJECT_ID=${BROWSERBASE_PROJECT_ID:-}
