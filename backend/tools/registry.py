@@ -1601,7 +1601,7 @@ async def _load_wan2_pipeline() -> Any:
     async with _WAN2_LOCK:
         if _WAN2_PIPELINE is None:
             import torch
-            from diffusers import AutoencoderKLWan, WanPipeline
+            from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanPipeline
             dtype = _wan2_torch_dtype()
             vae_dtype = torch.float32
             vae = await asyncio.to_thread(
@@ -1612,8 +1612,21 @@ async def _load_wan2_pipeline() -> Any:
                 WanPipeline.from_pretrained, _WAN2_MODEL_NAME,
                 vae=vae, torch_dtype=dtype
             )
+
+            # Wan2.1 requires the UniPCMultistepScheduler with the correct
+            # flow_shift for the target resolution (3.0 for 480P). Without this
+            # the output is colored noise.
+            _WAN2_PIPELINE.scheduler = UniPCMultistepScheduler.from_config(
+                _WAN2_PIPELINE.scheduler.config,
+                prediction_type="flow_prediction",
+                use_flow_sigmas=True,
+                num_train_timesteps=1000,
+                flow_shift=3.0,
+            )
+
             if torch.cuda.is_available():
                 _WAN2_PIPELINE = _WAN2_PIPELINE.to("cuda")
+                _WAN2_PIPELINE.enable_model_cpu_offload()
             else:
                 _WAN2_PIPELINE = _WAN2_PIPELINE.to("cpu")
     return _WAN2_PIPELINE
@@ -1649,8 +1662,8 @@ async def _generate_wan2_video(script: str, duration: str = "5s") -> str:
         height=480,
         width=832,
         num_frames=num_frames,
-        guidance_scale=5.0,
-        num_inference_steps=30,
+        guidance_scale=6.0,
+        num_inference_steps=40,
     )
     export_to_video(frames.frames[0], out_path, fps=15)
     return out_path

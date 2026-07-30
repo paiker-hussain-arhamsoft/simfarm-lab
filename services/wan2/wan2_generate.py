@@ -41,7 +41,7 @@ def _parse_duration(duration: str) -> int:
 async def _load_pipeline():
     """Load and cache the Wan2.1 1.3B T2V pipeline in a worker thread."""
     import torch
-    from diffusers import AutoencoderKLWan, WanPipeline
+    from diffusers import AutoencoderKLWan, UniPCMultistepScheduler, WanPipeline
 
     dtype = _torch_dtype()
     vae_dtype = torch.float32
@@ -57,8 +57,21 @@ async def _load_pipeline():
         vae=vae,
         torch_dtype=dtype,
     )
+
+    # Wan2.1 needs the UniPCMultistepScheduler with the correct flow_shift for the
+    # target resolution. 3.0 is the recommended value for 480P; without it the
+    # output is colored noise / unidentifiable frames.
+    pipe.scheduler = UniPCMultistepScheduler.from_config(
+        pipe.scheduler.config,
+        prediction_type="flow_prediction",
+        use_flow_sigmas=True,
+        num_train_timesteps=1000,
+        flow_shift=3.0,
+    )
+
     if torch.cuda.is_available():
         pipe = pipe.to("cuda")
+        pipe.enable_model_cpu_offload()
     else:
         pipe = pipe.to("cpu")
     return pipe
@@ -84,8 +97,8 @@ async def generate_video(script: str, duration: str, output_dir: str) -> str:
         height=480,
         width=832,
         num_frames=num_frames,
-        guidance_scale=5.0,
-        num_inference_steps=30,
+        guidance_scale=6.0,
+        num_inference_steps=40,
     )
     await asyncio.to_thread(
         export_to_video,
