@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libcups2 libdrm2 libatspi2.0-0 libx11-6 libxcomposite1 libxdamage1 \
         libxext6 libxfixes3 libxrandr2 libgbm1 libxcb1 libxkbcommon0 \
         libpango-1.0-0 libcairo2 libasound2 \
+        libgl1 libglib2.0-0 libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Docker client so the all-in-one image can exec external media containers.
@@ -98,7 +99,7 @@ PY
 COPY . .
 
 # Make the entrypoint executable and place the supervisor config
-RUN chmod +x /app/start-all-in-one.sh && \
+RUN chmod +x /app/start-all-in-one.sh /app/start-bee-gravity.sh && \
     mkdir -p /etc/supervisor/conf.d && \
     cp /app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
@@ -113,7 +114,8 @@ ENV PYTHONUNBUFFERED=1 \
     LEGAL_PROXY_ENABLED= \
     COQUI_TOS_AGREED=${COQUI_TOS_AGREED} \
     OPENAI_BASE_URL=https://api.openai.com/v1 \
-    OPENAI_MODEL=gpt-4o-mini
+    OPENAI_MODEL=gpt-4o-mini \
+    BEE_GRAVITY_ARTIFACT_DIR=/artifacts/bee-gravity
 
 EXPOSE 8000
 
