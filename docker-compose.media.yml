@@ -209,6 +209,28 @@ services:
       - brain-data:/app/data
     command: tail -f /dev/null
 
+  proxy-rotator:
+    image: jadewon/proxy-rotator:latest
+    container_name: proxy-rotator
+    restart: unless-stopped
+    # The rotator needs outbound internet to fetch free proxy lists.
+    environment:
+      - LISTEN_ADDR=0.0.0.0
+      - PROXY_USERNAME=${PROXY_ROTATOR_USERNAME:-admin}
+      - PROXY_PASSWORD=${PROXY_ROTATOR_PASSWORD:-secret}
+      - PROXY_PORT=3128
+      - ADMIN_PORT=8080
+      - SOURCES=${PROXY_ROTATOR_SOURCES:-freeproxy}
+      - TEST_URL=https://www.cloudflare.com/cdn-cgi/trace
+    # Do not expose the proxy port to the host by default; sibling containers
+    # reach it on the internal network at http://proxy-rotator:3128.
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
   strategic-brain:
     build:
       context: .
@@ -232,9 +254,12 @@ services:
       - VIDEORETALKING_COMMAND=docker exec videoretalking /video-retalking/run_videoretalking.sh --face {video} --audio {audio} --output {output}
       # Allow browser automation to visit remote URLs when explicitly enabled.
       - ALLOW_ONLINE_TOOLS=${ALLOW_ONLINE_TOOLS:-}
+      # Rotating proxy endpoint. Browser automation and HTTP clients can use this.
+      - PROXY_ROTATOR_URL=http://${PROXY_ROTATOR_USERNAME:-admin}:${PROXY_ROTATOR_PASSWORD:-secret}@proxy-rotator:3128
+      - PROXY_ROTATOR_API=http://proxy-rotator:8080
       # Default Puppeteer command. The puppeteer container mounts brain-data and runs
       # a Node wrapper around the official puppeteer package.
-      - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser}
+      - PUPPETEER_COMMAND=docker exec puppeteer node /app/run_puppeteer.js --target {target} --action {action} --script {script} --selector {selector} --value {value} --headless {headless} --screenshot {screenshot} --output {output} --browser {browser} --proxy {proxy}
       # Default GFPGAN face restoration/upscale command. Supports images and video.
       - GFPGAN_COMMAND=docker exec gfpgan python3 /app/gfpgan/run_gfpgan.py --input {input} --output {output} --scale {scale}
     volumes:

@@ -21,6 +21,7 @@ import os
 import shlex
 import shutil
 import sys
+import urllib.parse
 import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -202,18 +203,80 @@ async def _generate_media_package(kind: str = "video", script: str = "", **_: An
     }
 
 
-async def _rotate_proxy(pool: str = "residential", reason: str = "", **_: Any) -> dict:
-    # Demonstrates a tool that can 'fail' to exercise the self-refining loop.
+def _proxy_rotator_url() -> str:
+    """Return the configured proxy-rotator URL or an empty string."""
+    return os.environ.get("PROXY_ROTATOR_URL", "")
+
+
+def _parse_proxy_url(proxy: str) -> dict:
+    """Parse a proxy URL into {server, username, password} for browser/selenium use."""
+    parsed = urllib.parse.urlparse(proxy)
+    username = parsed.username or ""
+    password = parsed.password or ""
+    host = parsed.hostname or ""
+    port = parsed.port or (3128 if not parsed.scheme else 80)
+    server = f"{parsed.scheme}://{host}:{port}" if parsed.scheme else f"http://{host}:{port}"
+    return {"server": server, "username": username, "password": password, "host": host, "port": port, "scheme": parsed.scheme or "http"}
+
+
+async def _rotate_proxy(pool: str = "proxy_rotator", reason: str = "", **_: Any) -> dict:
+    """Return a live rotating proxy URL or the original stub when none is available."""
     if pool == "blocked":
         raise ToolError("Proxy pool 'blocked' is exhausted; caller should alter the pool.")
+
+    pool = (pool or "proxy_rotator").lower()
+
+    if pool == "proxy_rotator":
+        proxy_url = _proxy_rotator_url()
+        if not proxy_url:
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "ProxyRotator / Scrapoxy",
+                "pool": pool,
+                "new_vector": "10.x.x.x (simulated)",
+                "reason": reason,
+                "note": "Proxy-rotator is not configured (set PROXY_ROTATOR_URL).",
+            }
+
+        try:
+            import requests
+            proxies = {"http": proxy_url, "https": proxy_url}
+            # Test through the local rotator to a public echo service.
+            resp = await asyncio.to_thread(
+                requests.get, "http://httpbin.org/ip", proxies=proxies, timeout=30
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "ProxyRotator",
+                "pool": pool,
+                "new_vector": proxy_url,
+                "exit_ip": data.get("origin"),
+                "reason": reason,
+                "note": "Live proxy-rotator endpoint returned; traffic routes through a scraped upstream.",
+            }
+        except Exception as exc:
+            return {
+                "simulated": True,
+                "requires_internet": False,
+                "provider": "ProxyRotator",
+                "pool": pool,
+                "new_vector": proxy_url,
+                "reason": reason,
+                "note": f"Proxy-rotator test failed ({exc}); returning endpoint for retry but engine may not be healthy.",
+            }
+
     return {
         "simulated": True,
         "requires_internet": False,
-        "provider": "Scrapoxy",
+        "provider": "Scrapoxy / ProxyRotator",
         "pool": pool,
         "new_vector": "10.x.x.x (simulated)",
         "reason": reason,
-        "note": "Stub — infrastructure routing hook; simulated only.",
+        "note": f"Proxy provider '{pool}' is not installed or configured.",
     }
 
 # ── TIER 4 · IVR and proxy-rotation local simulation tools ─────────
@@ -458,6 +521,7 @@ async def _run_selenium_session(
     screenshot: bool = False,
     output: str = "",
     browser: str = "chromium",
+    proxy: str = "",
 ) -> dict:
     """Run a Selenium browser session using the Playwright Chromium binary."""
     import subprocess
@@ -493,6 +557,20 @@ async def _run_selenium_session(
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1280,720")
+    if proxy:
+        parsed = _parse_proxy_url(proxy)
+        from selenium.webdriver.common.proxy import Proxy, ProxyType
+        proxy_obj = Proxy()
+        proxy_obj.proxy_type = ProxyType.MANUAL
+        proxy_obj.http_proxy = f"{parsed['host']}:{parsed['port']}"
+        proxy_obj.ssl_proxy = f"{parsed['host']}:{parsed['port']}"
+        # Selenium Chrome does not reliably support HTTP proxy authentication
+        # via the Proxy object; Playwright/Puppeteer handle authenticated proxies
+        # natively. Socks credentials are set here for SOCKS proxies only.
+        if parsed["username"] and parsed["scheme"].startswith("sock"):
+            proxy_obj.socks_username = parsed["username"]
+            proxy_obj.socks_password = parsed["password"]
+        options.set_capability("proxy", proxy_obj.to_capabilities())
 
     driver_path = ChromeDriverManager(driver_version=version).install()
     service = Service(driver_path)
@@ -597,6 +675,7 @@ async def _run_puppeteer_command(
     screenshot: bool = False,
     output: str = "",
     browser: str = "chromium",
+    proxy: str = "",
 ) -> dict:
     """Run the configured external Puppeteer command and parse its JSON result."""
     cmd_template = os.environ.get("PUPPETEER_COMMAND", "")
@@ -621,6 +700,7 @@ async def _run_puppeteer_command(
         screenshot="true" if _is_headless_true(screenshot) else "false",
         output=shlex.quote(out_path),
         browser=shlex.quote(browser or "chromium"),
+        proxy=shlex.quote(proxy or ""),
     )
 
     proc = await asyncio.create_subprocess_shell(
@@ -652,6 +732,7 @@ async def _run_playwright_session(
     screenshot: bool = False,
     output: str = "",
     browser: str = "chromium",
+    proxy: str = "",
 ) -> dict:
     """Launch a Playwright browser session and execute the requested action.
 
@@ -680,17 +761,26 @@ async def _run_playwright_session(
 
     result: dict = {"target": target_url, "action": action, "headless": headless}
 
+    context_options: dict = {
+        "viewport": {"width": 1280, "height": 720},
+        "user_agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        ),
+    }
+    if proxy:
+        parsed = _parse_proxy_url(proxy)
+        context_options["proxy"] = {
+            "server": parsed["server"],
+            "username": parsed["username"],
+            "password": parsed["password"],
+        }
+
     async with async_playwright() as p:
         browser_launcher = getattr(p, browser, p.chromium)
         browser_obj = await browser_launcher.launch(headless=headless)
         try:
-            context = await browser_obj.new_context(
-                viewport={"width": 1280, "height": 720},
-                user_agent=(
-                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-                ),
-            )
+            context = await browser_obj.new_context(**context_options)
             page = await context.new_page()
             response = await page.goto(target_url, wait_until="networkidle" if is_remote else "domcontentloaded")
             result["status"] = response.status if response else None
@@ -854,6 +944,7 @@ async def _browser_automation_plan(
     headless: bool = True,
     screenshot: bool = False,
     output: str = "",
+    proxy: str = "",
     **_: Any,
 ) -> dict:
     """Headless browser automation with Playwright, Selenium, or Puppeteer."""
@@ -875,17 +966,17 @@ async def _browser_automation_plan(
         if tool == "playwright":
             session = await _run_playwright_session(
                 target=target, action=action, script=script, selector=selector, value=value,
-                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
         elif tool == "selenium":
             session = await _run_selenium_session(
                 target=target, action=action, script=script, selector=selector, value=value,
-                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
         else:  # puppeteer
             session = await _run_puppeteer_command(
                 target=target, action=action, script=script, selector=selector, value=value,
-                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output,
+                headless=_is_headless_true(headless), screenshot=_is_headless_true(screenshot), output=output, proxy=proxy,
             )
 
         return {
@@ -2185,9 +2276,13 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="rotate_proxy", name="Proxy Rotator",
-        description="Rotate routing/proxy vectors when an endpoint is blocked.",
-        category="infrastructure", provider="Scrapoxy", run=_rotate_proxy,
-        parameters={"pool": "proxy pool", "reason": "why rotating"},
+        description="Return a live rotating proxy URL from the configured proxy-rotator (or a stub when no proxy engine is available).",
+        category="infrastructure", provider="ProxyRotator / Scrapoxy", run=_rotate_proxy,
+        parameters={
+            "pool": "proxy_rotator|scrapoxy|proxyguard|browserbase",
+            "reason": "why rotating",
+        },
+        status="live" if _proxy_rotator_url() else "stub",
     ))
     register(ToolSpec(
         id="adjust_load_balancer", name="Load Balancer Controller",
@@ -2350,7 +2445,7 @@ def _register_defaults() -> None:
     ))
     register(ToolSpec(
         id="browser_automation_plan", name="Browser Automation Planner",
-        description="Headless browser automation with Playwright, Selenium, or Puppeteer (navigate, screenshot, evaluate, click, type, get_text, html). Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
+        description="Headless browser automation with Playwright, Selenium, or Puppeteer (navigate, screenshot, evaluate, click, type, get_text, html). Can route through an HTTP proxy (e.g. proxy-rotator). Falls back to a plan stub when the selected engine is not installed/configured or no URL/file target is supplied.",
         category="persona", provider="Playwright / Selenium / Puppeteer", run=_browser_automation_plan,
         parameters={
             "target": "URL or local file path",
@@ -2362,6 +2457,7 @@ def _register_defaults() -> None:
             "headless": "true|false",
             "screenshot": "true|false",
             "output": "optional output path for screenshot/result JSON",
+            "proxy": "optional http://user:pass@host:port proxy URL",
         },
         status="live" if (
             _is_playwright_available()
