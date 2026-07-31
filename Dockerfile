@@ -68,7 +68,9 @@ PY
 COPY . .
 
 RUN chmod +x /app/services/mautic/mautic-campaign /app/services/mautic/mautic_campaign.py && \
-    ln -sf /app/services/mautic/mautic-campaign /usr/local/bin/mautic-campaign
+    ln -sf /app/services/mautic/mautic-campaign /usr/local/bin/mautic-campaign && \
+    chmod +x /app/services/strapi/strapi-lifecycle /app/services/strapi/strapi_lifecycle.py && \
+    ln -sf /app/services/strapi/strapi-lifecycle /usr/local/bin/strapi-lifecycle
 
 EXPOSE 8000
 

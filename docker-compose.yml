@@ -43,6 +43,11 @@ services:
       - MAUTIC_URL=${MAUTIC_URL:-http://mautic-web}
       - MAUTIC_USER=${MAUTIC_USER:-admin}
       - MAUTIC_PASSWORD=${MAUTIC_PASSWORD:-}
+      # Optional Strapi content-lifecycle hook
+      - STRAPI_COMMAND=${STRAPI_COMMAND:-}
+      - STRAPI_URL=${STRAPI_URL:-http://strapi:1337}
+      - STRAPI_CONTENT_TYPE=${STRAPI_CONTENT_TYPE:-lifecycles}
+      - STRAPI_API_TOKEN=${STRAPI_API_TOKEN:-}
       # Privileged legal-proxy override role (default OFF). Even when enabled,
       # a flagged request is only cleared with a real authorization ref + approver.
       - LEGAL_PROXY_ENABLED=${LEGAL_PROXY_ENABLED:-}
