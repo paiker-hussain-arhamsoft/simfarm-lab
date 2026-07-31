@@ -51,7 +51,13 @@ RUN pip install --no-cache-dir -r requirements.txt && \
         pip install --no-cache-dir -r requirements-voice.txt; \
     fi && \
     if [ "$VIDEO_STACK" = "wan" ]; then \
-        pip install --no-cache-dir -r requirements-video-wan.txt; \
+        python -m venv /opt/wan2-venv && \
+        /opt/wan2-venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+        /opt/wan2-venv/bin/pip install --no-cache-dir -r requirements-video-wan.txt && \
+        mkdir -p /opt/wan2 && \
+        cp services/wan2/wan2_generate.py services/wan2/wan2-generate /opt/wan2/ && \
+        chmod +x /opt/wan2/wan2-generate && \
+        ln -sf /opt/wan2/wan2-generate /usr/local/bin/wan2-generate; \
     fi && \
     if [ "$FACE_STACK" = "insightface" ]; then \
         pip install --no-cache-dir --no-deps -r requirements-face-insightface.txt; \

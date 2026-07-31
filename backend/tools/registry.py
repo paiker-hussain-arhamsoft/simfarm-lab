@@ -1569,7 +1569,9 @@ _WAN2_LOCK = asyncio.Lock()
 
 
 def _is_wan2_available() -> bool:
-    """Return True if diffusers>=0.33 with Wan support is installed."""
+    """Return True if Wan2.1 is reachable via a command hook or in-process."""
+    if _is_command_hook("WAN2_COMMAND"):
+        return True
     import importlib.util
     try:
         import diffusers
@@ -1660,32 +1662,61 @@ async def _generate_video(tool: str = "wan2", script: str = "", duration: str = 
     if p["online"] and not _online_available():
         raise ToolError(f"{p['provider']} requires internet; fall back to an offline video model.")
 
-    if tool == "wan2" and _is_wan2_available() and script:
-        try:
-            artifact_path = await _generate_wan2_video(script, duration)
-            return {
-                "simulated": True,
-                "provider": p["provider"],
-                "license": p["license"],
-                "requires_internet": False,
-                "params": p["params"],
-                "resolution": "480p",
-                "duration": duration,
-                "artifact": artifact_path,
-                "note": f"Generated locally with {p['provider']} (1.3B, CPU/GPU).",
-            }
-        except Exception as exc:
-            return {
-                "simulated": True,
-                "provider": p["provider"],
-                "license": p["license"],
-                "requires_internet": False,
-                "params": p["params"],
-                "resolution": "480p",
-                "duration": duration,
-                "artifact": "/artifacts/media/clip_stub.mp4",
-                "note": f"Wan2.1 failed ({exc}); Stub — wire to {p['provider']} for real text-to-video (offline/local).",
-            }
+    if tool == "wan2":
+        if _is_command_hook("WAN2_COMMAND"):
+            try:
+                hook_result = await _run_command_hook("WAN2_COMMAND", script=script, duration=duration)
+                artifact = hook_result.get("artifact", "/artifacts/media/clip_stub.mp4")
+                return {
+                    "simulated": True,
+                    "provider": p["provider"],
+                    "license": p["license"],
+                    "requires_internet": False,
+                    "params": p["params"],
+                    "resolution": "480p",
+                    "duration": duration,
+                    "artifact": artifact,
+                    "note": f"Generated locally with {p['provider']} via WAN2_COMMAND.",
+                }
+            except Exception as exc:
+                return {
+                    "simulated": True,
+                    "provider": p["provider"],
+                    "license": p["license"],
+                    "requires_internet": False,
+                    "params": p["params"],
+                    "resolution": "480p",
+                    "duration": duration,
+                    "artifact": "/artifacts/media/clip_stub.mp4",
+                    "note": f"Wan2.1 command hook failed ({exc}); falling back to stub.",
+                }
+
+        if _is_wan2_available() and script:
+            try:
+                artifact_path = await _generate_wan2_video(script, duration)
+                return {
+                    "simulated": True,
+                    "provider": p["provider"],
+                    "license": p["license"],
+                    "requires_internet": False,
+                    "params": p["params"],
+                    "resolution": "480p",
+                    "duration": duration,
+                    "artifact": artifact_path,
+                    "note": f"Generated locally with {p['provider']} (1.3B, CPU/GPU).",
+                }
+            except Exception as exc:
+                return {
+                    "simulated": True,
+                    "provider": p["provider"],
+                    "license": p["license"],
+                    "requires_internet": False,
+                    "params": p["params"],
+                    "resolution": "480p",
+                    "duration": duration,
+                    "artifact": "/artifacts/media/clip_stub.mp4",
+                    "note": f"Wan2.1 failed ({exc}); Stub — wire to {p['provider']} for real text-to-video (offline/local).",
+                }
 
     return {
         "simulated": True,

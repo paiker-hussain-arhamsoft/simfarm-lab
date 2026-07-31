@@ -1,0 +1,4 @@
+#!/bin/bash
+# Wrapper that invokes the Wan2.1 generator in its isolated virtualenv.
+set -e
+/opt/wan2-venv/bin/python /opt/wan2/wan2_generate.py "$@"
