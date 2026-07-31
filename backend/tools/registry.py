@@ -606,7 +606,51 @@ async def _strapi_lifecycle_model(**kw: Any) -> dict:
             }
     return await _content_stub("Strapi · AI", {"schema":"modeled content type","hooks":["draft","review","publish"],"deployed":False}, **kw)
 async def _webhook_chain_model(**kw): return await _content_stub("webhook (modeled)", {"topology":["source fixture","review queue","satellite fixture"],"live":False}, **kw)
-async def _postiz_scheduler_model(**kw): return await _content_stub("Postiz", {"schedule":"modeled matrix","captions":"fixture stubs","queued":False}, **kw)
+async def _run_postiz_hook(**kw: Any) -> dict:
+    """Execute the configured POSTIZ_COMMAND to create/list Postiz posts."""
+    import json as _json
+    template = os.environ.get("POSTIZ_COMMAND", "").strip()
+    if not template:
+        raise ToolError("POSTIZ_COMMAND is not set")
+    content = (kw.get("objective") or kw.get("content") or "SimFarm scheduled post").strip() or "SimFarm scheduled post"
+    platform = (kw.get("distribution_channel") or kw.get("platform") or "").strip() or "bluesky"
+    cmd = shlex.split(template)
+    cmd.extend(["--mode", "create", "--content", content, "--platform", platform])
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"POSTIZ_COMMAND failed (exit {proc.returncode}): {stderr.decode()[:500]}")
+
+    text = stdout.decode()
+    payload: dict = {}
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                payload = _json.loads(line)
+                break
+            except Exception:
+                continue
+    if not payload:
+        raise ToolError("POSTIZ_COMMAND did not return JSON")
+    return payload
+
+
+async def _postiz_scheduler_model(**kw: Any) -> dict:
+    if _is_command_hook("POSTIZ_COMMAND"):
+        try:
+            return await _run_postiz_hook(**kw)
+        except Exception as exc:
+            return {
+                **await _content_stub("Postiz", {"schedule":"modeled matrix","captions":"fixture stubs","queued":False}, **kw),
+                "postiz_hook_error": str(exc),
+            }
+    return await _content_stub("Postiz", {"schedule":"modeled matrix","captions":"fixture stubs","queued":False}, **kw)
 async def _cross_platform_model(**kw): return await _content_stub("cross-platform (modeled)", {"repurposing":["long→short","blog→social","video→carousel"]}, **kw)
 async def _content_calendar_model(**kw): return await _content_stub("calendar (modeled)", {"weeks":4,"channels":["email","social","blog","webhook"]}, **kw)
 async def _content_cost_model(**kw): return await _content_stub("cost-model (modeled)", {"monthly":{"hosting":"modeled","email":"modeled","social":"modeled","cdn":"modeled"}}, **kw)
@@ -4513,6 +4557,18 @@ def _register_defaults() -> None:
             description = (
                 "Strapi REST-API integration when STRAPI_COMMAND is configured; "
                 "otherwise modeled. Real Lifecycle entries are created in Strapi, "
+                "but the tool result stays simulated per platform safety invariants."
+            )
+            register(ToolSpec(
+                id=ident, name=name, description=description,
+                category="content", provider=provider, run=fn,
+                status="live" if is_live else "stub",
+            ))
+        elif ident == "postiz_scheduler_model":
+            is_live = _is_command_hook("POSTIZ_COMMAND")
+            description = (
+                "Postiz REST-API integration when POSTIZ_COMMAND is configured; "
+                "otherwise modeled. Real scheduled posts are created in Postiz, "
                 "but the tool result stays simulated per platform safety invariants."
             )
             register(ToolSpec(

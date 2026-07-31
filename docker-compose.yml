@@ -56,6 +56,12 @@ services:
       - STRAPI_URL=${STRAPI_URL:-http://strapi:1337}
       - STRAPI_CONTENT_TYPE=${STRAPI_CONTENT_TYPE:-lifecycles}
       - STRAPI_API_TOKEN=${STRAPI_API_TOKEN:-}
+      # Optional Postiz social-scheduling hook
+      - POSTIZ_COMMAND=${POSTIZ_COMMAND:-}
+      - POSTIZ_API_URL=${POSTIZ_API_URL:-http://postiz:5000/api/public/v1}
+      - POSTIZ_API_TOKEN=${POSTIZ_API_TOKEN:-}
+      - POSTIZ_INTEGRATION_ID=${POSTIZ_INTEGRATION_ID:-}
+      - POSTIZ_PLATFORM=${POSTIZ_PLATFORM:-bluesky}
       # Optional memory/data-lake hooks
       - MEMORY_DATA_COMMAND=${MEMORY_DATA_COMMAND:-}
       - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
