@@ -19,7 +19,8 @@ ARG VOICE_STACK=chatterbox
 ARG VIDEO_STACK=
 ARG FACE_STACK=
 ARG BROWSER_STACK=
-COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt requirements-browser-browserbase.txt ./
+ARG MEMORY_DATA_STACK=
+COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt requirements-browser-browserbase.txt requirements-memory-data.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
     if [ "$VOICE_STACK" = "coqui" ]; then \
         pip install --no-cache-dir -r requirements-voice-coqui.txt; \
@@ -42,6 +43,12 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     fi && \
     if [ "$BROWSER_STACK" = "browserbase" ] || [ "$BROWSER_STACK" = "all" ]; then \
         pip install --no-cache-dir -r requirements-browser-browserbase.txt; \
+    fi && \
+    if [ "$MEMORY_DATA_STACK" = "all" ]; then \
+        apt-get update && \
+        apt-get install -y --no-install-recommends openjdk-17-jre-headless && \
+        rm -rf /var/lib/apt/lists/* && \
+        pip install --no-cache-dir -r requirements-memory-data.txt; \
     fi
 
 # Pre-download InsightFace models into the image when the face stack is enabled.
@@ -72,7 +79,9 @@ RUN chmod +x /app/services/mautic/mautic-campaign /app/services/mautic/mautic_ca
     chmod +x /app/services/strapi/strapi-lifecycle /app/services/strapi/strapi_lifecycle.py && \
     ln -sf /app/services/strapi/strapi-lifecycle /usr/local/bin/strapi-lifecycle && \
     chmod +x /app/services/postiz/postiz-scheduler /app/services/postiz/postiz_scheduler.py && \
-    ln -sf /app/services/postiz/postiz-scheduler /usr/local/bin/postiz-scheduler
+    ln -sf /app/services/postiz/postiz-scheduler /usr/local/bin/postiz-scheduler && \
+    chmod +x /app/services/memory-data/memory-data /app/services/memory-data/memory_data.py && \
+    ln -sf /app/services/memory-data/memory-data /usr/local/bin/memory-data
 
 EXPOSE 8000
 
