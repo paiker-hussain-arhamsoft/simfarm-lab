@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bee-Gravity — Ollama to Wan2.1</title>
+    <style>
+        :root { color-scheme: dark; }
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0b0f17;
+            color: #e6edf3;
+            margin: 0;
+            padding: 2rem;
+        }
+        h1 { margin-bottom: 0.25rem; }
+        .subtitle { color: #8b949e; margin-bottom: 2rem; }
+        .card {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 12px;
+            padding: 1.5rem;
+            max-width: 800px;
+            margin: 0 auto 1rem;
+        }
+        label { display: block; margin-bottom: 0.5rem; font-weight: 600; }
+        input, textarea, select {
+            width: 100%;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            color: #e6edf3;
+            padding: 0.75rem;
+            box-sizing: border-box;
+            font: inherit;
+        }
+        textarea { min-height: 80px; resize: vertical; }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+        button {
+            background: #238636;
+            border: none;
+            border-radius: 8px;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+        button:disabled { background: #3d444d; cursor: not-allowed; }
+        #status { margin-top: 1rem; color: #8b949e; white-space: pre-wrap; }
+        #result { margin-top: 1.5rem; }
+        #scriptBox { background: #0d1117; border: 1px solid #30363d; border-radius: 8px; padding: 1rem; margin: 1rem 0; }
+        video { max-width: 100%; border-radius: 8px; border: 1px solid #30363d; }
+        .badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 999px; background: #1f6feb; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>Bee-Gravity</h1>
+        <div class="subtitle">Ollama writes the script, Wan2.1 makes the video.</div>
+
+        <div style="margin-bottom:1rem;">
+            <span id="ollamaBadge" class="badge" style="background:#3d444d">Ollama: …</span>
+            <span id="wan2Badge" class="badge" style="background:#3d444d;margin-left:0.5rem">Wan2.1: …</span>
+        </div>
+
+        <label for="prompt">What should the video be about?</label>
+        <input id="prompt" type="text" placeholder="e.g. a friendly bee explaining the concept of gravity" />
+
+        <label for="script" style="margin-top:1rem;">Or paste your own video prompt</label>
+        <textarea id="script" placeholder="A cartoon bee floating near an apple falling from a tree..."></textarea>
+
+        <div class="row">
+            <div>
+                <label for="style">Visual style</label>
+                <select id="style"></select>
+            </div>
+            <div>
+                <label for="duration">Duration</label>
+                <select id="duration">
+                    <option value="5s">5 seconds</option>
+                    <option value="10s">10 seconds</option>
+                    <option value="15s">15 seconds</option>
+                    <option value="30s">30 seconds</option>
+                </select>
+            </div>
+        </div>
+
+        <button id="generateBtn">Generate video</button>
+        <div id="status"></div>
+        <div id="result"></div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>

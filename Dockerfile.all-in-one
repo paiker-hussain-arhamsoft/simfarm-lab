@@ -10,7 +10,7 @@
 #
 FROM ollama/ollama:0.6.7 AS ollama-bin
 
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 ARG VOICE_STACK=chatterbox
 ARG VIDEO_STACK=
@@ -22,8 +22,13 @@ ARG COQUI_TOS_AGREED=
 RUN apt-get update && apt-get install -y --no-install-recommends \
         curl ca-certificates supervisor build-essential git \
         libsndfile1 libsndfile1-dev ffmpeg nmap \
-        espeak espeak-data && \
-    rm -rf /var/lib/apt/lists/*
+        espeak espeak-data \
+        libnss3 libnspr4 libdbus-1-3 libatk1.0-0 libatk-bridge2.0-0 \
+        libcups2 libdrm2 libatspi2.0-0 libx11-6 libxcomposite1 libxdamage1 \
+        libxext6 libxfixes3 libxrandr2 libgbm1 libxcb1 libxkbcommon0 \
+        libpango-1.0-0 libcairo2 libasound2 \
+        libgl1 libglib2.0-0 libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Docker client so the all-in-one image can exec external media containers.
 RUN curl -fsSL "https://download.docker.com/linux/static/stable/x86_64/docker-27.4.1.tgz" -o /tmp/docker.tgz && \
@@ -47,15 +52,20 @@ RUN pip install --no-cache-dir -r requirements.txt && \
         pip install --no-cache-dir -r requirements-voice.txt; \
     fi && \
     if [ "$VIDEO_STACK" = "wan" ]; then \
-        pip install --no-cache-dir -r requirements-video-wan.txt; \
+        python -m venv /opt/wan2-venv && \
+        /opt/wan2-venv/bin/pip install --no-cache-dir --upgrade pip setuptools wheel && \
+        /opt/wan2-venv/bin/pip install --no-cache-dir -r requirements-video-wan.txt && \
+        mkdir -p /opt/wan2 && \
+        cp services/wan2/wan2_generate.py services/wan2/wan2-generate /opt/wan2/ && \
+        chmod +x /opt/wan2/wan2-generate && \
+        ln -sf /opt/wan2/wan2-generate /usr/local/bin/wan2-generate; \
     fi && \
     if [ "$FACE_STACK" = "insightface" ]; then \
         pip install --no-cache-dir --no-deps -r requirements-face-insightface.txt; \
     fi && \
     if [ "$BROWSER_STACK" = "playwright" ] || [ "$BROWSER_STACK" = "all" ]; then \
         pip install --no-cache-dir -r requirements-browser-playwright.txt && \
-        playwright install chromium && \
-        playwright install-deps chromium; \
+        playwright install chromium; \
     fi && \
     if [ "$BROWSER_STACK" = "selenium" ] || [ "$BROWSER_STACK" = "all" ]; then \
         pip install --no-cache-dir -r requirements-browser-selenium.txt; \
@@ -89,7 +99,7 @@ PY
 COPY . .
 
 # Make the entrypoint executable and place the supervisor config
-RUN chmod +x /app/start-all-in-one.sh && \
+RUN chmod +x /app/start-all-in-one.sh /app/start-bee-gravity.sh && \
     chmod +x /app/services/mautic/mautic-campaign /app/services/mautic/mautic_campaign.py && \
     ln -sf /app/services/mautic/mautic-campaign /usr/local/bin/mautic-campaign && \
     chmod +x /app/services/strapi/strapi-lifecycle /app/services/strapi/strapi_lifecycle.py && \
@@ -108,7 +118,8 @@ ENV PYTHONUNBUFFERED=1 \
     LEGAL_PROXY_ENABLED= \
     COQUI_TOS_AGREED=${COQUI_TOS_AGREED} \
     OPENAI_BASE_URL=https://api.openai.com/v1 \
-    OPENAI_MODEL=gpt-4o-mini
+    OPENAI_MODEL=gpt-4o-mini \
+    BEE_GRAVITY_ARTIFACT_DIR=/artifacts/bee-gravity
 
 EXPOSE 8000
 

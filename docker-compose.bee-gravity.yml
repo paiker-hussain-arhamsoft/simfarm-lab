@@ -1,0 +1,40 @@
+# Standalone Bee-Gravity orchestrator (Ollama + Wan2.1) using the all-in-one image.
+#
+# Build with Wan2.1 support:
+#   docker compose -f docker-compose.bee-gravity.yml up -d --build
+#
+# Then open http://localhost:8000 and enter a prompt like:
+#   "a bee explaining the concept of gravity"
+
+services:
+  bee-gravity:
+    build:
+      context: .
+      dockerfile: Dockerfile.all-in-one
+      args:
+        VIDEO_STACK: wan
+    image: simfarm-lab:bee-gravity
+    container_name: bee-gravity
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_HOST=http://127.0.0.1:11434
+      - OLLAMA_MODEL=qwen2.5:1.5b
+      - BEE_GRAVITY_ARTIFACT_DIR=/artifacts/bee-gravity
+      - WAN2_COMMAND=/usr/local/bin/wan2-generate
+    volumes:
+      - bee-gravity-artifacts:/artifacts/bee-gravity
+      - ollama-models:/root/.ollama
+    command: /app/start-bee-gravity.sh
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+volumes:
+  bee-gravity-artifacts:
+  ollama-models:
