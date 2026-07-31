@@ -700,23 +700,97 @@ async def _update_persona(persona_id: str = "default", traits: str = "", **_: An
     }
 
 
+def _is_lightgbm_available() -> bool:
+    try:
+        import lightgbm  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 async def _behavior_forecast(region: str = "", segments: str = "", **_: Any) -> dict:
-    return {
+    """Train a tiny LightGBM regressor on synthetic features and score segments."""
+    base = {
         "simulated": True,
         "provider": "LightGBM",
         "region": region,
         "model": "gradient_boosted_trees",
-        "feature_importance": [
-            {"feature": "economic_grievance", "weight": 0.28},
-            {"feature": "incumbent_fatigue", "weight": 0.21},
-            {"feature": "biradari_affiliation", "weight": 0.17},
-            {"feature": "youth_turnout", "weight": 0.14},
-            {"feature": "development_spend", "weight": 0.11},
-        ],
-        "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
-        "projected_turnout": 0.52,
-        "note": "Stub — wire to a trained LightGBM model in the intelligence tier.",
     }
+    if not _is_lightgbm_available():
+        return {
+            **base,
+            "feature_importance": [
+                {"feature": "economic_grievance", "weight": 0.28},
+                {"feature": "incumbent_fatigue", "weight": 0.21},
+                {"feature": "biradari_affiliation", "weight": 0.17},
+                {"feature": "youth_turnout", "weight": 0.14},
+                {"feature": "development_spend", "weight": 0.11},
+            ],
+            "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
+            "projected_turnout": 0.52,
+            "note": "Stub — LightGBM not installed.",
+        }
+
+    try:
+        import numpy as np
+        from lightgbm import LGBMRegressor
+
+        feature_names = ["economic_grievance", "incumbent_fatigue", "biradari_affiliation", "youth_turnout", "development_spend"]
+        seed = abs(hash(region)) % (2**31) if region else 42
+        rng = np.random.default_rng(seed)
+
+        n_samples = 200
+        X = rng.random((n_samples, len(feature_names)))
+        # Synthetic target: higher economic grievance + incumbent fatigue + youth turnout -> higher turnout
+        y = (
+            0.35 * X[:, 0]
+            + 0.25 * X[:, 1]
+            + 0.15 * X[:, 3]
+            + 0.10 * X[:, 2]
+            + 0.05 * X[:, 4]
+            + rng.normal(0, 0.05, n_samples)
+        )
+        y = np.clip(y, 0.0, 1.0)
+
+        model = LGBMRegressor(n_estimators=50, learning_rate=0.1, max_depth=4, verbose=-1, random_state=seed)
+        model.fit(X, y)
+
+        importances = model.feature_importances_ / (model.feature_importances_.sum() or 1.0)
+
+        segment_list = [s.strip() for s in segments.split(",") if s.strip()] if segments else ["committed", "persuadable", "disengaged", "swing"]
+        segment_scores: dict[str, float] = {}
+        for i, seg in enumerate(segment_list):
+            seg_seed = seed + i + 1
+            seg_rng = np.random.default_rng(seg_seed)
+            seg_X = seg_rng.random((1, len(feature_names)))
+            segment_scores[seg] = round(float(model.predict(seg_X)[0]), 3)
+
+        projected_turnout = round(float(np.mean(list(segment_scores.values()))), 3)
+
+        return {
+            **base,
+            "feature_importance": [
+                {"feature": name, "weight": round(float(weight), 3)}
+                for name, weight in zip(feature_names, importances)
+            ],
+            "segments": segment_scores,
+            "projected_turnout": projected_turnout,
+            "note": "LightGBM model trained on synthetic features; result is still simulated.",
+        }
+    except Exception as exc:
+        return {
+            **base,
+            "feature_importance": [
+                {"feature": "economic_grievance", "weight": 0.28},
+                {"feature": "incumbent_fatigue", "weight": 0.21},
+                {"feature": "biradari_affiliation", "weight": 0.17},
+                {"feature": "youth_turnout", "weight": 0.14},
+                {"feature": "development_spend", "weight": 0.11},
+            ],
+            "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
+            "projected_turnout": 0.52,
+            "note": f"LightGBM forecast failed: {exc}",
+        }
 
 
 async def _dialect_analysis(region: str = "", language: str = "en", **_: Any) -> dict:
@@ -4118,6 +4192,7 @@ def _register_defaults() -> None:
         description="Predict voter segments/turnout with a gradient-boosted model.",
         category="analysis", provider="LightGBM", run=_behavior_forecast,
         parameters={"region": "target region", "segments": "segments to score"},
+        status="live" if _is_lightgbm_available() else "stub",
     ))
     register(ToolSpec(
         id="dialect_analysis", name="Dialect & Culture Analyzer",
