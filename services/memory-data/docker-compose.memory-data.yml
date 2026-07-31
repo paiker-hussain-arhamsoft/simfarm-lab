@@ -1,0 +1,258 @@
+# Memory / data-lake stack for simfarm-lab.
+#
+# Includes: Qdrant, Neo4j, Redis, PostgreSQL+pgvector, Apache Kafka,
+# Cassandra, Trino, and Mem0.
+#
+# Run:
+#   docker compose -f services/memory-data/docker-compose.memory-data.yml up -d
+#
+# The services share the `memory-data-network` bridge. The simfarm-lab main
+# compose also attaches to this network so the strategic-brain container can
+# resolve service names such as `qdrant`, `neo4j`, `redis`, `postgres-pgvector`,
+# `kafka`, `cassandra`, `trino`, and `mem0`.
+
+services:
+  qdrant:
+    image: qdrant/qdrant:v1.13.0
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:6333/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  neo4j:
+    image: neo4j:5.24.2-community
+    container_name: neo4j
+    restart: unless-stopped
+    environment:
+      - NEO4J_AUTH=neo4j/neo4j123
+      - NEO4J_PLUGINS=[]
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j-data:/data
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS -u neo4j:neo4j123 http://localhost:7474 >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  redis:
+    image: redis:7.4-alpine
+    container_name: redis-memory
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  postgres-pgvector:
+    image: pgvector/pgvector:pg17-alpine
+    container_name: postgres-pgvector
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=memory
+      - POSTGRES_PASSWORD=memory123
+      - POSTGRES_DB=memory
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-pgvector-data:/var/lib/postgresql/data
+      - ./init-pgvector.sql:/docker-entrypoint-initdb.d/init-pgvector.sql:ro
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U memory -d memory"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  kafka:
+    image: bitnami/kafka:3.7.0
+    container_name: kafka
+    restart: unless-stopped
+    environment:
+      - KAFKA_CFG_NODE_ID=1
+      - KAFKA_CFG_BROKER_ID=1
+      - KAFKA_CFG_PROCESS_ROLES=broker,controller
+      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_KRAFT_CLUSTER_ID=simfarm-kafka-cluster-1234
+      - ALLOW_PLAINTEXT_LISTENER=yes
+      - KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE=true
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/bitnami/kafka
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  cassandra:
+    image: cassandra:5.0
+    container_name: cassandra
+    restart: unless-stopped
+    environment:
+      - CASSANDRA_USER=cassandra
+      - CASSANDRA_PASSWORD=cassandra123
+      - CASSANDRA_KEYSPACE=simfarm
+      - HEAP_NEWSIZE=2M
+      - MAX_HEAP_SIZE=512M
+    ports:
+      - "9042:9042"
+      - "7199:7199"
+    volumes:
+      - cassandra-data:/var/lib/cassandra
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "cqlsh -u cassandra -p cassandra123 -e 'describe keyspaces' >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 120s
+
+  trino:
+    image: trinodb/trino:465
+    container_name: trino
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - trino-data:/data/trino
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/v1/info >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+
+  spark-master:
+    image: bitnami/spark:3.5.3
+    container_name: spark-master
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_MASTER_WEBUI_PORT=8080
+      - SPARK_MASTER_PORT=7077
+    ports:
+      - "7077:7077"
+      - "8082:8080"
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  spark-worker:
+    image: bitnami/spark:3.5.3
+    container_name: spark-worker
+    restart: unless-stopped
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=1
+      - SPARK_WORKER_PORT=8888
+      - SPARK_WORKER_WEBUI_PORT=8081
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+    depends_on:
+      spark-master:
+        condition: service_healthy
+    ports:
+      - "8083:8081"
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  mem0:
+    image: mem0/mem0-api-server:latest
+    container_name: mem0
+    restart: unless-stopped
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - JWT_SECRET=${MEM0_JWT_SECRET:-change-me-random-jwt-secret}
+      - DATABASE_URL=postgresql://memory:memory123@postgres-pgvector:5432/memory
+      - REDIS_URL=redis://redis:6379
+      - BACKEND_INTERNAL_URL=http://localhost:3000
+      - IS_GENERAL=true
+      - DISABLE_REGISTRATION=false
+      - MEM0_TELEMETRY=false
+      - RUN_CRON=true
+      - API_LIMIT=30
+    ports:
+      - "8888:8000"
+    depends_on:
+      postgres-pgvector:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - memory-data-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 120s
+
+volumes:
+  qdrant-data:
+  neo4j-data:
+  redis-data:
+  postgres-pgvector-data:
+  kafka-data:
+  cassandra-data:
+  trino-data:
+
+networks:
+  memory-data-network:
+    name: memory-data-network
+    driver: bridge

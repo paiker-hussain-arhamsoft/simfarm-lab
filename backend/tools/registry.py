@@ -610,23 +610,72 @@ async def _postiz_scheduler_model(**kw): return await _content_stub("Postiz", {"
 async def _cross_platform_model(**kw): return await _content_stub("cross-platform (modeled)", {"repurposing":["long→short","blog→social","video→carousel"]}, **kw)
 async def _content_calendar_model(**kw): return await _content_stub("calendar (modeled)", {"weeks":4,"channels":["email","social","blog","webhook"]}, **kw)
 async def _content_cost_model(**kw): return await _content_stub("cost-model (modeled)", {"monthly":{"hosting":"modeled","email":"modeled","social":"modeled","cdn":"modeled"}}, **kw)
-async def _memory_stub(provider, payload, **_):
+async def _run_memory_data_hook(tool: str, **kw: Any) -> dict:
+    """Execute MEMORY_DATA_COMMAND for a memory/data-lake service."""
+    import json as _json
+    template = os.environ.get("MEMORY_DATA_COMMAND", "").strip()
+    if not template:
+        raise ToolError("MEMORY_DATA_COMMAND is not set")
+    content = (kw.get("objective") or kw.get("scenario") or kw.get("fact") or
+               kw.get("content") or kw.get("input") or
+               "SimFarm memory/data event").strip() or "SimFarm memory/data event"
+    user_id = (kw.get("audience") or kw.get("user_id") or kw.get("persona") or "simfarm").strip() or "simfarm"
+    cmd = shlex.split(template)
+    cmd.extend(["--tool", tool, "--content", content, "--user-id", user_id])
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"MEMORY_DATA_COMMAND failed (exit {proc.returncode}): {stderr.decode()[:500]}")
+
+    text = stdout.decode()
+    payload: dict = {}
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                payload = _json.loads(line)
+                break
+            except Exception:
+                continue
+    if not payload:
+        raise ToolError("MEMORY_DATA_COMMAND did not return JSON")
+    return payload
+
+
+async def _memory_stub(provider, payload, tool: str | None = None, **kw):
+    if tool and _is_command_hook("MEMORY_DATA_COMMAND"):
+        try:
+            return await _run_memory_data_hook(tool, **kw)
+        except Exception as exc:
+            return {
+                "simulated": safety.SIMULATED,
+                "requires_internet": safety.REQUIRES_INTERNET,
+                "provider": provider,
+                "modeled": payload,
+                "note": _MEMORY_NOTE,
+                "memory_data_hook_error": str(exc),
+            }
     return {"simulated": safety.SIMULATED, "requires_internet": safety.REQUIRES_INTERNET, "provider": provider,
             "modeled": payload, "note": _MEMORY_NOTE}
-async def _mem0_fact_extraction_model(**kw): return await _memory_stub("Mem0", {"stages":["synthetic input","fact extraction","deduplication","confidence review"],"real_records":False}, **kw)
-async def _persona_memory_isolation_model(**kw): return await _memory_stub("persona-isolation (modeled)", {"boundaries":["tenant","persona","session"],"cross_persona_access":False}, **kw)
-async def _async_write_pipeline_model(**kw): return await _memory_stub("async-write (modeled)", {"queue":"synthetic event buffer","retries":3,"durability":"modeled"}, **kw)
-async def _vector_graph_store_model(**kw): return await _memory_stub("Qdrant · Neo4j · Redis", {"stores":["vector fixture index","graph fixture relations","hot cache"],"live_connections":False}, **kw)
-async def _pgvector_schema_model(**kw): return await _memory_stub("PostgreSQL · pgvector", {"tables":["synthetic_memories","synthetic_embeddings"],"indexes":["hnsw (modeled)"],"real_records":False}, **kw)
-async def _memory_tiering_model(**kw): return await _memory_stub("memory-tiering (modeled)", {"tiers":["hot","warm","cold"],"promotion":"synthetic access score","retention":"modeled"}, **kw)
-async def _event_sourcing_model(**kw): return await _memory_stub("event-sourcing (modeled)", {"events":["memory.created","memory.updated","memory.archived"],"replayable":True}, **kw)
+async def _mem0_fact_extraction_model(**kw): return await _memory_stub("Mem0", {"stages":["synthetic input","fact extraction","deduplication","confidence review"],"real_records":False}, tool="mem0", **kw)
+async def _persona_memory_isolation_model(**kw): return await _memory_stub("persona-isolation (modeled)", {"boundaries":["tenant","persona","session"],"cross_persona_access":False}, tool="redis", **kw)
+async def _async_write_pipeline_model(**kw): return await _memory_stub("async-write (modeled)", {"queue":"synthetic event buffer","retries":3,"durability":"modeled"}, tool="kafka", **kw)
+async def _vector_graph_store_model(**kw): return await _memory_stub("Qdrant · Neo4j · Redis", {"stores":["vector fixture index","graph fixture relations","hot cache"],"live_connections":False}, tool="vector_graph", **kw)
+async def _pgvector_schema_model(**kw): return await _memory_stub("PostgreSQL · pgvector", {"tables":["synthetic_memories","synthetic_embeddings"],"indexes":["hnsw (modeled)"],"real_records":False}, tool="pgvector", **kw)
+async def _memory_tiering_model(**kw): return await _memory_stub("memory-tiering (modeled)", {"tiers":["hot","warm","cold"],"promotion":"synthetic access score","retention":"modeled"}, tool="redis", **kw)
+async def _event_sourcing_model(**kw): return await _memory_stub("event-sourcing (modeled)", {"events":["memory.created","memory.updated","memory.archived"],"replayable":True}, tool="kafka", **kw)
 async def _conflict_resolution_model(**kw): return await _memory_stub("conflict-resolution (modeled)", {"strategy":"version + confidence review","human_review_fixture":True}, **kw)
-async def _kafka_topic_model(**kw): return await _memory_stub("Kafka (modeled)", {"topics":["synthetic.memory.events","synthetic.audit.events"],"partitions":3,"live_broker":False}, **kw)
-async def _cassandra_schema_model(**kw): return await _memory_stub("Cassandra (synthetic)", {"keyspace":"synthetic_memory","tables":["memory_by_persona","events_by_day"],"synthetic_record_count":100000,"real_voter_or_pii_data":False,"capacity_estimate_only":True}, **kw)
-async def _pyspark_bulk_load_model(**kw): return await _memory_stub("PySpark (modeled)", {"input":"synthetic fixtures only","records_loaded":50000,"real_data":False,"job_executed":False}, **kw)
-async def _trino_analytics_model(**kw): return await _memory_stub("Trino (modeled)", {"catalog":"synthetic_lake","queries":["retention","lineage","access anomalies"],"results":"fixtures"}, **kw)
+async def _kafka_topic_model(**kw): return await _memory_stub("Kafka (modeled)", {"topics":["synthetic.memory.events","synthetic.audit.events"],"partitions":3,"live_broker":False}, tool="kafka", **kw)
+async def _cassandra_schema_model(**kw): return await _memory_stub("Cassandra (synthetic)", {"keyspace":"synthetic_memory","tables":["memory_by_persona","events_by_day"],"synthetic_record_count":100000,"real_voter_or_pii_data":False,"capacity_estimate_only":True}, tool="cassandra", **kw)
+async def _pyspark_bulk_load_model(**kw): return await _memory_stub("PySpark (modeled)", {"input":"synthetic fixtures only","records_loaded":50000,"real_data":False,"job_executed":False}, tool="pyspark", **kw)
+async def _trino_analytics_model(**kw): return await _memory_stub("Trino (modeled)", {"catalog":"synthetic_lake","queries":["retention","lineage","access anomalies"],"results":"fixtures"}, tool="trino", **kw)
 async def _pii_encryption_model(**kw): return await _memory_stub("envelope-encryption (modeled)", {"fields":["key_id","algorithm","wrapped_data_key","ciphertext"],"verified":False,"real_pii":False}, **kw)
-async def _memory_routing_model(**kw): return await _memory_stub("memory-routing (modeled)", {"routes":{"hot":"Redis","warm":"pgvector","cold":"Cassandra/Trino"},"routing_executed":False}, **kw)
+async def _memory_routing_model(**kw): return await _memory_stub("memory-routing (modeled)", {"routes":{"hot":"Redis","warm":"pgvector","cold":"Cassandra/Trino"},"routing_executed":False}, tool="redis", **kw)
 async def _memory_compose_model(**kw): return await _memory_stub("Docker Compose (modeled)", {"services":["memory-api","redis-fixture","pgvector-fixture","cassandra-fixture"],"started":False}, **kw)
 async def _storage_estimate_model(**kw): return await _memory_stub("storage-estimate (modeled)", {"tiers":{"hot":"modeled GB","warm":"modeled GB","cold":"modeled TB"},"synthetic_capacity_only":True}, **kw)
 async def _oeads_integration_model(**kw): return await _memory_stub("OEADS integration (modeled)", {"interfaces":["audit events","routing decisions","retention policy"],"live_integration":False}, **kw)
@@ -651,23 +700,97 @@ async def _update_persona(persona_id: str = "default", traits: str = "", **_: An
     }
 
 
+def _is_lightgbm_available() -> bool:
+    try:
+        import lightgbm  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 async def _behavior_forecast(region: str = "", segments: str = "", **_: Any) -> dict:
-    return {
+    """Train a tiny LightGBM regressor on synthetic features and score segments."""
+    base = {
         "simulated": True,
         "provider": "LightGBM",
         "region": region,
         "model": "gradient_boosted_trees",
-        "feature_importance": [
-            {"feature": "economic_grievance", "weight": 0.28},
-            {"feature": "incumbent_fatigue", "weight": 0.21},
-            {"feature": "biradari_affiliation", "weight": 0.17},
-            {"feature": "youth_turnout", "weight": 0.14},
-            {"feature": "development_spend", "weight": 0.11},
-        ],
-        "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
-        "projected_turnout": 0.52,
-        "note": "Stub — wire to a trained LightGBM model in the intelligence tier.",
     }
+    if not _is_lightgbm_available():
+        return {
+            **base,
+            "feature_importance": [
+                {"feature": "economic_grievance", "weight": 0.28},
+                {"feature": "incumbent_fatigue", "weight": 0.21},
+                {"feature": "biradari_affiliation", "weight": 0.17},
+                {"feature": "youth_turnout", "weight": 0.14},
+                {"feature": "development_spend", "weight": 0.11},
+            ],
+            "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
+            "projected_turnout": 0.52,
+            "note": "Stub — LightGBM not installed.",
+        }
+
+    try:
+        import numpy as np
+        from lightgbm import LGBMRegressor
+
+        feature_names = ["economic_grievance", "incumbent_fatigue", "biradari_affiliation", "youth_turnout", "development_spend"]
+        seed = abs(hash(region)) % (2**31) if region else 42
+        rng = np.random.default_rng(seed)
+
+        n_samples = 200
+        X = rng.random((n_samples, len(feature_names)))
+        # Synthetic target: higher economic grievance + incumbent fatigue + youth turnout -> higher turnout
+        y = (
+            0.35 * X[:, 0]
+            + 0.25 * X[:, 1]
+            + 0.15 * X[:, 3]
+            + 0.10 * X[:, 2]
+            + 0.05 * X[:, 4]
+            + rng.normal(0, 0.05, n_samples)
+        )
+        y = np.clip(y, 0.0, 1.0)
+
+        model = LGBMRegressor(n_estimators=50, learning_rate=0.1, max_depth=4, verbose=-1, random_state=seed)
+        model.fit(X, y)
+
+        importances = model.feature_importances_ / (model.feature_importances_.sum() or 1.0)
+
+        segment_list = [s.strip() for s in segments.split(",") if s.strip()] if segments else ["committed", "persuadable", "disengaged", "swing"]
+        segment_scores: dict[str, float] = {}
+        for i, seg in enumerate(segment_list):
+            seg_seed = seed + i + 1
+            seg_rng = np.random.default_rng(seg_seed)
+            seg_X = seg_rng.random((1, len(feature_names)))
+            segment_scores[seg] = round(float(model.predict(seg_X)[0]), 3)
+
+        projected_turnout = round(float(np.mean(list(segment_scores.values()))), 3)
+
+        return {
+            **base,
+            "feature_importance": [
+                {"feature": name, "weight": round(float(weight), 3)}
+                for name, weight in zip(feature_names, importances)
+            ],
+            "segments": segment_scores,
+            "projected_turnout": projected_turnout,
+            "note": "LightGBM model trained on synthetic features; result is still simulated.",
+        }
+    except Exception as exc:
+        return {
+            **base,
+            "feature_importance": [
+                {"feature": "economic_grievance", "weight": 0.28},
+                {"feature": "incumbent_fatigue", "weight": 0.21},
+                {"feature": "biradari_affiliation", "weight": 0.17},
+                {"feature": "youth_turnout", "weight": 0.14},
+                {"feature": "development_spend", "weight": 0.11},
+            ],
+            "segments": {"committed": 0.34, "persuadable": 0.29, "disengaged": 0.22, "swing": 0.15},
+            "projected_turnout": 0.52,
+            "note": f"LightGBM forecast failed: {exc}",
+        }
 
 
 async def _dialect_analysis(region: str = "", language: str = "en", **_: Any) -> dict:
@@ -4069,6 +4192,7 @@ def _register_defaults() -> None:
         description="Predict voter segments/turnout with a gradient-boosted model.",
         category="analysis", provider="LightGBM", run=_behavior_forecast,
         parameters={"region": "target region", "segments": "segments to score"},
+        status="live" if _is_lightgbm_available() else "stub",
     ))
     register(ToolSpec(
         id="dialect_analysis", name="Dialect & Culture Analyzer",
@@ -4354,6 +4478,21 @@ def _register_defaults() -> None:
     ]
     memory_ids = {x[0] for x in memory_local}
     stealth_ids = {x[0] for x in stealth_local}
+    # Memory/data-lake tools that have a real service hook mapping.
+    memory_data_ids = {
+        "mem0_fact_extraction_model",
+        "persona_memory_isolation_model",
+        "async_write_pipeline_model",
+        "vector_graph_store_model",
+        "pgvector_schema_model",
+        "memory_tiering_model",
+        "event_sourcing_model",
+        "kafka_topic_model",
+        "cassandra_schema_model",
+        "pyspark_bulk_load_model",
+        "trino_analytics_model",
+        "memory_routing_model",
+    }
     for ident,name,provider,fn in stealth_local+content_local+memory_local:
         # Mautic/Strapi tools become "live" when their command hook is configured,
         # but the simfarm result is still marked simulated per backend/safety.py.
@@ -4379,6 +4518,18 @@ def _register_defaults() -> None:
             register(ToolSpec(
                 id=ident, name=name, description=description,
                 category="content", provider=provider, run=fn,
+                status="live" if is_live else "stub",
+            ))
+        elif ident in memory_data_ids:
+            is_live = _is_command_hook("MEMORY_DATA_COMMAND")
+            description = (
+                "Memory/data-lake integration when MEMORY_DATA_COMMAND is configured; "
+                "otherwise modeled. Real records are created in the target service, "
+                "but the tool result stays simulated per platform safety invariants."
+            )
+            register(ToolSpec(
+                id=ident, name=name, description=description,
+                category="memory", provider=provider, run=fn,
                 status="live" if is_live else "stub",
             ))
         else:

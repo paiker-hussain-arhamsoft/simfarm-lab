@@ -17,6 +17,7 @@ ARG VIDEO_STACK=
 ARG FACE_STACK=
 ARG BROWSER_STACK=all
 ARG COQUI_TOS_AGREED=
+ARG MEMORY_DATA_STACK=
 
 # Runtime deps + audio build deps for Chatterbox/Coqui TTS, Wan video, and InsightFace + supervisor for multi-process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -44,7 +45,7 @@ ENV LD_LIBRARY_PATH=/usr/lib/ollama
 WORKDIR /app
 
 # Install Python dependencies first for layer caching; voice/video/face deps are heavy so keep them separate
-COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt requirements-browser-browserbase.txt ./
+COPY requirements.txt requirements-voice.txt requirements-voice-coqui.txt requirements-video-wan.txt requirements-face-insightface.txt requirements-browser-playwright.txt requirements-browser-selenium.txt requirements-browser-browserbase.txt requirements-memory-data.txt ./
 RUN pip install --no-cache-dir -r requirements.txt && \
     if [ "$VOICE_STACK" = "coqui" ]; then \
         pip install --no-cache-dir -r requirements-voice-coqui.txt; \
@@ -72,6 +73,12 @@ RUN pip install --no-cache-dir -r requirements.txt && \
     fi && \
     if [ "$BROWSER_STACK" = "browserbase" ] || [ "$BROWSER_STACK" = "all" ]; then \
         pip install --no-cache-dir -r requirements-browser-browserbase.txt; \
+    fi && \
+    if [ "$MEMORY_DATA_STACK" = "all" ]; then \
+        apt-get update && \
+        apt-get install -y --no-install-recommends openjdk-17-jre-headless && \
+        rm -rf /var/lib/apt/lists/* && \
+        pip install --no-cache-dir -r requirements-memory-data.txt; \
     fi
 
 # Pre-download InsightFace models into the image when the face stack is enabled.
@@ -104,6 +111,8 @@ RUN chmod +x /app/start-all-in-one.sh /app/start-bee-gravity.sh && \
     ln -sf /app/services/mautic/mautic-campaign /usr/local/bin/mautic-campaign && \
     chmod +x /app/services/strapi/strapi-lifecycle /app/services/strapi/strapi_lifecycle.py && \
     ln -sf /app/services/strapi/strapi-lifecycle /usr/local/bin/strapi-lifecycle && \
+    chmod +x /app/services/memory-data/memory-data /app/services/memory-data/memory_data.py && \
+    ln -sf /app/services/memory-data/memory-data /usr/local/bin/memory-data && \
     mkdir -p /etc/supervisor/conf.d && \
     cp /app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
