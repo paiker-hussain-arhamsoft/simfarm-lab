@@ -1,6 +1,9 @@
 services:
   tier4-simfarm-simulator:
-    build: .
+    build:
+      context: .
+      args:
+        - MEMORY_DATA_STACK=${MEMORY_DATA_STACK:-}
     container_name: tier4-simfarm-simulator
     command: uvicorn backend.simfarm_service.app:app --host 0.0.0.0 --port 9000
     restart: unless-stopped
@@ -25,10 +28,15 @@ services:
       start_period: 15s
 
   strategic-brain:
-    build: .
+    build:
+      context: .
+      args:
+        - MEMORY_DATA_STACK=${MEMORY_DATA_STACK:-}
     container_name: tier1-strategic-brain
     ports:
       - "8000:8000"
+    networks:
+      - memory-data-network
     environment:
       - PYTHONUNBUFFERED=1
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
@@ -48,6 +56,23 @@ services:
       - STRAPI_URL=${STRAPI_URL:-http://strapi:1337}
       - STRAPI_CONTENT_TYPE=${STRAPI_CONTENT_TYPE:-lifecycles}
       - STRAPI_API_TOKEN=${STRAPI_API_TOKEN:-}
+      # Optional memory/data-lake hooks
+      - MEMORY_DATA_COMMAND=${MEMORY_DATA_COMMAND:-}
+      - QDRANT_URL=${QDRANT_URL:-http://qdrant:6333}
+      - NEO4J_URL=${NEO4J_URL:-http://neo4j:7474}
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD:-neo4j123}
+      - REDIS_URL=${REDIS_URL:-redis://redis-memory:6379}
+      - PGVECTOR_URL=${PGVECTOR_URL:-postgresql://memory:memory123@postgres-pgvector:5432/memory}
+      - KAFKA_BOOTSTRAP=${KAFKA_BOOTSTRAP:-kafka:9092}
+      - CASSANDRA_HOSTS=${CASSANDRA_HOSTS:-cassandra}
+      - CASSANDRA_USER=${CASSANDRA_USER:-cassandra}
+      - CASSANDRA_PASSWORD=${CASSANDRA_PASSWORD:-cassandra123}
+      - TRINO_HOST=${TRINO_HOST:-trino}
+      - TRINO_PORT=${TRINO_PORT:-8080}
+      - TRINO_USER=${TRINO_USER:-simfarm}
+      - MEM0_URL=${MEM0_URL:-http://mem0:8000}
+      - MEM0_API_KEY=${MEM0_API_KEY:-}
       # Privileged legal-proxy override role (default OFF). Even when enabled,
       # a flagged request is only cleared with a real authorization ref + approver.
       - LEGAL_PROXY_ENABLED=${LEGAL_PROXY_ENABLED:-}
@@ -84,6 +109,11 @@ services:
       retries: 3
     volumes:
       - brain-data:/app/data
+
+networks:
+  memory-data-network:
+    name: memory-data-network
+    driver: bridge
 
 volumes:
   brain-data:

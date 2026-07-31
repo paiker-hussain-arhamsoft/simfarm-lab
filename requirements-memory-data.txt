@@ -1,0 +1,7 @@
+# Python clients for the memory/data-lake command hooks.
+# Installed into /opt/memory-data-venv when MEMORY_DATA_STACK=all.
+redis>=5.0
+psycopg[binary]>=3.2,<4.0
+cassandra-driver>=3.29,<4.0
+kafka-python>=2.0,<3.0
+trino>=0.330
