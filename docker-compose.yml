@@ -71,6 +71,7 @@ services:
       - TRINO_HOST=${TRINO_HOST:-trino}
       - TRINO_PORT=${TRINO_PORT:-8080}
       - TRINO_USER=${TRINO_USER:-simfarm}
+      - SPARK_MASTER=${SPARK_MASTER:-spark://spark-master:7077}
       - MEM0_URL=${MEM0_URL:-http://mem0:8000}
       - MEM0_API_KEY=${MEM0_API_KEY:-}
       # Privileged legal-proxy override role (default OFF). Even when enabled,

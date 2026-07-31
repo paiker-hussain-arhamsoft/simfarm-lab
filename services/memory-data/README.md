@@ -1,7 +1,7 @@
 # Memory / data-lake stack for simfarm-lab
 
 This is an optional all-in-one memory/data stack: Qdrant, Neo4j, Redis,
-PostgreSQL+pgvector, Apache Kafka, Cassandra, Trino, and Mem0.
+PostgreSQL+pgvector, Apache Kafka, Cassandra, Trino, PySpark, and Mem0.
 
 ## Install
 
@@ -42,6 +42,7 @@ CASSANDRA_PASSWORD=cassandra123
 TRINO_HOST=trino
 TRINO_PORT=8080
 TRINO_USER=simfarm
+SPARK_MASTER=spark://spark-master:7077
 MEM0_URL=http://mem0:8000
 MEM0_API_KEY=<your-mem0-api-key>
 ```
@@ -56,6 +57,7 @@ When `MEMORY_DATA_COMMAND` is set, the following `memory_local` stubs become
 - `pgvector_schema_model` -> Postgres+pgvector table
 - `kafka_topic_model`, `event_sourcing_model`, `async_write_pipeline_model` -> Kafka topic
 - `cassandra_schema_model` -> Cassandra keyspace/table
+- `pyspark_bulk_load_model` -> PySpark master (trivial DataFrame job)
 - `trino_analytics_model` -> Trino schema/table
 - `persona_memory_isolation_model`, `memory_tiering_model`, `memory_routing_model` -> Redis key
 
@@ -71,7 +73,8 @@ MEMORY_DATA_COMMAND=./services/memory-data/memory-data \
 ## Notes
 - The hook script uses Python stdlib where possible (Mem0, Qdrant, Neo4j HTTP).
   Heavy protocol clients (Redis, psycopg, cassandra-driver, kafka-python,
-  trino) are installed only when `MEMORY_DATA_STACK=all` is used at build time.
+  trino, pyspark) and the OpenJDK JRE are installed only when
+  `MEMORY_DATA_STACK=all` is used at build time.
 - Mem0 requires an API key (set via the dashboard or `MEM0_API_KEY`) unless
   auth is disabled. It also needs an `OPENAI_API_KEY` or Ollama config to
   actually extract/embed memories; the wrapper only creates a memory entry.

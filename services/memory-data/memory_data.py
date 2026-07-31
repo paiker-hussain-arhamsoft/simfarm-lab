@@ -234,6 +234,23 @@ def _trino(args: argparse.Namespace) -> dict:
     return {"tool": "trino", "artifact": f"http://{host}:{port}/ui/query.html"}
 
 
+def _pyspark(args: argparse.Namespace) -> dict:
+    """Submit a trivial Spark job against the configured Spark master."""
+    master = args.url or os.environ.get("SPARK_MASTER", "spark://spark-master:7077")
+    try:
+        from pyspark.sql import SparkSession
+    except ImportError as exc:
+        raise RuntimeError("pyspark is not installed") from exc
+
+    spark = SparkSession.builder.appName("simfarm-lab").master(master).getOrCreate()
+    try:
+        df = spark.createDataFrame([(args.content, args.user_id)], ["content", "user_id"])
+        count = df.count()
+        return {"tool": "pyspark", "artifact": master, "row_count": count}
+    finally:
+        spark.stop()
+
+
 def _vector_graph(args: argparse.Namespace) -> dict:
     """Touch Qdrant, Neo4j, and Redis in one call (used by vector_graph_store_model)."""
     qdrant_result = _qdrant(args)
@@ -257,6 +274,7 @@ _TOOL_MAP = {
     "kafka": _kafka,
     "cassandra": _cassandra,
     "trino": _trino,
+    "pyspark": _pyspark,
     "vector_graph": _vector_graph,
 }
 

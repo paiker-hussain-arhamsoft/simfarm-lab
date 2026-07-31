@@ -5,3 +5,4 @@ psycopg[binary]>=3.2,<4.0
 cassandra-driver>=3.29,<4.0
 kafka-python>=2.0,<3.0
 trino>=0.330
+pyspark>=3.5,<4.0
