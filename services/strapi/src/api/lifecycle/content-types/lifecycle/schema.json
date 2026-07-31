@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "lifecycles",
+  "info": {
+    "singularName": "lifecycle",
+    "pluralName": "lifecycles",
+    "displayName": "Lifecycle",
+    "description": "Content lifecycle entry for the simfarm-lab pipeline"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "title": {
+      "type": "string",
+      "required": true
+    },
+    "body": {
+      "type": "richtext"
+    },
+    "channel": {
+      "type": "string"
+    },
+    "stage": {
+      "type": "enumeration",
+      "enum": ["draft", "review", "published"],
+      "default": "draft"
+    }
+  }
+}

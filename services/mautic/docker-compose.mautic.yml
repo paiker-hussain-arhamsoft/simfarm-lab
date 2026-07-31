@@ -1,0 +1,142 @@
+# Standalone Mautic stack for simfarm-lab integration.
+# Run with:
+#   docker compose -f services/mautic/docker-compose.mautic.yml up -d
+# Then install Mautic (one-time):
+#   docker compose -f services/mautic/docker-compose.mautic.yml run --rm mautic-install
+#
+# After install, the API is reachable at http://mautic-web/api/.
+# Basic auth is enabled so the simfarm mautic-campaign hook can connect.
+
+services:
+  mautic-db:
+    image: mariadb:10.11
+    container_name: mautic-db
+    environment:
+      - MARIADB_ROOT_PASSWORD=${MAUTIC_DB_ROOT_PASSWORD:-mauticroot}
+      - MARIADB_DATABASE=mautic
+      - MARIADB_USER=mautic
+      - MARIADB_PASSWORD=${MAUTIC_DB_PASSWORD:-mautic}
+    volumes:
+      - mautic-db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  mautic-web:
+    image: mautic/mautic:6-apache
+    container_name: mautic-web
+    ports:
+      - "8080:80"
+    environment:
+      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_PORT=3306
+      - MAUTIC_DB_DATABASE=mautic
+      - MAUTIC_DB_USER=mautic
+      - MAUTIC_DB_PASSWORD=${MAUTIC_DB_PASSWORD:-mautic}
+      - DOCKER_MAUTIC_ROLE=mautic_web
+      - DOCKER_MAUTIC_RUN_MIGRATIONS=true
+      - MAUTIC_API_ENABLED=true
+      - MAUTIC_API_ENABLE_BASIC_AUTH=true
+    volumes:
+      - mautic-config:/var/www/html/config
+      - mautic-logs:/var/www/html/var/logs
+      - mautic-media-files:/var/www/html/docroot/media/files
+      - mautic-media-images:/var/www/html/docroot/media/images
+    depends_on:
+      mautic-db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  mautic-worker:
+    image: mautic/mautic:6-apache
+    container_name: mautic-worker
+    environment:
+      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_PORT=3306
+      - MAUTIC_DB_DATABASE=mautic
+      - MAUTIC_DB_USER=mautic
+      - MAUTIC_DB_PASSWORD=${MAUTIC_DB_PASSWORD:-mautic}
+      - DOCKER_MAUTIC_ROLE=mautic_worker
+      - DOCKER_MAUTIC_WORKERS_CONSUME_EMAIL=2
+      - DOCKER_MAUTIC_WORKERS_CONSUME_HIT=2
+      - DOCKER_MAUTIC_WORKERS_CONSUME_FAILED=2
+    volumes:
+      - mautic-config:/var/www/html/config
+      - mautic-logs:/var/www/html/var/logs
+      - mautic-media-files:/var/www/html/docroot/media/files
+      - mautic-media-images:/var/www/html/docroot/media/images
+    depends_on:
+      mautic-db:
+        condition: service_healthy
+      mautic-web:
+        condition: service_started
+    restart: unless-stopped
+
+  mautic-cron:
+    image: mautic/mautic:6-apache
+    container_name: mautic-cron
+    environment:
+      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_PORT=3306
+      - MAUTIC_DB_DATABASE=mautic
+      - MAUTIC_DB_USER=mautic
+      - MAUTIC_DB_PASSWORD=${MAUTIC_DB_PASSWORD:-mautic}
+      - DOCKER_MAUTIC_ROLE=mautic_cron
+    volumes:
+      - mautic-config:/var/www/html/config
+      - mautic-logs:/var/www/html/var/logs
+    depends_on:
+      mautic-db:
+        condition: service_healthy
+      mautic-web:
+        condition: service_started
+    restart: unless-stopped
+
+  mautic-install:
+    profiles:
+      - install
+    image: mautic/mautic:6-apache
+    environment:
+      - MAUTIC_DB_HOST=mautic-db
+      - MAUTIC_DB_PORT=3306
+      - MAUTIC_DB_DATABASE=mautic
+      - MAUTIC_DB_USER=mautic
+      - MAUTIC_DB_PASSWORD=${MAUTIC_DB_PASSWORD:-mautic}
+      - DOCKER_MAUTIC_ROLE=mautic_web
+    volumes:
+      - mautic-config:/var/www/html/config
+    depends_on:
+      mautic-db:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        php /var/www/html/bin/console mautic:install \
+          --db_driver=pdo_mysql \
+          --db_host=mautic-db \
+          --db_port=3306 \
+          --db_name=mautic \
+          --db_user=mautic \
+          --db_password="${MAUTIC_DB_PASSWORD:-mautic}" \
+          --db_table_prefix="" \
+          --admin_firstname=Admin \
+          --admin_lastname=User \
+          --admin_username=admin \
+          --admin_email="${MAUTIC_ADMIN_EMAIL:-admin@mautic.local}" \
+          --admin_password="${MAUTIC_ADMIN_PASSWORD:-Maut1cR0cks!}" \
+          "${MAUTIC_SITE_URL:-http://localhost:8080}" || true
+        # Re-run migrations/enable API after install
+        php /var/www/html/bin/console mautic:update:apply --force || true
+        php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction || true
+        php /var/www/html/bin/console cache:clear --no-interaction || true
+
+volumes:
+  mautic-db-data:
+  mautic-config:
+  mautic-logs:
+  mautic-media-files:
+  mautic-media-images:

@@ -495,10 +495,116 @@ async def _session_isolation_model(**kw): return await _stealth_stub("session-is
 async def _ip_warmup_model(**kw): return await _stealth_stub("IP-warmup (modeled)", {"schedule":["observe","low-volume","normalization"],"signals":["reputation","ASN churn"]}, **kw)
 async def _evasion_matrix_model(**kw): return await _stealth_stub("evasion-matrix (modeled)", {"signals":["canvas","WebGL","audio","WebRTC","timezone","language","navigator","plugins","TLS/JA3","IP reputation","behavioral timing","cookie/storage"]}, **kw)
 async def _stealth_checklist_model(**kw): return await _stealth_stub("stealth-checklist (modeled)", {"checks":["consistency","challenge telemetry","rate limits","audit evidence"]}, **kw)
-async def _mautic_campaign_model(**kw): return await _content_stub("Mautic · Docker", {"flow":["segment","trigger","message fixture","stop condition"],"deployed":False}, **kw)
-async def _lead_scoring_model(**kw): return await _content_stub("Mautic · lead-scoring", {"weights":{"behavioral":0.6,"demographic":0.4},"live_subscribers":False}, **kw)
+async def _run_mautic_hook(mode: str, **kw: Any) -> dict:
+    """Execute the configured MAUTIC_COMMAND to create/read Mautic entities.
+
+    The command is expected to be a path to the `mautic-campaign` wrapper.
+    `--mode`, `--name` and `--description` are appended as extra arguments.
+    The JSON response from the command is returned unchanged.
+    """
+    import json as _json
+    template = os.environ.get("MAUTIC_COMMAND", "").strip()
+    if not template:
+        raise ToolError("MAUTIC_COMMAND is not set")
+    name = (kw.get("objective") or kw.get("name") or f"SimFarm {mode.title()}").strip() or f"SimFarm {mode.title()}"
+    description = (kw.get("scenario") or kw.get("description") or "").strip()
+    cmd = shlex.split(template)
+    cmd.extend(["--mode", mode, "--name", name, "--description", description])
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"MAUTIC_COMMAND failed (exit {proc.returncode}): {stderr.decode()[:500]}")
+
+    text = stdout.decode()
+    payload: dict = {}
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                payload = _json.loads(line)
+                break
+            except Exception:
+                continue
+    if not payload:
+        raise ToolError("MAUTIC_COMMAND did not return JSON")
+    return payload
+
+
+async def _mautic_campaign_model(**kw: Any) -> dict:
+    if _is_command_hook("MAUTIC_COMMAND"):
+        try:
+            return await _run_mautic_hook("campaign", **kw)
+        except Exception as exc:
+            return {
+                **await _content_stub("Mautic · Docker", {"flow":["segment","trigger","message fixture","stop condition"],"deployed":False}, **kw),
+                "mautic_hook_error": str(exc),
+            }
+    return await _content_stub("Mautic · Docker", {"flow":["segment","trigger","message fixture","stop condition"],"deployed":False}, **kw)
+
+
+async def _lead_scoring_model(**kw: Any) -> dict:
+    if _is_command_hook("MAUTIC_COMMAND"):
+        try:
+            return await _run_mautic_hook("lead_score", **kw)
+        except Exception as exc:
+            return {
+                **await _content_stub("Mautic · lead-scoring", {"weights":{"behavioral":0.6,"demographic":0.4},"live_subscribers":False}, **kw),
+                "mautic_hook_error": str(exc),
+            }
+    return await _content_stub("Mautic · lead-scoring", {"weights":{"behavioral":0.6,"demographic":0.4},"live_subscribers":False}, **kw)
 async def _email_auth_model(**kw): return await _content_stub("DKIM/SPF/DMARC (modeled)", {"records":["DKIM","SPF","DMARC"],"verified":False}, **kw)
-async def _strapi_lifecycle_model(**kw): return await _content_stub("Strapi · AI", {"schema":"modeled content type","hooks":["draft","review","publish"],"deployed":False}, **kw)
+async def _run_strapi_hook(**kw: Any) -> dict:
+    """Execute the configured STRAPI_COMMAND to create/read Strapi lifecycle entries."""
+    import json as _json
+    template = os.environ.get("STRAPI_COMMAND", "").strip()
+    if not template:
+        raise ToolError("STRAPI_COMMAND is not set")
+    title = (kw.get("objective") or kw.get("title") or "SimFarm Lifecycle Entry").strip() or "SimFarm Lifecycle Entry"
+    body = (kw.get("scenario") or kw.get("body") or "").strip()
+    stage = (kw.get("stage") or kw.get("cms_platform") or "draft").strip() or "draft"
+    channel = (kw.get("distribution_channel") or kw.get("channel") or "").strip()
+    cmd = shlex.split(template)
+    cmd.extend(["--mode", "create", "--title", title, "--body", body, "--stage", stage, "--channel", channel])
+
+    proc = await asyncio.create_subprocess_exec(
+        *cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise ToolError(f"STRAPI_COMMAND failed (exit {proc.returncode}): {stderr.decode()[:500]}")
+
+    text = stdout.decode()
+    payload: dict = {}
+    for line in reversed(text.strip().splitlines()):
+        line = line.strip()
+        if line.startswith("{"):
+            try:
+                payload = _json.loads(line)
+                break
+            except Exception:
+                continue
+    if not payload:
+        raise ToolError("STRAPI_COMMAND did not return JSON")
+    return payload
+
+
+async def _strapi_lifecycle_model(**kw: Any) -> dict:
+    if _is_command_hook("STRAPI_COMMAND"):
+        try:
+            return await _run_strapi_hook(**kw)
+        except Exception as exc:
+            return {
+                **await _content_stub("Strapi · AI", {"schema":"modeled content type","hooks":["draft","review","publish"],"deployed":False}, **kw),
+                "strapi_hook_error": str(exc),
+            }
+    return await _content_stub("Strapi · AI", {"schema":"modeled content type","hooks":["draft","review","publish"],"deployed":False}, **kw)
 async def _webhook_chain_model(**kw): return await _content_stub("webhook (modeled)", {"topology":["source fixture","review queue","satellite fixture"],"live":False}, **kw)
 async def _postiz_scheduler_model(**kw): return await _content_stub("Postiz", {"schedule":"modeled matrix","captions":"fixture stubs","queued":False}, **kw)
 async def _cross_platform_model(**kw): return await _content_stub("cross-platform (modeled)", {"repurposing":["long→short","blog→social","video→carousel"]}, **kw)
@@ -4249,9 +4355,36 @@ def _register_defaults() -> None:
     memory_ids = {x[0] for x in memory_local}
     stealth_ids = {x[0] for x in stealth_local}
     for ident,name,provider,fn in stealth_local+content_local+memory_local:
-        register(ToolSpec(id=ident,name=name,description="Simulated only; real execution requires authorization and is not performed.",
-                          category="stealth" if ident in stealth_ids else "memory" if ident in memory_ids else "content",
-                          provider=provider,run=fn))
+        # Mautic/Strapi tools become "live" when their command hook is configured,
+        # but the simfarm result is still marked simulated per backend/safety.py.
+        if ident in ("mautic_campaign_model", "lead_scoring_model"):
+            is_live = _is_command_hook("MAUTIC_COMMAND")
+            description = (
+                "Mautic REST-API integration when MAUTIC_COMMAND is configured; "
+                "otherwise modeled. Real campaigns/segments are created in Mautic, "
+                "but the tool result stays simulated per platform safety invariants."
+            )
+            register(ToolSpec(
+                id=ident, name=name, description=description,
+                category="content", provider=provider, run=fn,
+                status="live" if is_live else "stub",
+            ))
+        elif ident == "strapi_lifecycle_model":
+            is_live = _is_command_hook("STRAPI_COMMAND")
+            description = (
+                "Strapi REST-API integration when STRAPI_COMMAND is configured; "
+                "otherwise modeled. Real Lifecycle entries are created in Strapi, "
+                "but the tool result stays simulated per platform safety invariants."
+            )
+            register(ToolSpec(
+                id=ident, name=name, description=description,
+                category="content", provider=provider, run=fn,
+                status="live" if is_live else "stub",
+            ))
+        else:
+            register(ToolSpec(id=ident,name=name,description="Simulated only; real execution requires authorization and is not performed.",
+                              category="stealth" if ident in stealth_ids else "memory" if ident in memory_ids else "content",
+                              provider=provider,run=fn))
 
     register(ToolSpec(
         id="flaresolverr_model", name="FlareSolverr Model",

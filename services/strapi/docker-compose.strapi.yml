@@ -1,0 +1,59 @@
+# Strapi v5 stack with a pre-baked `Lifecycle` content type.
+#
+# Build the image first:
+#   docker compose -f services/strapi/docker-compose.strapi.yml build
+#
+# Run:
+#   docker compose -f services/strapi/docker-compose.strapi.yml up -d
+#
+# Then open http://localhost:1337/admin, create the first admin user, and
+# generate an API token under Settings > API Tokens. Set that token as
+# STRAPI_API_TOKEN when configuring the simfarm pipeline.
+
+services:
+  strapi-db:
+    image: postgres:16-alpine
+    container_name: strapi-db
+    environment:
+      - POSTGRES_USER=${STRAPI_DATABASE_USERNAME:-strapi}
+      - POSTGRES_PASSWORD=${STRAPI_DATABASE_PASSWORD:-strapi}
+      - POSTGRES_DB=${STRAPI_DATABASE_NAME:-strapi}
+    volumes:
+      - strapi-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STRAPI_DATABASE_USERNAME:-strapi} -d ${STRAPI_DATABASE_NAME:-strapi}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  strapi:
+    build: .
+    container_name: strapi
+    ports:
+      - "1337:1337"
+    environment:
+      - NODE_ENV=production
+      - DATABASE_CLIENT=postgres
+      - DATABASE_HOST=strapi-db
+      - DATABASE_PORT=5432
+      - DATABASE_NAME=${STRAPI_DATABASE_NAME:-strapi}
+      - DATABASE_USERNAME=${STRAPI_DATABASE_USERNAME:-strapi}
+      - DATABASE_PASSWORD=${STRAPI_DATABASE_PASSWORD:-strapi}
+      - JWT_SECRET=${STRAPI_JWT_SECRET:-tobemodified}
+      - ADMIN_JWT_SECRET=${STRAPI_ADMIN_JWT_SECRET:-tobemodified}
+      - APP_KEYS=${STRAPI_APP_KEYS:-tobemodified1,tobemodified2}
+      - API_TOKEN_SALT=${STRAPI_API_TOKEN_SALT:-tobemodified}
+      - TRANSFER_TOKEN_SALT=${STRAPI_TRANSFER_TOKEN_SALT:-tobemodified}
+      - ENCRYPTION_KEY=${STRAPI_ENCRYPTION_KEY:-tobemodified}
+      - STRAPI_TELEMETRY_DISABLED=true
+    depends_on:
+      strapi-db:
+        condition: service_healthy
+    volumes:
+      - strapi-uploads:/srv/app/public/uploads
+    restart: unless-stopped
+
+volumes:
+  strapi-db-data:
+  strapi-uploads:
