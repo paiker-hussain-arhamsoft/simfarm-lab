@@ -104,6 +104,8 @@ RUN chmod +x /app/start-all-in-one.sh /app/start-bee-gravity.sh && \
     ln -sf /app/services/mautic/mautic-campaign /usr/local/bin/mautic-campaign && \
     chmod +x /app/services/strapi/strapi-lifecycle /app/services/strapi/strapi_lifecycle.py && \
     ln -sf /app/services/strapi/strapi-lifecycle /usr/local/bin/strapi-lifecycle && \
+    chmod +x /app/services/postiz/postiz-scheduler /app/services/postiz/postiz_scheduler.py && \
+    ln -sf /app/services/postiz/postiz-scheduler /usr/local/bin/postiz-scheduler && \
     mkdir -p /etc/supervisor/conf.d && \
     cp /app/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
 
